@@ -166,25 +166,15 @@ The default `bookworm-slim` image has no runtimes. We built a custom image with 
 
 **Solution: bake packages into a custom image at build time** (no capability restrictions during `docker build`).
 
-```dockerfile
-# /tmp/Dockerfile.jimbo
-FROM openclaw-sandbox:bookworm-slim-original
-USER root
-RUN apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends \
-    python3 python3-pip python3-venv \
-    nodejs npm \
-    git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-# Do NOT add "USER openclaw" — OpenClaw creates this user at runtime
-```
+The Dockerfile is tracked in this repo at `sandbox/Dockerfile`. To deploy:
 
 ```bash
-# Build and tag as the default sandbox image
-docker build -f /tmp/Dockerfile.jimbo -t openclaw-sandbox:bookworm-slim /tmp/
+# Copy to VPS and build
+scp sandbox/Dockerfile root@167.99.206.214:/tmp/Dockerfile.jimbo
+ssh jimbo 'docker build -f /tmp/Dockerfile.jimbo -t openclaw-sandbox:bookworm-slim /tmp/'
 
-# Keep the original as backup
-docker tag openclaw-sandbox:bookworm-slim-original openclaw-sandbox:bookworm-slim-original
+# Recreate the sandbox container
+ssh jimbo 'docker rm -f $(docker ps -aq --filter name=openclaw-sbx) && systemctl restart openclaw'
 ```
 
 **Critical: do NOT add `USER openclaw`** to the Dockerfile. The `openclaw` user doesn't exist in the image — OpenClaw creates it at container runtime. Adding it causes: `unable to find user openclaw: no matching entries in passwd file`.
@@ -192,11 +182,30 @@ docker tag openclaw-sandbox:bookworm-slim-original openclaw-sandbox:bookworm-sli
 **Available in sandbox (2026-02-17):**
 - Python 3.11.2
 - Node v18.20.4 / npm 9.2.0
+- TypeScript 5.x, ts-node (global)
+- jq, curl, make
 - git, ca-certificates
-- File operations via OpenClaw write/read tools (works)
-- Shell redirection to `/workspace` (blocked — doesn't matter, use write tool instead)
+- npm (with cache redirected to `/workspace/.npm-cache` — see below)
 
 **Note:** Homebrew Python 3.14 and Node 25 are also installed on the host for non-sandbox use. The sandbox uses the Debian apt versions instead (glibc compatible).
+
+### Workspace write permissions
+
+The sandbox has `ReadonlyRootfs=true` and drops ALL Linux capabilities (including `DAC_OVERRIDE`). The container runs as root (uid 0), but the workspace bind-mount is owned by `openclaw` (uid 1000) with `755` permissions. Without `DAC_OVERRIDE`, root **cannot** bypass file permissions — so shell commands can't write to `/workspace` even though `workspaceAccess: "rw"` is set in config.
+
+**Fix (run once on the host):**
+
+```bash
+chmod -R o+w /home/openclaw/.openclaw/workspace
+```
+
+This allows any user (including root-without-capabilities) to write to the workspace. Without this fix:
+- OpenClaw's Write tool works (it writes from the host side, outside the container)
+- But all shell commands fail: `npm install`, `git commit`, `node` writing output files, `python` scripts — anything that creates or modifies files from inside the container
+
+**npm cache fix:** The Dockerfile sets `npm_config_cache=/workspace/.npm-cache` because npm's default cache (`/root/.npm`) is on the read-only root filesystem. This redirects caching to the writable workspace mount.
+
+**fchown warnings:** `npm install` produces `TAR_ENTRY_ERROR EPERM: operation not permitted, fchown` warnings. These are harmless — npm tries to set file ownership but `CHOWN` capability is dropped. Files still extract correctly, they just keep the current user's ownership.
 
 ### Container lifecycle
 
@@ -222,6 +231,8 @@ systemctl restart openclaw
 7. **Never add `USER openclaw` to Dockerfile** — OpenClaw creates this user at container runtime. Adding it to the Dockerfile causes a fatal startup error.
 8. **systemd PATH order matters** — `/etc/systemd/system/openclaw.service` had homebrew before `/usr/bin` in PATH. Installing Node via homebrew made OpenClaw use Node 25 instead of its bundled Node 22, crashing Telegram. Fix: move homebrew to end of PATH.
 9. **`openclaw logs --follow` uses root config** — which doesn't have the gateway token. Use `journalctl -u openclaw -f` instead for service logs.
+10. **Shell can't write to `/workspace`** — `ReadonlyRootfs=true` + `CapDrop: ALL` means root in the container can't override `755` permissions on the workspace (owned by uid 1000). The Write tool works (host-side), but shell commands fail. Fix: `chmod -R o+w /home/openclaw/.openclaw/workspace` on the host.
+11. **npm install fails with EROFS** — npm's cache defaults to `/root/.npm` which is on the read-only root filesystem. Fix: set `npm_config_cache=/workspace/.npm-cache` in the Dockerfile (already done in `sandbox/Dockerfile`).
 
 ## Troubleshooting
 
@@ -238,3 +249,6 @@ systemctl restart openclaw
 - **Stale container after image rebuild:** Run `docker ps -a` — look for "Created" containers. `docker rm -f` them before restarting
 - **OpenClaw crashes after installing Node via homebrew:** Homebrew Node (v25) replaced system Node (v22) in PATH. Check `/etc/systemd/system/openclaw.service` PATH order — `/usr/bin` must come before homebrew
 - **`openclaw logs --follow` says "unauthorized":** It reads root's config. Use `journalctl -u openclaw -f` instead
+- **Shell commands can't write to `/workspace`:** Workspace is owned by uid 1000 with 755 perms, container runs as root (uid 0) with all capabilities dropped. Run `chmod -R o+w /home/openclaw/.openclaw/workspace` on the host.
+- **`npm install` fails with EROFS (read-only file system):** npm cache is at `/root/.npm` on the read-only rootfs. Ensure `npm_config_cache=/workspace/.npm-cache` is set in the Dockerfile.
+- **`npm install` shows TAR_ENTRY_ERROR fchown warnings:** Harmless — `CHOWN` capability is dropped. Files still install correctly.
