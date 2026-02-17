@@ -1,0 +1,10 @@
+# Email digest data (contains email content — never commit)
+data/email-digest.json
+data/sample-maildir/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
