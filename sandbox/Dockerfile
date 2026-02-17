@@ -28,3 +28,8 @@ RUN apt-get update -qq && \
 # TypeScript tooling (global — available everywhere without per-project npm install)
 # Note: @types/node is NOT installed globally — it only works as a local project dependency
 RUN npm install -g typescript ts-node
+
+# npm needs a writable cache directory at runtime.
+# The root filesystem is read-only, so point npm's cache into /workspace
+# which is the only writable bind-mount in the sandbox.
+ENV npm_config_cache=/workspace/.npm-cache
