@@ -26,8 +26,9 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 
 ### Automation (see ADR-010)
 - [x] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (2026-02-18)
-- [ ] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram) — see `setup/vps-automation.md`
-- [ ] Add email digest freshness check to HEARTBEAT.md — see `setup/vps-automation.md`
+- [x] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram) (2026-02-18)
+- [x] Add email digest freshness check + token expiry check to HEARTBEAT.md (2026-02-18)
+- [x] Configure heartbeat timing: every 30m, active 07:00–01:00 London (2026-02-18)
 - [ ] Process 28k email backlog in batches (see ADR-009)
 
 ### Gmail sync

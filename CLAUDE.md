@@ -141,6 +141,17 @@ nano /home/openclaw/.openclaw/openclaw.json  # edit config
 
 Config changes require service restart. Workspace file changes (skills, brain files, digest) take effect on next Jimbo session — no restart needed.
 
+### Running `openclaw` CLI on VPS (important!)
+
+The CLI needs env vars + correct HOME + correct user. This is the working pattern:
+
+```bash
+export $(grep -v '^#' /opt/openclaw.env | xargs) && \
+sudo -E -u openclaw HOME=/home/openclaw openclaw <command>
+```
+
+See `setup/vps-automation.md` for full cheatsheet and explanation of why simpler approaches don't work.
+
 ## What NOT to Do
 
 - Don't commit email content or API keys
@@ -148,3 +159,4 @@ Config changes require service restart. Workspace file changes (skills, brain fi
 - Don't put Gmail credentials on the VPS
 - Don't use `openclaw config set` (writes to wrong config path — edit openclaw.json directly)
 - Don't use `openclaw logs --follow` (uses root's config, missing gateway token — use journalctl)
+- Don't run `openclaw` CLI as root without the env var + HOME workaround (see above)
