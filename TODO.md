@@ -1,21 +1,10 @@
 # TODO
 
-Single source of truth for all open tasks. Check items off as they're done.
-
-## In Progress
-
-- [ ] Jimbo building "Sift" email digest prototype (BDD specs written, implementing in jimbo-workspace)
-
-## Up Next
-
-- [ ] Review what Jimbo has written to USER.md / IDENTITY.md / MEMORY.md — edit if needed
-- [ ] Build offline email classifier on laptop (IMAP → Ollama → email-digest.json)
-- [ ] Add OpenRouter credits when ready to upgrade from free tier
+Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/openclaw/issues). This file is the long-term backlog.
 
 ## Backlog — Sandbox & Security
 
 - [ ] Add adversarial test fixtures to sandbox repo (fake .env, honeypot AWS key, prompt injection issue)
-- [ ] Connect OpenClaw to test monorepo (GitHub integration for Zone 1)
 - [ ] Set up Tailscale tunnel: laptop Ollama → VPS (free local inference when laptop is on)
 - [ ] VPS hardening: UFW firewall, fail2ban, disable password auth (see `security/hardening.md`)
 - [ ] Run `openclaw security audit --deep` on VPS
@@ -23,10 +12,6 @@ Single source of truth for all open tasks. Check items off as they're done.
 
 ## Backlog — Email Triage
 
-- [ ] Install `mbsync` (isync) on laptop
-- [ ] Configure Gmail IMAP sync → Maildir
-- [ ] Sync last 90 days as first batch
-- [ ] Build email classification pipeline with local Ollama (offline, no network)
 - [ ] Design digest-feedback.json schema for learning loop
 - [ ] Implement time-budget tracking (content-queue.json)
 
