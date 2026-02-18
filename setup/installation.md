@@ -87,8 +87,8 @@ journalctl -u openclaw --no-pager -n 15 | grep telegram
 
 | File | Purpose |
 |---|---|
-| `/opt/openclaw.env` | Environment variables (API keys, bot tokens) |
-| `/home/openclaw/.openclaw/openclaw.json` | Main config — **service user** (plugins, channels, model, sandbox) |
+| `/opt/openclaw.env` | Environment variables (API keys, bot tokens) — `600`, owned by `openclaw` |
+| `/home/openclaw/.openclaw/openclaw.json` | Main config — **service user** (plugins, channels, model, sandbox) — `600`, owned by `openclaw` |
 | `/root/.openclaw/openclaw.json` | Config — **root user** (layered on top, used by `openclaw config set`) |
 | `/tmp/openclaw/openclaw-2026-02-16.log` | Daily log file |
 
@@ -144,10 +144,12 @@ Configured via `agents.defaults.sandbox.docker.env` in `openclaw.json`:
 
 ```json
 "env": {
-  "GH_TOKEN": "github_pat_...",
-  "JIMBO_GH_TOKEN": "github_pat_..."
+  "GH_TOKEN": "${GH_TOKEN}",
+  "JIMBO_GH_TOKEN": "${JIMBO_GH_TOKEN}"
 }
 ```
+
+Actual token values go in `/opt/openclaw.env` — the config just references them via `${VAR_NAME}` interpolation. See `security/hardening.md` for permissions.
 
 | Var | Account | Scope | Access |
 |---|---|---|---|
@@ -226,6 +228,8 @@ systemctl restart openclaw
 2. **`openclaw config set` writes to root's config** — not the service user's. Always edit `/home/openclaw/.openclaw/openclaw.json` directly.
 3. **Stale containers** — Config changes don't affect running containers. Must `docker rm -f` and recreate. Always check `docker ps -a` (not just `docker ps`) for "Created" but not running containers.
 4. **`gh` needs both the binary AND the token** — binary via homebrew mount, token via `docker.env`.
+12. **Never hardcode tokens in `openclaw.json`** — use `${VAR_NAME}` interpolation to reference values from `/opt/openclaw.env`. Hardcoded tokens risk accidental exposure (e.g. pasting config output into a chat). If a token is leaked, revoke it immediately, generate a new one, update `/opt/openclaw.env`, and restart.
+13. **File ownership matters after root edits** — editing config as root changes ownership to `root:root`. The service runs as `openclaw` and will crash with `EACCES: permission denied`. Always run `chown openclaw:openclaw` on config files after editing.
 5. **glibc mismatch** — Host (Ubuntu 24.04) has glibc 2.39, container (Debian 12) has 2.36. Homebrew binaries compiled on the host won't run in the container. Use apt packages baked into a custom image instead.
 6. **`setupCommand` doesn't work with apt** — sandbox drops ALL capabilities and sets `no-new-privileges`. `apt-get` needs `SETUID`/`SETGID`. Even setting `user: '0:0'` and `readOnlyRoot: false` doesn't help. Only solution: install at image build time.
 7. **Never add `USER openclaw` to Dockerfile** — OpenClaw creates this user at container runtime. Adding it to the Dockerfile causes a fatal startup error.
