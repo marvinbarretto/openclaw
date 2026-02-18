@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import email
+import email.header
 import email.utils
 import hashlib
 import html
@@ -81,13 +82,22 @@ def parse_maildir_message(filepath):
 
     # Date
     date_header = msg.get("Date", "")
+    date_parsed = None
     try:
-        date_tuple = email.utils.parsedate_to_datetime(date_header)
+        date_parsed = email.utils.parsedate_to_datetime(date_header)
     except Exception:
-        date_tuple = datetime.now(timezone.utc)
+        pass
 
-    # Subject
-    subject = msg.get("Subject", "(no subject)")
+    # Subject — decode MIME-encoded headers (=?UTF-8?B?...=)
+    raw_subject = msg.get("Subject", "(no subject)")
+    try:
+        decoded_parts = email.header.decode_header(raw_subject)
+        subject = " ".join(
+            part.decode(charset or "utf-8", errors="replace") if isinstance(part, bytes) else part
+            for part, charset in decoded_parts
+        )
+    except Exception:
+        subject = raw_subject
 
     # Message-ID for stable ID
     message_id = msg.get("Message-ID", "")
@@ -126,7 +136,7 @@ def parse_maildir_message(filepath):
 
     return {
         "id": stable_id,
-        "date": date_tuple.isoformat(),
+        "date": date_parsed.isoformat() if date_parsed else None,
         "sender": {"name": sender_name or sender_email_addr.split("@")[0], "email": sender_email_addr},
         "subject": subject,
         "body_for_llm": body_for_llm,
@@ -255,22 +265,62 @@ def fallback_classification():
 
 
 def collect_emails(maildir_path, hours=24):
-    """Read Maildir and return parsed emails from the last N hours."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    """Read Maildir and return parsed emails from the last N hours. hours=0 means no filter."""
+    no_filter = (hours == 0)
+    cutoff = None if no_filter else datetime.now(timezone.utc) - timedelta(hours=hours)
     emails = []
+    scanned = 0
+    skipped_old = 0
 
     for subdir in ("new", "cur"):
         dirpath = maildir_path / subdir
         if not dirpath.exists():
             continue
-        for filepath in dirpath.iterdir():
-            if filepath.is_file() and not filepath.name.startswith("."):
-                parsed = parse_maildir_message(filepath)
-                if parsed:
-                    emails.append(parsed)
+        files = [f for f in dirpath.iterdir() if f.is_file() and not f.name.startswith(".")]
+        print(f"  Scanning {len(files)} files in {subdir}/...")
+        for filepath in files:
+            scanned += 1
+            if scanned % 1000 == 0:
+                print(f"  ...scanned {scanned} files, found {len(emails)} so far", flush=True)
 
-    # Sort by date descending
-    emails.sort(key=lambda e: e["date"], reverse=True)
+            if not no_filter:
+                # Quick pre-filter: skip files much older than cutoff by mtime.
+                # Use a generous buffer (7 days) because mbsync sets mtime to
+                # sync time, not email receive time.
+                try:
+                    mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+                    mtime_buffer = cutoff - timedelta(days=7)
+                    if mtime < mtime_buffer:
+                        skipped_old += 1
+                        continue
+                except OSError:
+                    continue
+
+            parsed = parse_maildir_message(filepath)
+            if parsed:
+                if not no_filter:
+                    # Skip emails with no parseable date in filtered mode
+                    if parsed["date"] is None:
+                        skipped_old += 1
+                        continue
+                    # Filter by actual email Date header
+                    try:
+                        msg_date = datetime.fromisoformat(parsed["date"])
+                        if msg_date.tzinfo is None:
+                            msg_date = msg_date.replace(tzinfo=timezone.utc)
+                        if msg_date < cutoff:
+                            skipped_old += 1
+                            continue
+                    except (ValueError, TypeError):
+                        skipped_old += 1
+                        continue
+                emails.append(parsed)
+
+    label = "total" if no_filter else f"older than {hours}h"
+    print(f"  Scanned {scanned} files, skipped {skipped_old} {label}, found {len(emails)}")
+
+    # Sort by date descending (dateless emails go to the end)
+    emails.sort(key=lambda e: e["date"] or "", reverse=True)
     return emails
 
 
@@ -311,6 +361,8 @@ def main():
     parser.add_argument("--input", default="data/sample-maildir", help="Maildir path")
     parser.add_argument("--output", default="data/email-digest.json", help="Output JSON path")
     parser.add_argument("--hours", type=int, default=24, help="Look back N hours (default 24)")
+    parser.add_argument("--all", action="store_true", help="Ignore date filters, process all emails")
+    parser.add_argument("--limit", type=int, default=0, help="Max emails to classify (0 = unlimited)")
     parser.add_argument("--model", default=OLLAMA_MODEL, help=f"Ollama model (default {OLLAMA_MODEL})")
     args = parser.parse_args()
 
@@ -325,8 +377,16 @@ def main():
 
     # Collect emails
     print(f"Reading emails from {maildir_path}...")
-    emails = collect_emails(maildir_path, hours=args.hours)
-    print(f"Found {len(emails)} emails")
+    if args.all:
+        emails = collect_emails(maildir_path, hours=0)
+    else:
+        emails = collect_emails(maildir_path, hours=args.hours)
+
+    if args.limit and len(emails) > args.limit:
+        print(f"Found {len(emails)} emails, limiting to {args.limit}")
+        emails = emails[:args.limit]
+    else:
+        print(f"Found {len(emails)} emails")
 
     if not emails:
         print("No emails found. Nothing to classify.")

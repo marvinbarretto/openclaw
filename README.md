@@ -2,7 +2,7 @@
 
 Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw), self-hosted on a VPS with Telegram as the primary messaging channel.
 
-## Current Status (2026-02-17)
+## Current Status (2026-02-18)
 
 - **VPS:** DigitalOcean $12/mo, London, IP `167.99.206.214` — RUNNING
 - **OpenClaw:** v2026.2.12, dashboard at `https://167.99.206.214`
@@ -10,10 +10,11 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 - **AI Provider:** OpenRouter free (`stepfun/step-3.5-flash:free`) — bootstrapping complete
 - **Sandbox:** Custom Docker image with Python 3.11, Node 18, git — WORKING
 - **Local models:** Ollama installed — `qwen2.5:7b` + `qwen2.5-coder:14b` — TESTED
-- **Test monorepo:** https://github.com/marvinbarretto/openclaw-test-monorepo — PUSHED
 - **Jimbo's GitHub:** https://github.com/marvinbarretto-labs — separate account for agent work
 - **Jimbo's workspace:** `jimbo-workspace` repo — Jimbo can autonomously write, commit, and push
-- **First project:** "Sift" — email digest/intelligence system — Jimbo writing BDD specs and prototyping
+- **Sift pipeline:** mbsync → sift-classify.py (Ollama) → email-digest.json → sift-push.sh → VPS — END-TO-END WORKING
+- **Custom skills:** `sift-digest` + `daily-briefing` deployed to VPS — WORKING
+- **Gmail sync:** mbsync configured, 28,799 emails synced to local Maildir — WORKING
 
 ## Stack
 
@@ -52,6 +53,43 @@ systemctl restart openclaw
 /home/openclaw/.openclaw/openclaw.json         # Plugins, channels, model
 ```
 
+## Skills
+
+Custom skills that teach Jimbo structured capabilities. These are `SKILL.md` files deployed to the VPS workspace — prompt-only, no third-party code, zero supply-chain risk.
+
+| Skill | Trigger | What it does |
+|---|---|---|
+| `sift-digest` | "check my email" | Read and present the Sift email digest |
+| `daily-briefing` | "give me a briefing" | Concise morning overview (email + tasks + context) |
+
+Note: Skills are triggered via natural language in Telegram, not slash commands.
+
+**Deploy to VPS:**
+```bash
+./scripts/skills-push.sh           # push skills to Jimbo
+./scripts/skills-push.sh --dry-run  # preview without changes
+```
+
+Skills are picked up on Jimbo's next session (no restart needed).
+
+**Sift pipeline (email → Jimbo):**
+```bash
+# Manual run
+mbsync -a                                                    # sync Gmail → local Maildir
+python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX  # classify recent emails
+./scripts/sift-push.sh                                       # push digest to Jimbo
+
+# Automated (see ADR-010)
+# 06:00 launchd (laptop): sift-cron.sh → mbsync + classify + push
+# 07:00 OpenClaw cron (VPS): Jimbo sends morning briefing via Telegram
+# ~30m  Heartbeat (VPS): Jimbo checks for fresh/stale digest
+
+# Backlog processing (see ADR-009)
+python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX --all --limit 200
+```
+
+**Third-party skills:** We do not install community skills from ClawHub. See [ADR-008](decisions/008-plugin-adoption-policy.md) for our adoption policy.
+
 ## This Folder
 
 | Folder | Purpose |
@@ -60,6 +98,7 @@ systemctl restart openclaw
 | `setup/` | Installation, configuration, [architecture](setup/architecture.md), and [workspace files guide](setup/workspace-files.md) |
 | `security/` | Hardening checklist, data privacy |
 | `decisions/` | ADRs: sandbox architecture, email triage, prompt injection, model strategy |
+| `skills/` | Custom OpenClaw skills for Jimbo (sift-digest, daily-briefing) |
 | `notes/` | Raw thinking and brain dumps |
 
 ## TODO

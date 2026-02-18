@@ -10,8 +10,27 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 - [ ] Run `openclaw security audit --deep` on VPS
 - [ ] Review OpenClaw skills before enabling — vet source code (see ADR-001 skill vetting)
 
+## Backlog — Sandbox & Permissions
+
+- [ ] Set default umask in Dockerfile entrypoint so new files are world-writable (prevents permission drift)
+- [ ] Move PAT from git remote URL to credential helper using `JIMBO_GH_TOKEN` env var
+- [ ] Regenerate `jimbo-vps` token before expiry (~May 2026)
+- [ ] Rebuild sandbox Docker image with updated Dockerfile (GIT_CONFIG_GLOBAL baked in)
+
 ## Backlog — Email Triage
 
+### Pipeline fixes
+- [x] Fix Date header fallback — use None instead of now() for broken headers (2026-02-18)
+- [x] Decode MIME-encoded subjects (=?UTF-8?B?...=) before classification (2026-02-18)
+- [ ] Tune classification prompt — model over-classifies as "queue", needs stricter skip/unsubscribe criteria
+
+### Automation (see ADR-010)
+- [ ] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (mbsync + classify + push)
+- [ ] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram)
+- [ ] Add email digest freshness check to HEARTBEAT.md
+- [ ] Process 28k email backlog in batches (see ADR-009)
+
+### Future
 - [ ] Design digest-feedback.json schema for learning loop
 - [ ] Implement time-budget tracking (content-queue.json)
 
@@ -22,6 +41,14 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 
 ## Done
 
+- [x] Set up mbsync, sync 28,799 emails from Gmail to local Maildir (2026-02-18)
+- [x] Run Sift pipeline end-to-end on real email data (2026-02-18)
+- [x] Fix sift-classify.py: add date filtering, mtime pre-filter, progress output, --all/--limit flags (2026-02-18)
+- [x] Create custom skills: sift-digest + daily-briefing (2026-02-18)
+- [x] Deploy skills to VPS via skills-push.sh (2026-02-18)
+- [x] Test Jimbo reading real email digest via Telegram — WORKING (2026-02-18)
+- [x] Write ADR-008: Plugin & skill adoption policy (2026-02-18)
+- [x] Create CLAUDE.md for repo context (2026-02-18)
 - [x] Install Ollama on laptop (2026-02-16)
 - [x] Pull qwen2.5:7b (Reader) and qwen2.5-coder:14b (Actor) — tested (2026-02-16)
 - [x] Create test monorepo and push to GitHub (2026-02-16)
@@ -59,3 +86,7 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 - [x] Jimbo wrote initial BDD specs for Sift email digest project (2026-02-17)
 - [x] Share email inbox samples with Jimbo for category analysis (2026-02-17)
 - [x] Document architecture mental model (setup/architecture.md) (2026-02-17)
+- [x] Fix sandbox git permissions — chmod + GIT_CONFIG_GLOBAL env var (2026-02-18)
+- [x] Jimbo's blog live on GitHub Pages — static HTML, self-deployed (2026-02-18)
+- [x] Write ADR-011: Sandbox git & blog deployment fix (2026-02-18)
+- [x] Create CAPABILITIES.md — Jimbo capability matrix with token expiry tracking (2026-02-18)

@@ -33,3 +33,8 @@ RUN npm install -g typescript ts-node
 # The root filesystem is read-only, so point npm's cache into /workspace
 # which is the only writable bind-mount in the sandbox.
 ENV npm_config_cache=/workspace/.npm-cache
+
+# Git config lives in /workspace since the root filesystem is read-only.
+# The container runs as root but workspace files are owned by openclaw (uid 1000),
+# so git needs safe.directory set to avoid "dubious ownership" errors.
+ENV GIT_CONFIG_GLOBAL=/workspace/.gitconfig
