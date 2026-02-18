@@ -34,7 +34,7 @@ VALID_ACTIONS = {"queue", "skip", "unsubscribe_candidate"}
 VALID_PROJECTS = {"spoons", "localshout", "pomodoro", None}
 
 CLASSIFICATION_PROMPT = """\
-You are an email classifier. Analyse this email and return a JSON classification.
+You are a strict email classifier. The user is overwhelmed with email. Your job is to aggressively filter — most emails should be skipped. Only truly valuable content gets "queue".
 
 Email:
 From: {sender_name} <{sender_email}>
@@ -48,19 +48,24 @@ The user's projects:
 - LocalShout: local community platform (Next.js)
 - Pomodoro: productivity timer
 
-The user's interests: tech, local community (Watford/South Oxhey area), travel, health/nutrition, finance, current affairs
+The user's interests: tech (especially frontend, Angular, AI), local community (Watford/South Oxhey), health/nutrition
 
 Categories (pick exactly one): newsletter, tech, local, deals, event, transactional, health, other
-- newsletter: content digests, subscriber emails (Must Reads, The Neuron, Milk Road, etc)
-- tech: developer content, tools, frameworks (Apple Developer, Frontend Masters)
-- local: community, neighbourhood (Watford, South Oxhey, Urban Scoop)
-- deals: shopping, travel, money saving (HolidayPirates, Google Flights, MSE)
-- event: events, meetups, tickets (Fever, parkrun)
-- transactional: order confirmations, notifications (Wetherspoon, LinkedIn, Airbnb)
-- health: health, fitness, nutrition (ZOE)
+- newsletter: content digests, subscriber emails
+- tech: developer content, tools, frameworks
+- local: community, neighbourhood (Watford, South Oxhey)
+- deals: shopping, travel, money saving, marketing
+- event: events, meetups, tickets
+- transactional: order confirmations, delivery notifications, account alerts
+- health: health, fitness, nutrition
 - other: anything that doesn't fit above
 
-Suggested actions: queue (worth reading), skip (not worth time), unsubscribe_candidate (recurring low value)
+Suggested action — BE STRICT, most emails should be "skip":
+- queue: ONLY for content the user would genuinely regret missing. Personal messages, direct replies to the user, urgent notifications, high-quality articles matching their specific interests
+- skip: Marketing emails, generic newsletters, promotional offers, deals, event announcements for things the user hasn't signed up for, mailing list threads the user isn't participating in, transactional confirmations (delivery, order, login alerts)
+- unsubscribe_candidate: Recurring emails the user clearly never engages with — bulk marketing, sales promotions, newsletters that are low-quality or off-topic
+
+When in doubt, choose "skip" not "queue". The user would rather miss a borderline email than be overwhelmed.
 
 Return JSON with: category, subcategory (1-2 words), keywords (list of 3), summary (1-2 sentences), time_estimate_min (integer), project_relevance (spoons/localshout/pomodoro or null), suggested_action, confidence (0.0-1.0)"""
 

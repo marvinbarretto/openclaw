@@ -22,13 +22,18 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 ### Pipeline fixes
 - [x] Fix Date header fallback — use None instead of now() for broken headers (2026-02-18)
 - [x] Decode MIME-encoded subjects (=?UTF-8?B?...=) before classification (2026-02-18)
-- [ ] Tune classification prompt — model over-classifies as "queue", needs stricter skip/unsubscribe criteria
+- [x] Tune classification prompt — 18/20 queue → 3/20 queue, much stricter filtering (2026-02-18)
 
 ### Automation (see ADR-010)
-- [ ] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (mbsync + classify + push)
-- [ ] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram)
-- [ ] Add email digest freshness check to HEARTBEAT.md
+- [x] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (2026-02-18)
+- [ ] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram) — see `setup/vps-automation.md`
+- [ ] Add email digest freshness check to HEARTBEAT.md — see `setup/vps-automation.md`
 - [ ] Process 28k email backlog in batches (see ADR-009)
+
+### Gmail sync
+- mbsync pulling ~100k emails from Gmail archive, ~75% complete (2026-02-18)
+- Gmail IMAP rate-limits after ~25k emails per run — wait 15 min between retries
+- Once caught up, `--hours 24` will work for daily pipeline
 
 ### Future
 - [ ] Design digest-feedback.json schema for learning loop
