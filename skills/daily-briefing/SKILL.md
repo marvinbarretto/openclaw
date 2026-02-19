@@ -1,54 +1,69 @@
 ---
 name: daily-briefing
 description: Give a concise morning briefing combining email, tasks, and context
-user-invocable: true
+user-invokable: true
 ---
 
 # Daily Briefing
 
-When the user says good morning, asks for a briefing, or uses `/briefing`, give a concise daily overview.
+When the user says good morning, asks for a briefing, or it's a scheduled morning session, give a concise daily overview.
+
+## Before you start
+
+Read Marvin's context to understand what matters today:
+1. `/workspace/context/PRIORITIES.md` — what's active this week
+2. `/workspace/context/GOALS.md` — longer-term ambitions
+3. `/workspace/context/TASTE.md` — how he likes information presented (concise, scannable, timely)
 
 ## What to include
-
-Gather information from these sources and present a combined briefing:
 
 ### 1. Date and greeting
 - Today's date and day of the week
 - Brief, friendly greeting (match the tone in SOUL.md)
 
-### 2. Email digest (if available)
+### 2. Anything time-sensitive from email
 - Read `/workspace/email-digest.json`
-- If it exists and is fresh (< 24h old): show the quick stats from the sift-digest skill format — total emails, reading time, action breakdown
-- If it exists but is stale: mention "Your email digest is from [date] — it may be outdated"
-- If it doesn't exist: mention "No email digest available today"
-- Do NOT show the full email breakdown here — keep it to 2-3 lines. The user can use `/email` for details.
+- If fresh (< 24h): scan for events, tickets, deadlines, personal replies needing action. Call these out first — even before the stats.
+- If stale: "Your email digest is from [date] — might be outdated"
+- If missing: "No email digest today"
 
-### 3. Heartbeat tasks
+### 3. Email quick stats
+- Total emails, reading time, how many queued vs skipped
+- Mention any standout emails: "There's a good Product Hunt issue and an Anjuna event worth looking at"
+- Keep to 2-3 lines. Say "ask me about email for the full rundown" for details.
+
+### 4. Priority reminders
+- Check PRIORITIES.md for anything due or active
+- "You mentioned chasing Daniel about the DisplayLink fix" or "YNAB setup is on your list"
+- Only mention 1-2 things, not the whole list
+
+### 5. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
-- If there are pending tasks or checks listed, mention them briefly
-- If nothing is due, skip this section
-
-### 4. Project-relevant emails
-- If the email digest has any items with `project_relevance` set, call them out: "You have X emails related to [project]"
-- This is a teaser — details via `/email`
+- If there are pending checks, mention briefly
+- If nothing due, skip this section
 
 ## Presentation format
 
-Keep the entire briefing under 15 lines. Example:
+Keep the entire briefing under 15 lines. Scannable in 30 seconds. Example:
 
 ```
-Morning, Marvin. It's Tuesday 18 Feb.
+Morning, Marvin. It's Thursday 20 Feb.
 
-Email: 18 messages, ~12 min reading queued. 4 worth reading, 4 unsubscribe candidates. 2 related to Spoons.
+Heads up: There's an Anjuna fabric event — tickets might go fast.
 
-Heartbeat: Token expiry check due this week (JIMBO_GH_TOKEN).
+Email: 145 messages overnight, ~25 min of reading queued. Standouts: strong UnHerd piece, Product Hunt daily, and a Watford FC ticket alert.
 
-Use /email for the full digest.
+Priorities: DisplayLink fix still has an action on you. YNAB setup ongoing.
+
+Heartbeat: All clear — digest is fresh, tokens valid.
+
+Ask me about email for the full rundown.
 ```
 
 ## Rules
 
 - Be concise — this is a glance, not a deep dive
-- Don't repeat what other skills will cover in detail
+- Lead with anything time-sensitive or actionable
+- Don't list every queued email — pick the 2-3 best based on his context
 - If all sources are empty/missing, just greet and say "Nothing pressing today"
 - Match Jimbo's personality from SOUL.md
