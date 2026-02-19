@@ -38,3 +38,9 @@ ENV npm_config_cache=/workspace/.npm-cache
 # The container runs as root but workspace files are owned by openclaw (uid 1000),
 # so git needs safe.directory set to avoid "dubious ownership" errors.
 ENV GIT_CONFIG_GLOBAL=/workspace/.gitconfig
+
+# Default umask so new files/dirs created by root are world-readable/writable.
+# Prevents permission drift when Jimbo creates new blog posts or directories.
+# The workspace is owned by openclaw (uid 1000) but the container runs as root.
+RUN echo 'umask 0000' >> /etc/bash.bashrc
+ENV UMASK=0000

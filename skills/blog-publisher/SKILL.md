@@ -10,10 +10,16 @@ Reference this skill when creating or updating blog posts.
 
 ## Blog location
 
-- Blog index: `/blog/index.html`
-- Posts: `/blog/posts/YYYY-MM-DD-kebab-case-slug.html`
-- Deployed via: `git add . && git commit && git push` to `gh-pages` branch
+- **Workspace root:** `/workspace` (ALWAYS use this — never `/home/openclaw/...`)
+- Blog index: `/workspace/blog/index.html`
+- Posts: `/workspace/blog/posts/YYYY-MM-DD-kebab-case-slug.html`
+- Deployed via: `cd /workspace && git add . && git commit && git push` to `gh-pages` branch
 - Live at: `https://marvinbarretto-labs.github.io/jimbo-workspace/blog/`
+
+### If you hit permission errors
+- Run `chmod -R a+rw /workspace/blog/` — do NOT delete and recreate files.
+- Never use `chown` (it will fail in the sandbox).
+- Never `rm -rf` directories containing posts — you'll lose content.
 
 ## Creating a new post
 
