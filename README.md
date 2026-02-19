@@ -2,7 +2,7 @@
 
 Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw), self-hosted on a VPS with Telegram as the primary messaging channel.
 
-## Current Status (2026-02-18)
+## Current Status (2026-02-19)
 
 - **VPS:** DigitalOcean $12/mo, London, IP `167.99.206.214` — RUNNING
 - **OpenClaw:** v2026.2.12, dashboard at `https://167.99.206.214`
@@ -14,7 +14,10 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 - **Jimbo's workspace:** `jimbo-workspace` repo — Jimbo can autonomously write, commit, and push
 - **Sift pipeline:** mbsync → sift-classify.py (Ollama) → email-digest.json → sift-push.sh → VPS — END-TO-END WORKING
 - **Custom skills:** `sift-digest` + `daily-briefing` deployed to VPS — WORKING
-- **Gmail sync:** mbsync configured, 28,799 emails synced to local Maildir — WORKING
+- **Gmail sync:** mbsync configured, ~28k emails synced to local Maildir — WORKING
+- **Automation:** launchd (4am classify) → OpenClaw cron (7am briefing) → heartbeat (digest freshness) — RUNNING
+- **Context system:** `context/` files (interests, priorities, taste, goals) — feeds Jimbo's judgment
+- **First feedback cycle:** 158 emails reviewed, classifier prompt retuned (ADR-012) — DONE
 
 ## Stack
 
@@ -80,7 +83,7 @@ python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX  # classify recent e
 ./scripts/sift-push.sh                                       # push digest to Jimbo
 
 # Automated (see ADR-010)
-# 06:00 launchd (laptop): sift-cron.sh → mbsync + classify + push
+# 04:00 launchd (laptop): sift-cron.sh → mbsync + classify + push
 # 07:00 OpenClaw cron (VPS): Jimbo sends morning briefing via Telegram
 # ~30m  Heartbeat (VPS): Jimbo checks for fresh/stale digest
 
@@ -99,6 +102,7 @@ python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX --all --limit 200
 | `security/` | Hardening checklist, data privacy |
 | `decisions/` | ADRs: sandbox architecture, email triage, prompt injection, model strategy |
 | `skills/` | Custom OpenClaw skills for Jimbo (sift-digest, daily-briefing) |
+| `context/` | Marvin's personal context files — interests, priorities, taste, goals |
 | `notes/` | Raw thinking and brain dumps |
 
 ## TODO

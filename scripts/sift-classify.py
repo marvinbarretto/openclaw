@@ -29,12 +29,12 @@ from pathlib import Path
 OLLAMA_MODEL = "qwen2.5:7b"
 BODY_SNIPPET_LEN = 200
 BODY_MAX_CHARS = 2000
-VALID_CATEGORIES = {"newsletter", "tech", "local", "deals", "event", "transactional", "health", "other"}
-VALID_ACTIONS = {"queue", "skip", "unsubscribe_candidate"}
+VALID_CATEGORIES = {"newsletter", "tech", "local", "deals", "event", "transactional", "health", "other", "personal"}
+VALID_ACTIONS = {"queue", "skip"}
 VALID_PROJECTS = {"spoons", "localshout", "pomodoro", None}
 
 CLASSIFICATION_PROMPT = """\
-You are a strict email classifier. The user is overwhelmed with email. Your job is to aggressively filter — most emails should be skipped. Only truly valuable content gets "queue".
+You are an email classifier. Categorise this email and decide whether it should be queued for the user's attention or skipped.
 
 Email:
 From: {sender_name} <{sender_email}>
@@ -43,29 +43,39 @@ Date: {date}
 Body:
 {body_snippet}
 
-The user's projects:
-- Spoons: gamified pub check-in app (Angular 20, Firebase, Capacitor)
-- LocalShout: local community platform (Next.js)
-- Pomodoro: productivity timer
+ALWAYS QUEUE these (do not skip):
+- Personal replies: emails where someone is writing TO the user directly (look for Re: subjects, conversational tone, direct address, back-and-forth threads). These are the most important emails.
+- Events: gigs, meetups, comedy, cinema, festivals, hiking, debates, tickets, concerts, any event with a date and place. The user wants to know about ALL events early.
+- Travel deals: flight deals, holiday packages, travel bargains, error fares, campervan relocations.
+- Booking updates: new Airbnb requests, cancellations, reservation changes.
 
-The user's interests: tech (especially frontend, Angular, AI), local community (Watford/South Oxhey), health/nutrition
+ALWAYS SKIP these:
+- Order confirmations (Wetherspoons, Amazon, delivery tracking)
+- Brand marketing (Starbucks, Sainsburys, Checkatrade, retail promos)
+- Loyalty schemes and credit card offers
+- Generic "we miss you" or account summary emails
+- Spam in foreign languages the user doesn't use
 
-Categories (pick exactly one): newsletter, tech, local, deals, event, transactional, health, other
-- newsletter: content digests, subscriber emails
-- tech: developer content, tools, frameworks
-- local: community, neighbourhood (Watford, South Oxhey)
-- deals: shopping, travel, money saving, marketing
-- event: events, meetups, tickets
-- transactional: order confirmations, delivery notifications, account alerts
+USE JUDGMENT for newsletters and tech content:
+- Queue if the content looks genuinely interesting or useful
+- Skip if it's generic, clickbait, or a firehose of links with no curation
+- When unsure about a newsletter, queue it — the user's curator will make the final call
+
+The user's active projects: Spoons (pub check-in app), LocalShout (community platform), Pomodoro (timer)
+The user's location: Watford / South Oxhey, UK
+
+Categories (pick one): newsletter, tech, local, deals, event, transactional, health, other, personal
+- personal: direct messages, replies, conversations with a real person
+- event: anything with a date, venue, tickets — gigs, meetups, festivals, cinema, comedy, hiking
+- deals: shopping, travel deals, flight alerts, holiday packages
+- newsletter: content digests, subscriber emails, curated roundups
+- tech: developer content, tools, frameworks, AI
+- local: community, neighbourhood, planning alerts
+- transactional: order confirmations, delivery, account alerts
 - health: health, fitness, nutrition
 - other: anything that doesn't fit above
 
-Suggested action — BE STRICT, most emails should be "skip":
-- queue: ONLY for content the user would genuinely regret missing. Personal messages, direct replies to the user, urgent notifications, high-quality articles matching their specific interests
-- skip: Marketing emails, generic newsletters, promotional offers, deals, event announcements for things the user hasn't signed up for, mailing list threads the user isn't participating in, transactional confirmations (delivery, order, login alerts)
-- unsubscribe_candidate: Recurring emails the user clearly never engages with — bulk marketing, sales promotions, newsletters that are low-quality or off-topic
-
-When in doubt, choose "skip" not "queue". The user would rather miss a borderline email than be overwhelmed.
+Suggested action: queue or skip
 
 Return JSON with: category, subcategory (1-2 words), keywords (list of 3), summary (1-2 sentences), time_estimate_min (integer), project_relevance (spoons/localshout/pomodoro or null), suggested_action, confidence (0.0-1.0)"""
 

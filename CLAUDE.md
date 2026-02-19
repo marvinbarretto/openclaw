@@ -31,21 +31,22 @@ SSH alias: `ssh jimbo` connects to VPS.
 ## Repo Structure
 
 ```
-decisions/        ADRs (001-011) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment
-scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, model-swap.sh
+context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
+decisions/        ADRs (001-012) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights
+scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, model-swap.sh, sift-cron.sh
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing)
-setup/            Configuration docs, architecture, workspace files guide
+setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
 sandbox/          Custom Docker image Dockerfile
-data/             Email digest output (gitignored)
+data/             Email digest output + feedback files (gitignored)
 notes/            Brain dumps
 ```
 
 ## Key Files
 
 - `scripts/sift-classify.py` — Core Sift pipeline. Reads Maildir, classifies via Ollama, outputs email-digest.json
-- `scripts/sift-cron.sh` — Automated pipeline: mbsync → classify → push. Designed for launchd at 6am.
+- `scripts/sift-cron.sh` — Automated pipeline: mbsync → classify → push. Runs via launchd at 4am.
 - `scripts/sift-push.sh` — Rsyncs email-digest.json to VPS workspace
 - `scripts/skills-push.sh` — Rsyncs custom skills to VPS workspace
 - `scripts/model-swap.sh` — SSH helper to switch LLM model on VPS
@@ -53,6 +54,11 @@ notes/            Brain dumps
 - `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings
 - `sandbox/Dockerfile` — Custom sandbox image definition
 - `CAPABILITIES.md` — Quick-reference matrix of what Jimbo can/can't do, token expiry dates
+- `context/INTERESTS.md` — What Marvin cares about (changes slowly)
+- `context/PRIORITIES.md` — What matters right now (changes weekly)
+- `context/TASTE.md` — What "good" looks like, what bores him
+- `context/GOALS.md` — Longer-term ambitions (changes monthly)
+- `context/PREFERENCES.md` — How to combine context files for decision-making
 
 ## Security Model (Critical — Read Before Changing)
 
@@ -96,7 +102,7 @@ python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX   # classify via Oll
 
 ### Automated workflow (ADR-010)
 ```
-06:00  launchd (laptop)     sift-cron.sh: mbsync → classify → push
+04:00  launchd (laptop)     sift-cron.sh: mbsync → classify → push
 07:00  OpenClaw cron (VPS)  Jimbo sends morning briefing via Telegram
 ~30m   Heartbeat (VPS)      Jimbo checks for fresh/stale digest
 ```
@@ -111,19 +117,43 @@ See: https://docs.openclaw.ai/automation/cron-vs-heartbeat
 - `--limit N` — max emails to classify
 - `--model MODEL` — Ollama model (default qwen2.5:7b)
 
+### Classifier design (important)
+
+The classifier (Ollama) does the **grunt work** — rough sort into queue/skip. It should NOT apply taste or nuanced judgment. Its job:
+- Always queue: personal replies, events, travel deals, booking updates
+- Always skip: order confirmations, brand marketing, loyalty schemes, spam
+- Use judgment for newsletters: when unsure, queue it and let Jimbo decide
+
+Jimbo does the **thinking** — reads `context/` files (interests, priorities, taste, goals) and applies judgment to decide what to highlight, mention, or skip in the briefing. A weak issue of a normally-good newsletter should still get dropped. A surprisingly good email from an unknown sender should surface.
+
 ### Known Issues
 - **mbsync mtime:** mbsync sets file mtime to sync time, not email receive time. The mtime pre-filter uses a 7-day buffer to compensate but first syncs may need `--all`.
-- **Over-classification:** Model classifies too many emails as "queue" (worth reading). Prompt needs tuning.
+- **Laptop must be awake at 4am:** macOS Power Nap should handle this if plugged in. If on battery, the launchd job may not fire and the 7am briefing will use stale data. The heartbeat catches this.
+
+## Context Files
+
+The `context/` directory contains Marvin's personal context — pushed to VPS so Jimbo can read them, and used locally by sift-classify.py. These are NOT hard rules or blocklists. They teach taste and judgment that evolves over time.
+
+- `INTERESTS.md` — topics, hobbies, communities (changes slowly)
+- `PRIORITIES.md` — active projects, this week's focus (changes weekly)
+- `TASTE.md` — what "good" looks like, what bores him, how he consumes content
+- `GOALS.md` — longer-term ambitions (changes monthly)
+- `PREFERENCES.md` — the glue: how Jimbo should combine the above for decisions
+
+**How context flows:**
+- `sift-classify.py` reads INTERESTS + PRIORITIES locally to build the Ollama prompt (classifier sorts)
+- Context files are pushed to VPS workspace so Jimbo can read ALL of them (Jimbo curates with taste + judgment)
 
 ## Data Files (Gitignored)
 
 - `data/email-digest.json` — classified email output (contains email content, never commit)
+- `data/feedback-*.json` — per-batch email feedback from Marvin (contains email content, never commit)
 - `data/sample-maildir/` — test email fixtures
 - `~/Mail/gmail/INBOX` — full Gmail Maildir (on laptop, not in repo)
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 011).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 012).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.

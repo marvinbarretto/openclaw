@@ -1,6 +1,7 @@
 # Email digest data (contains email content — never commit)
 data/email-digest.json
 data/email-backlog-*.json
+data/feedback-*.json
 data/sample-maildir/
 data/sift-cron*.log
 
