@@ -47,6 +47,8 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 
 ## Done
 
+- [x] Fix compaction config — reserveTokensFloor 5000→20000, enable memoryFlush (ADR-013) (2026-02-19)
+
 - [x] Set up mbsync, sync 28,799 emails from Gmail to local Maildir (2026-02-18)
 - [x] Run Sift pipeline end-to-end on real email data (2026-02-18)
 - [x] Fix sift-classify.py: add date filtering, mtime pre-filter, progress output, --all/--limit flags (2026-02-18)
