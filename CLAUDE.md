@@ -32,7 +32,7 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-012) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights
+decisions/        ADRs (001-015) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, model-swap.sh, sift-cron.sh
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing)
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
@@ -53,7 +53,8 @@ notes/            Brain dumps
 - `skills/sift-digest/SKILL.md` — Teaches Jimbo to present email digests
 - `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings
 - `sandbox/Dockerfile` — Custom sandbox image definition
-- `CAPABILITIES.md` — Quick-reference matrix of what Jimbo can/can't do, token expiry dates
+- `setup/configuration.md` — VPS config state, API keys, **provider setup cheatsheet** (how to add new LLM providers/models to openclaw.json)
+- `CAPABILITIES.md` — Quick-reference matrix of what Jimbo can/can't do, token expiry dates, current VPS model
 - `context/INTERESTS.md` — What Marvin cares about (changes slowly)
 - `context/PRIORITIES.md` — What matters right now (changes weekly)
 - `context/TASTE.md` — What "good" looks like, what bores him
@@ -153,7 +154,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 012).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 015).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
@@ -170,6 +171,10 @@ nano /home/openclaw/.openclaw/openclaw.json  # edit config
 ```
 
 Config changes require service restart. Workspace file changes (skills, brain files, digest) take effect on next Jimbo session — no restart needed.
+
+**Switching models:** `./scripts/model-swap.sh {free|cheap|daily|coding|haiku|claude|opus|status}`
+
+**Adding a new LLM provider:** See `setup/configuration.md` for the full cheatsheet — the `openclaw.json` schema is strict and will crash the service if any field is missing (ADR-015).
 
 ### Running `openclaw` CLI on VPS (important!)
 

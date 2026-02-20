@@ -1,9 +1,9 @@
 # Configuration
 
-## Current state (2026-02-16)
+## Current state (2026-02-20)
 
-- **AI Provider:** OpenRouter (primary), Anthropic (backup)
-- **Model:** `openrouter/stepfun/step-3.5-flash:free` (free tier, 256K context) — switched back from Claude Sonnet after bootstrapping
+- **AI Providers:** Google AI (daily), OpenRouter (free/coding), Anthropic (premium)
+- **Model:** `google/gemini-2.5-flash` (direct Google AI, ~$0.78/month) — upgraded from free tier (ADR-015)
 - **Telegram:** Connected, paired, working (`@fourfold_openclaw_bot` / "Jimbo")
 - **Dashboard:** `https://167.99.206.214`
 - **Gateway token:** `94e12e952cbf5342c1ebcdf4a6faa76812ba0f21fd04ea793d6ff2f41233afe9`
@@ -23,7 +23,8 @@ Key variables:
 ```env
 TELEGRAM_BOT_TOKEN=<bot-token>
 ANTHROPIC_API_KEY=<api-key>
-OPENROUTER_API_KEY=<api-key>       # configured
+OPENROUTER_API_KEY=<api-key>
+GOOGLE_AI_API_KEY=<api-key>        # added 2026-02-20
 ```
 
 ## Config file: `/home/openclaw/.openclaw/openclaw.json`
@@ -33,19 +34,23 @@ This is where plugins/channels are enabled/disabled. Key sections:
 - Agent model selection
 - Skills/plugins
 
-## AI Provider Strategy (from ADR-004)
+## AI Provider Strategy (from ADR-004, updated ADR-015)
 
 | Tier | Provider | Model | Use for | Cost |
 |---|---|---|---|---|
-| Cheap cloud (daily driver) | OpenRouter | Gemini Flash | Telegram bot, async tasks | Pennies |
-| Quality cloud (when needed) | Anthropic | Claude Haiku/Sonnet | Complex tasks, human-triggered | £25/mo cap |
-| Local (bulk work) | Ollama on laptop | Qwen 2.5 7B / Coder 14B | Email triage, coding experiments | Free |
+| Daily driver | Google AI (direct) | Gemini 2.5 Flash | Telegram bot, briefings | ~$0.78/mo |
+| Free fallback | OpenRouter | stepfun/step-3.5-flash:free | Testing, non-critical | $0 |
+| Quality cloud | Anthropic | Claude Haiku/Sonnet | Complex tasks | £25/mo cap |
+| Local (bulk work) | Ollama on laptop | Qwen 2.5 Coder 14B | Email triage | Free |
+
+**Model switching:** `./scripts/model-swap.sh {free|cheap|daily|coding|haiku|claude|opus|status}`
 
 **TODO:**
 - [x] ~~Set up OpenRouter as primary provider~~ (done 2026-02-16)
 - [x] ~~Switch default model from Claude Opus to something cheaper~~ (done — using free model)
+- [x] ~~Write model-swap helper script~~ (done 2026-02-20, see ADR-005)
+- [x] ~~Upgrade to paid model for daily briefings~~ (done 2026-02-20, Gemini 2.5 Flash, ADR-015)
 - [ ] Set up Tailscale tunnel for laptop Ollama → VPS
-- [ ] Write model-swap helper script (see ADR-005)
 
 ## Ollama (local — MacBook Air)
 
@@ -60,13 +65,96 @@ Smoke tests passed:
 - `qwen2.5:7b` — email classification → correct JSON output
 - `qwen2.5-coder:14b` — TypeScript function generation → clean, correct code
 
+## Adding a New LLM Provider (cheatsheet)
+
+Follow this exact process. The `openclaw.json` schema is strict and will crash the service if anything is missing.
+
+### 1. Add the API key to `/opt/openclaw.env`
+```bash
+ssh jimbo
+echo 'NEW_PROVIDER_API_KEY=sk-...' >> /opt/openclaw.env
+```
+
+### 2. Add the provider block to `openclaw.json`
+
+Edit `/home/openclaw/.openclaw/openclaw.json`. Every field below is **required** — omitting any one will crash OpenClaw:
+
+```json
+"models": {
+  "providers": {
+    "provider-name": {
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "${NEW_PROVIDER_API_KEY}",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "model-id-as-provider-knows-it",
+          "name": "Display Name",
+          "reasoning": false,
+          "input": ["text", "image"],
+          "cost": { "input": 0.3, "output": 2.5, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 128000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+```
+
+**Valid `api` types:** `openai-completions`, `openai-responses`, `anthropic-messages`, `google-generative-ai`
+
+### 3. Set the model as primary
+
+Either edit `openclaw.json` directly (`agents.defaults.model.primary`) or use:
+```bash
+./scripts/model-swap.sh <tier>
+```
+
+### 4. Restart
+```bash
+ssh jimbo "systemctl daemon-reload && systemctl restart openclaw"
+```
+
+### 5. Verify
+```bash
+ssh jimbo "journalctl -u openclaw -n 15 --no-pager"
+```
+Look for `[gateway] agent model: provider/model-id` and no config errors.
+
+### Known gotchas
+
+| Gotcha | What happens | Fix |
+|--------|-------------|-----|
+| Missing `baseUrl` | Config validation fails, service crash-loops | Always include the full base URL with API version path |
+| `models` as string array | Config validation fails (`expected object, received string`) | Each model must be a full object with all fields |
+| Missing env var | `MissingEnvVarError`, service starts but can't handle messages | Add to `/opt/openclaw.env`, then `systemctl daemon-reload && systemctl restart openclaw` |
+| Google AI without `/v1beta` | 404 on every API call | baseUrl must be `https://generativelanguage.googleapis.com/v1beta` |
+| Added env var but didn't restart | Service doesn't pick up new vars | `systemctl daemon-reload && systemctl restart openclaw` |
+
+### Current working provider configs (2026-02-20)
+
+**Google AI (daily driver):**
+- baseUrl: `https://generativelanguage.googleapis.com/v1beta`
+- api: `google-generative-ai`
+- env var: `GOOGLE_AI_API_KEY`
+
+**OpenRouter (free/coding tiers):**
+- Built-in provider, no explicit config needed
+- env var: `OPENROUTER_API_KEY`
+
+**Anthropic (premium):**
+- Built-in provider, no explicit config needed
+- env var: `ANTHROPIC_API_KEY`
+
 ## API Keys
 
 | Key | Where | Purpose | Created |
 |---|---|---|---|
-| Anthropic `openclaw-vps` | VPS `/opt/openclaw.env` | LLM for VPS agent | 2026-02-16 |
+| Anthropic `openclaw-vps` | VPS `/opt/openclaw.env` | LLM for VPS agent (premium tier) | 2026-02-16 |
 | Telegram bot token | VPS `/opt/openclaw.env` | Telegram channel | 2026-02-16 |
-| OpenRouter `openclaw-vps` | VPS `/opt/openclaw.env` | Free/cheap LLM for daily use | 2026-02-16 |
+| OpenRouter `openclaw-vps` | VPS `/opt/openclaw.env` | Free/cheap LLM tiers | 2026-02-16 |
+| Google AI `GOOGLE_AI_API_KEY` | VPS `/opt/openclaw.env` | Daily driver (Gemini 2.5 Flash) | 2026-02-20 |
 | GitHub fine-grained `openclaw-readonly` | VPS sandbox `docker.env` as `GH_TOKEN` | Read-only access to LocalShout, Spoons, Pomodoro (Zone 2) | 2026-02-16, expires ~60 days |
 | GitHub fine-grained `jimbo-vps` | VPS sandbox `docker.env` as `JIMBO_GH_TOKEN` | Read+write access to `jimbo-workspace` only | 2026-02-17, expires ~90 days |
 
@@ -87,7 +175,8 @@ The GitHub skill lets Jimbo read repos via `gh` CLI inside the Docker sandbox.
 ## Notes
 
 - Keep a local backup of env vars (encrypted, e.g. in 1Password)
-- Model switched to `openrouter/stepfun/step-3.5-flash:free` — zero cost
+- Model switched to `google/gemini-2.5-flash` (direct Google AI) — ~$0.78/month
 - See `decisions/005-openrouter-models.md` for full model comparison and upgrade path
+- See `decisions/015-model-upgrade-gemini-direct.md` for setup gotchas and working config
 - Dedicated Anthropic API key (`openclaw-vps`) means it can be revoked independently
 - See `decisions/006-github-skill-lifecycle.md` for when to enable/disable GitHub access

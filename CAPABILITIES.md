@@ -26,7 +26,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Capability | Status | Notes |
 |---|---|---|
 | Read email digest | WORKING | JSON pushed from laptop daily |
-| Classify emails | N/A | Runs on laptop via Ollama, not in sandbox |
+| Classify emails | N/A | Runs on laptop via Ollama (qwen2.5-coder:14b), not in sandbox |
 | Send/delete/modify email | BLOCKED | By design (ADR-002) |
 | Email backlog processing | NOT STARTED | ADR-009 planned |
 
@@ -39,6 +39,14 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
 | Heartbeat / self-monitoring | NOT STARTED | HEARTBEAT.md planned |
 | Install packages (npm/pip) | BROKEN | Sandbox permission issues |
+
+## VPS Model
+
+| Model | Status | Notes |
+|---|---|---|
+| `stepfun/step-3.5-flash:free` | RETIRED | Can't follow curation instructions (ADR-005) |
+| `google/gemini-2.5-flash` | WORKING | Daily driver (~$0.78/month). Direct Google AI API. See ADR-015 for setup. |
+| `anthropic/claude-haiku-4.5` | AVAILABLE | Fallback if Gemini quality disappoints (~$2.49/month) |
 
 ## Security Boundaries
 
@@ -58,4 +66,4 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-18*
+*Last updated: 2026-02-20*

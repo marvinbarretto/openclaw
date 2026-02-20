@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sift v0.2 — Offline email classification pipeline.
 
-Reads a Maildir, classifies each email via Ollama (qwen2.5:7b),
+Reads a Maildir, classifies each email via Ollama (qwen2.5-coder:14b),
 and outputs a structured email-digest.json.
 
 v0.2 changes:
@@ -32,7 +32,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_MODEL = "qwen2.5-coder:14b"
 BODY_SNIPPET_LEN = 200
 BODY_MAX_CHARS = 2000
 VALID_CATEGORIES = {"newsletter", "tech", "local", "deals", "event", "transactional", "health", "other", "personal"}
@@ -44,7 +44,7 @@ PERF_LOG_FILE = "data/sift-perf.log"
 SEEN_INDEX_MAX_AGE_DAYS = 14
 
 CLASSIFICATION_PROMPT = """\
-You are an email classifier. Categorise this email and decide whether it should be queued for the user's attention or skipped.
+You are an email classifier. Your ONLY job is to throw away obvious junk so the user gets a manageable inbox. You are a coarse filter, not a taste judge.
 
 Email:
 From: {sender_name} <{sender_email}>
@@ -54,40 +54,43 @@ Body:
 {body_snippet}
 
 ALWAYS QUEUE these (do not skip):
-- Personal replies: emails where someone is writing TO the user directly (look for Re: subjects, conversational tone, direct address, back-and-forth threads). These are the most important emails.
-- Events: gigs, meetups, comedy, cinema, festivals, hiking, debates, tickets, concerts, any event with a date and place. The user wants to know about ALL events early.
-- Travel deals: flight deals, holiday packages, travel bargains, error fares, campervan relocations.
-- Booking updates: new Airbnb requests, cancellations, reservation changes.
+- Personal replies: emails where someone is writing TO the user directly (Re: subjects, conversational tone, direct address). Most important.
+- Events: gigs, meetups, comedy, cinema, festivals, hiking, debates, tickets, concerts — anything with a date and place.
+- Travel deals: flight deals, holiday packages, error fares, campervan relocations.
+- Booking updates: Airbnb requests, cancellations, reservation changes.
+- Newsletters and digests: subscriber content, curated roundups, tech digests — queue ALL of these. The user's curator will decide what's interesting.
 
-ALWAYS SKIP these:
-- Order confirmations (Wetherspoons, Amazon, delivery tracking)
-- Brand marketing (Starbucks, Sainsburys, Checkatrade, retail promos)
-- Loyalty schemes and credit card offers
-- Generic "we miss you" or account summary emails
-- Spam in foreign languages the user doesn't use
+ALWAYS SKIP these — be aggressive, this is where you earn your keep:
+- Order confirmations and receipts (Wetherspoons, Amazon, Uber Eats, Deliveroo, Just Eat, any "your order" email)
+- Delivery tracking and shipping updates ("your package is on its way", "out for delivery")
+- Brand marketing and retail promos from: Checkatrade, Sainsbury's, Starbucks, Costa, Tesco, Lidl, Aldi, Asda, M&S, Boots, Superdrug, Argos, Currys, John Lewis, IKEA, H&M, ASOS, Nike, Adidas, Sky, BT, EE, Three, Vodafone, O2, Virgin Media
+- Loyalty scheme emails: points updates, rewards, tier status, "earn double points"
+- Credit card and banking marketing: "pre-approved", "increase your limit", cashback promos
+- "We miss you" / "come back" / win-back emails
+- Account summary / monthly statement / usage report emails (unless it looks like a bill with an action needed)
+- Password reset emails the user didn't request
+- Survey and feedback requests: "how did we do?", "rate your experience", NPS surveys
+- App update notifications: "what's new", "new features", changelog emails
+- Social media notifications: LinkedIn, Facebook, Twitter/X, Instagram digest emails
+- Spam in foreign languages (Chinese, Japanese, Russian, Arabic — the user reads English only)
+- Unsubscribe confirmations
+- Cookie policy / privacy policy / T&C update notices
+- Charity and donation solicitations (unless from a known personal contact)
+- Job alerts and recruiter spam (LinkedIn jobs, Indeed, Glassdoor)
+- Webinar and event marketing that is clearly promotional (not a real event the user would attend)
 
-USE JUDGMENT for newsletters and tech content:
-- Queue if the content looks genuinely interesting or useful
-- Skip if it's generic, clickbait, or a firehose of links with no curation
-- When unsure about a newsletter, queue it — the user's curator will make the final call
+If the sender domain matches any of these patterns, SKIP: noreply@, no-reply@, marketing@, promo@, offers@, news@, newsletter@ combined with a clearly commercial brand.
+
+DECISION RULE: If the email is clearly automated junk from a brand or service, SKIP it. If it's from a person, or could be genuinely useful content, QUEUE it. When genuinely unsure, queue it.
 
 The user's active projects: Spoons (pub check-in app), LocalShout (community platform), Pomodoro (timer)
 The user's location: Watford / South Oxhey, UK
 
 Categories (pick one): newsletter, tech, local, deals, event, transactional, health, other, personal
-- personal: direct messages, replies, conversations with a real person
-- event: anything with a date, venue, tickets — gigs, meetups, festivals, cinema, comedy, hiking
-- deals: shopping, travel deals, flight alerts, holiday packages
-- newsletter: content digests, subscriber emails, curated roundups
-- tech: developer content, tools, frameworks, AI
-- local: community, neighbourhood, planning alerts
-- transactional: order confirmations, delivery, account alerts
-- health: health, fitness, nutrition
-- other: anything that doesn't fit above
 
 Suggested action: queue or skip
 
-Return JSON with: category, subcategory (1-2 words), keywords (list of 3), summary (1-2 sentences), time_estimate_min (integer), project_relevance (spoons/localshout/pomodoro or null), suggested_action, confidence (0.0-1.0)"""
+Return JSON only: {{"category": "...", "subcategory": "...", "keywords": ["...", "...", "..."], "summary": "...", "time_estimate_min": N, "project_relevance": null, "suggested_action": "queue or skip", "confidence": 0.0-1.0}}"""
 
 
 def parse_maildir_message(filepath):
