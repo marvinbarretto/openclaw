@@ -28,7 +28,29 @@ fi
 
 log "=== Sift cron starting ==="
 
-# Step 1: Sync email
+# Step 1: Wait for network connectivity.
+# When launchd fires at 04:00 after wake-from-sleep, the network interface
+# may not be ready yet. Without this check, mbsync gets "Connection reset
+# by peer" and the pipeline classifies a near-empty Maildir.
+if [ "$SKIP_SYNC" = false ]; then
+    MAX_WAIT=60
+    WAIT_INTERVAL=5
+    WAITED=0
+    while ! curl -s --max-time 3 https://imap.gmail.com > /dev/null 2>&1; do
+        if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+            log "ERROR: Network not ready after ${MAX_WAIT}s. Aborting."
+            exit 1
+        fi
+        log "Waiting for network... (${WAITED}s/${MAX_WAIT}s)"
+        sleep "$WAIT_INTERVAL"
+        WAITED=$((WAITED + WAIT_INTERVAL))
+    done
+    if [ "$WAITED" -gt 0 ]; then
+        log "Network ready after ${WAITED}s"
+    fi
+fi
+
+# Step 2: Sync email
 if [ "$SKIP_SYNC" = false ]; then
     log "Syncing Gmail via mbsync..."
     if mbsync -a >> "$LOG_FILE" 2>&1; then
@@ -40,13 +62,13 @@ else
     log "Skipping mbsync (--no-sync)"
 fi
 
-# Step 2: Check Ollama is running
+# Step 3: Check Ollama is running
 if ! curl -s --max-time 3 http://localhost:11434/api/tags > /dev/null 2>&1; then
     log "ERROR: Ollama is not running. Start it with: ollama serve"
     exit 1
 fi
 
-# Step 3: Classify
+# Step 4: Classify
 log "Classifying emails from last ${HOURS}h..."
 if python3 "$REPO_ROOT/scripts/sift-classify.py" \
     --input "$MAILDIR" \
@@ -58,7 +80,7 @@ else
     exit 1
 fi
 
-# Step 4: Push to VPS
+# Step 5: Push to VPS
 log "Pushing digest to Jimbo..."
 if "$REPO_ROOT/scripts/sift-push.sh" >> "$LOG_FILE" 2>&1; then
     log "Digest pushed to VPS"

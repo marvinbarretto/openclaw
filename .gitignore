@@ -4,6 +4,8 @@ data/email-backlog-*.json
 data/feedback-*.json
 data/sample-maildir/
 data/sift-cron*.log
+data/sift-perf.log
+data/.sift-seen.json
 
 # Python
 __pycache__/

@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Sift v0.1 — Offline email classification pipeline.
+"""Sift v0.2 — Offline email classification pipeline.
 
 Reads a Maildir, classifies each email via Ollama (qwen2.5:7b),
 and outputs a structured email-digest.json.
+
+v0.2 changes:
+- Seen-files index to skip already-classified emails (--no-cache to bypass)
+- os.scandir() for faster directory iteration (avoids Path overhead at 158k+ files)
+- Performance timing and logging to data/sift-perf.log
 
 Usage:
     python scripts/sift-classify.py
     python scripts/sift-classify.py --input data/sample-maildir --output data/email-digest.json
     python scripts/sift-classify.py --hours 48
+    python scripts/sift-classify.py --no-cache   # ignore seen-files index
 """
 
 import argparse
@@ -32,6 +38,10 @@ BODY_MAX_CHARS = 2000
 VALID_CATEGORIES = {"newsletter", "tech", "local", "deals", "event", "transactional", "health", "other", "personal"}
 VALID_ACTIONS = {"queue", "skip"}
 VALID_PROJECTS = {"spoons", "localshout", "pomodoro", None}
+
+SEEN_INDEX_FILE = "data/.sift-seen.json"
+PERF_LOG_FILE = "data/sift-perf.log"
+SEEN_INDEX_MAX_AGE_DAYS = 14
 
 CLASSIFICATION_PROMPT = """\
 You are an email classifier. Categorise this email and decide whether it should be queued for the user's attention or skipped.
@@ -83,7 +93,8 @@ Return JSON with: category, subcategory (1-2 words), keywords (list of 3), summa
 def parse_maildir_message(filepath):
     """Parse a single Maildir email file, return extracted fields or None."""
     try:
-        raw = filepath.read_text(errors="replace")
+        with open(filepath, "r", errors="replace") as f:
+            raw = f.read()
     except Exception:
         return None
 
@@ -279,64 +290,137 @@ def fallback_classification():
     }
 
 
-def collect_emails(maildir_path, hours=24):
-    """Read Maildir and return parsed emails from the last N hours. hours=0 means no filter."""
+def load_seen_index(repo_root):
+    """Load the seen-files index from disk. Returns dict of filename → date ISO string."""
+    index_path = repo_root / SEEN_INDEX_FILE
+    if not index_path.exists():
+        return {}
+    try:
+        with open(index_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        print("  WARNING: corrupt seen-files index, starting fresh", file=sys.stderr)
+        return {}
+
+
+def save_seen_index(repo_root, index):
+    """Save the seen-files index to disk, pruning entries older than 14 days."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=SEEN_INDEX_MAX_AGE_DAYS)).isoformat()
+    pruned = {k: v for k, v in index.items() if v and v >= cutoff}
+    index_path = repo_root / SEEN_INDEX_FILE
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(index_path, "w") as f:
+        json.dump(pruned, f)
+    pruned_count = len(index) - len(pruned)
+    if pruned_count > 0:
+        print(f"  Pruned {pruned_count} old entries from seen-files index")
+
+
+def collect_emails(maildir_path, hours=24, seen_index=None):
+    """Read Maildir and return parsed emails from the last N hours.
+
+    Optimization flow for each file:
+      1. Index check — skip files already in seen_index (no stat, no parse needed).
+         This is the primary speedup: mbsync sets filenames and mtimes to sync time,
+         not email receive time, so 158k+ files would otherwise need stat calls.
+      2. mtime check — quick pre-filter using file modification time with a 7-day
+         buffer (because mbsync mtime ≠ email Date header).
+      3. Parse + Date header check — parse the email and filter by actual Date header.
+
+    os.scandir() is used instead of Path.iterdir() to avoid creating Path objects
+    for every file. At 158k+ files, this avoids significant overhead.
+
+    Args:
+        hours: Look-back window. 0 means no date filter.
+        seen_index: Dict of filename → date ISO string. Files in this dict are skipped.
+    """
     no_filter = (hours == 0)
     cutoff = None if no_filter else datetime.now(timezone.utc) - timedelta(hours=hours)
     emails = []
-    scanned = 0
-    skipped_old = 0
+    files_total = 0
+    skipped_index = 0
+    skipped_mtime = 0
+    skipped_date = 0
+
+    if seen_index is None:
+        seen_index = {}
 
     for subdir in ("new", "cur"):
         dirpath = maildir_path / subdir
         if not dirpath.exists():
             continue
-        files = [f for f in dirpath.iterdir() if f.is_file() and not f.name.startswith(".")]
-        print(f"  Scanning {len(files)} files in {subdir}/...")
-        for filepath in files:
-            scanned += 1
-            if scanned % 1000 == 0:
-                print(f"  ...scanned {scanned} files, found {len(emails)} so far", flush=True)
+
+        # Use os.scandir() for faster iteration — avoids Path object overhead at scale.
+        # Each DirEntry gives us the name and a fast stat() without extra syscalls.
+        try:
+            entries = list(os.scandir(str(dirpath)))
+        except OSError:
+            continue
+
+        file_entries = [e for e in entries if e.is_file() and not e.name.startswith(".")]
+        files_total += len(file_entries)
+        print(f"  Scanning {len(file_entries)} files in {subdir}/...")
+
+        for entry in file_entries:
+            if (files_total - skipped_index) % 1000 == 0 and (files_total - skipped_index) > 0:
+                print(f"  ...processed {files_total} files, found {len(emails)} so far", flush=True)
+
+            # Step 1: Index check — skip already-seen files (no stat, no parse).
+            # This is the key optimisation: avoids 158k stat calls on repeat runs.
+            if entry.name in seen_index:
+                skipped_index += 1
+                continue
 
             if not no_filter:
-                # Quick pre-filter: skip files much older than cutoff by mtime.
+                # Step 2: mtime pre-filter — skip files much older than cutoff.
                 # Use a generous buffer (7 days) because mbsync sets mtime to
                 # sync time, not email receive time.
                 try:
-                    mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+                    mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
                     mtime_buffer = cutoff - timedelta(days=7)
                     if mtime < mtime_buffer:
-                        skipped_old += 1
+                        skipped_mtime += 1
+                        # Still record in index so we don't stat again next run
+                        seen_index[entry.name] = mtime.isoformat()
                         continue
                 except OSError:
                     continue
 
-            parsed = parse_maildir_message(filepath)
+            # Step 3: Parse the email and check the Date header.
+            parsed = parse_maildir_message(Path(entry.path))
             if parsed:
+                # Record in seen index regardless of whether it passes the date filter
+                seen_index[entry.name] = parsed["date"] or datetime.now(timezone.utc).isoformat()
+
                 if not no_filter:
-                    # Skip emails with no parseable date in filtered mode
                     if parsed["date"] is None:
-                        skipped_old += 1
+                        skipped_date += 1
                         continue
-                    # Filter by actual email Date header
                     try:
                         msg_date = datetime.fromisoformat(parsed["date"])
                         if msg_date.tzinfo is None:
                             msg_date = msg_date.replace(tzinfo=timezone.utc)
                         if msg_date < cutoff:
-                            skipped_old += 1
+                            skipped_date += 1
                             continue
                     except (ValueError, TypeError):
-                        skipped_old += 1
+                        skipped_date += 1
                         continue
                 emails.append(parsed)
 
-    label = "total" if no_filter else f"older than {hours}h"
-    print(f"  Scanned {scanned} files, skipped {skipped_old} {label}, found {len(emails)}")
+    print(f"  Scanned {files_total} files: {skipped_index} skipped (index), "
+          f"{skipped_mtime} skipped (mtime), {skipped_date} skipped (date), "
+          f"{len(emails)} to classify")
 
     # Sort by date descending (dateless emails go to the end)
     emails.sort(key=lambda e: e["date"] or "", reverse=True)
-    return emails
+
+    return emails, {
+        "files_total": files_total,
+        "files_skipped_index": skipped_index,
+        "files_skipped_mtime": skipped_mtime,
+        "files_skipped_date": skipped_date,
+    }
 
 
 def build_digest(items):
@@ -371,14 +455,23 @@ def build_digest(items):
     }
 
 
+def log_performance(repo_root, perf):
+    """Append a JSON-lines entry to data/sift-perf.log."""
+    perf_path = repo_root / PERF_LOG_FILE
+    perf_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(perf_path, "a") as f:
+        f.write(json.dumps(perf, ensure_ascii=False) + "\n")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Sift v0.1 — email classification pipeline")
+    parser = argparse.ArgumentParser(description="Sift v0.2 — email classification pipeline")
     parser.add_argument("--input", default="data/sample-maildir", help="Maildir path")
     parser.add_argument("--output", default="data/email-digest.json", help="Output JSON path")
     parser.add_argument("--hours", type=int, default=24, help="Look back N hours (default 24)")
     parser.add_argument("--all", action="store_true", help="Ignore date filters, process all emails")
     parser.add_argument("--limit", type=int, default=0, help="Max emails to classify (0 = unlimited)")
     parser.add_argument("--model", default=OLLAMA_MODEL, help=f"Ollama model (default {OLLAMA_MODEL})")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass seen-files index")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -390,12 +483,24 @@ def main():
         print("Run sift-sample.py first to generate test data.", file=sys.stderr)
         sys.exit(1)
 
+    t_total_start = time.monotonic()
+
+    # Load seen-files index (unless --no-cache)
+    if args.no_cache:
+        print("Seen-files index bypassed (--no-cache)")
+        seen_index = {}
+    else:
+        seen_index = load_seen_index(repo_root)
+        print(f"Loaded seen-files index: {len(seen_index)} entries")
+
     # Collect emails
     print(f"Reading emails from {maildir_path}...")
+    t_scan_start = time.monotonic()
     if args.all:
-        emails = collect_emails(maildir_path, hours=0)
+        emails, scan_stats = collect_emails(maildir_path, hours=0, seen_index=seen_index)
     else:
-        emails = collect_emails(maildir_path, hours=args.hours)
+        emails, scan_stats = collect_emails(maildir_path, hours=args.hours, seen_index=seen_index)
+    t_scan_end = time.monotonic()
 
     if args.limit and len(emails) > args.limit:
         print(f"Found {len(emails)} emails, limiting to {args.limit}")
@@ -405,9 +510,13 @@ def main():
 
     if not emails:
         print("No emails found. Nothing to classify.")
+        # Still save the index — we learned about files even if none passed the filter
+        if not args.no_cache:
+            save_seen_index(repo_root, seen_index)
         sys.exit(0)
 
     # Classify each email
+    t_classify_start = time.monotonic()
     items = []
     for i, parsed in enumerate(emails, 1):
         print(f"[{i}/{len(emails)}] Classifying: {parsed['subject'][:60]}...")
@@ -424,6 +533,11 @@ def main():
             "links": parsed["links"],
         }
         items.append(item)
+    t_classify_end = time.monotonic()
+
+    # Save seen-files index
+    if not args.no_cache:
+        save_seen_index(repo_root, seen_index)
 
     # Build digest
     digest = build_digest(items)
@@ -434,6 +548,32 @@ def main():
     print(f"\nDigest written to {output_path}")
     print(f"Total items: {digest['total_items']}")
     print(f"Stats: {json.dumps(digest['stats'], indent=2)}")
+
+    # Performance summary
+    t_total_end = time.monotonic()
+    scan_seconds = round(t_scan_end - t_scan_start, 2)
+    classify_seconds = round(t_classify_end - t_classify_start, 2)
+    total_seconds = round(t_total_end - t_total_start, 2)
+    files_classified = len(emails)
+    avg_classify = round(classify_seconds / files_classified, 2) if files_classified else 0
+
+    perf = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "scan_seconds": scan_seconds,
+        "classify_seconds": classify_seconds,
+        "total_seconds": total_seconds,
+        "files_total": scan_stats["files_total"],
+        "files_skipped_index": scan_stats["files_skipped_index"],
+        "files_skipped_mtime": scan_stats["files_skipped_mtime"],
+        "files_skipped_date": scan_stats["files_skipped_date"],
+        "files_classified": files_classified,
+        "avg_classify_seconds": avg_classify,
+    }
+
+    print(f"\nPerformance: scan={scan_seconds}s, classify={classify_seconds}s, "
+          f"total={total_seconds}s, avg_per_email={avg_classify}s")
+    log_performance(repo_root, perf)
+    print(f"Perf log appended to {PERF_LOG_FILE}")
 
 
 if __name__ == "__main__":
