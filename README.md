@@ -2,14 +2,14 @@
 
 Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw), self-hosted on a VPS with Telegram as the primary messaging channel.
 
-## Current Status (2026-02-19)
+## Current Status (2026-02-20)
 
 - **VPS:** DigitalOcean $12/mo, London, IP `167.99.206.214` — RUNNING
 - **OpenClaw:** v2026.2.12, dashboard at `https://167.99.206.214`
 - **Telegram:** Connected via `@fourfold_openclaw_bot` ("Jimbo") — WORKING
-- **AI Provider:** OpenRouter free (`stepfun/step-3.5-flash:free`) — bootstrapping complete
+- **AI Provider:** Google AI direct (`google/gemini-2.5-flash`) — ~$0.78/month (ADR-015)
 - **Sandbox:** Custom Docker image with Python 3.11, Node 18, git — WORKING
-- **Local models:** Ollama installed — `qwen2.5:7b` + `qwen2.5-coder:14b` — TESTED
+- **Local models:** Ollama — `qwen2.5-coder:14b` (classifier default) + `qwen2.5:7b` — TESTED
 - **Jimbo's GitHub:** https://github.com/marvinbarretto-labs — separate account for agent work
 - **Jimbo's workspace:** `jimbo-workspace` repo — Jimbo can autonomously write, commit, and push
 - **Sift pipeline:** mbsync → sift-classify.py (Ollama) → email-digest.json → sift-push.sh → VPS — END-TO-END WORKING
@@ -23,8 +23,8 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 
 - **Runtime:** OpenClaw 2026.2.12 on Ubuntu 24.04 (DigitalOcean 1-Click)
 - **Messaging:** Telegram Bot API
-- **LLM (cloud):** Anthropic (backup), OpenRouter/Gemini Flash (daily driver — TODO)
-- **LLM (local):** Ollama on MacBook Air 24GB (Qwen 2.5 7B + Coder 14B)
+- **LLM (cloud):** Google AI direct (Gemini 2.5 Flash, daily), OpenRouter (free/coding), Anthropic (premium)
+- **LLM (local):** Ollama on MacBook Air 24GB (Qwen 2.5 Coder 14B for classification)
 - **Hosting:** DigitalOcean $12/mo (2GB RAM, 1 vCPU, 50GB, LON1)
 - **DNS/Proxy:** Caddy (built into 1-Click image, auto TLS)
 
@@ -67,13 +67,46 @@ Custom skills that teach Jimbo structured capabilities. These are `SKILL.md` fil
 
 Note: Skills are triggered via natural language in Telegram, not slash commands.
 
-**Deploy to VPS:**
+## Deploying to VPS
+
+Everything we maintain lives in this repo. **Never edit files directly on the VPS** — edit locally, commit, then push with scripts:
+
 ```bash
-./scripts/skills-push.sh           # push skills to Jimbo
-./scripts/skills-push.sh --dry-run  # preview without changes
+# Push everything Jimbo needs (brain files + context + email digest)
+./scripts/workspace-push.sh        # SOUL.md, HEARTBEAT.md, context/*.md → VPS
+./scripts/skills-push.sh           # skills/ → VPS
+./scripts/sift-push.sh             # email-digest.json → VPS
+
+# Model management
+./scripts/model-swap.sh daily      # switch Jimbo's LLM model
+./scripts/model-swap.sh status     # check current model
+
+# Dry run (preview without changes)
+./scripts/workspace-push.sh --dry-run
+./scripts/skills-push.sh --dry-run
 ```
 
-Skills are picked up on Jimbo's next session (no restart needed).
+All workspace/skill changes are picked up on Jimbo's next session (no restart needed). Model changes require a restart (model-swap.sh does this automatically).
+
+### What lives where
+
+| This repo | VPS destination | Push script | Restart needed? |
+|-----------|----------------|-------------|-----------------|
+| `workspace/SOUL.md` | `/workspace/SOUL.md` | `workspace-push.sh` | No |
+| `workspace/HEARTBEAT.md` | `/workspace/HEARTBEAT.md` | `workspace-push.sh` | No |
+| `context/*.md` | `/workspace/context/` | `workspace-push.sh` | No |
+| `skills/*/SKILL.md` | `/workspace/skills/` | `skills-push.sh` | No |
+| `data/email-digest.json` | `/workspace/email-digest.json` | `sift-push.sh` | No |
+| `openclaw.json` changes | `/home/openclaw/.openclaw/openclaw.json` | `model-swap.sh` or manual | Yes |
+
+### Files Jimbo writes himself (NOT tracked here)
+
+These live only on the VPS. Jimbo creates and updates them — don't overwrite:
+- `IDENTITY.md` — Jimbo's name and personality (written during bootstrap)
+- `USER.md` — What Jimbo knows about Marvin (learned from conversations)
+- `MEMORY.md` — Long-term curated memory
+- `JIMBO_DIARY.md` — Jimbo's daily journal
+- `memory/*.md` — Per-day conversation logs
 
 **Sift pipeline (email → Jimbo):**
 ```bash
@@ -97,12 +130,14 @@ python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX --all --limit 200
 
 | Folder | Purpose |
 |---|---|
+| `workspace/` | Brain files we maintain (SOUL.md, HEARTBEAT.md) → pushed to VPS |
+| `context/` | Marvin's personal context (interests, priorities, taste, goals) → pushed to VPS |
+| `skills/` | Custom OpenClaw skills (sift-digest, daily-briefing) → pushed to VPS |
+| `scripts/` | Deploy scripts, classifier, model-swap, automation |
+| `decisions/` | ADRs (001–015): sandbox, email, models, plugins, automation |
+| `setup/` | Configuration docs, [architecture](setup/architecture.md), [workspace files guide](setup/workspace-files.md), provider setup cheatsheet |
 | `hosting/` | VPS comparison (decided: DigitalOcean), networking & DNS |
-| `setup/` | Installation, configuration, [architecture](setup/architecture.md), and [workspace files guide](setup/workspace-files.md) |
 | `security/` | Hardening checklist, data privacy |
-| `decisions/` | ADRs: sandbox architecture, email triage, prompt injection, model strategy |
-| `skills/` | Custom OpenClaw skills for Jimbo (sift-digest, daily-briefing) |
-| `context/` | Marvin's personal context files — interests, priorities, taste, goals |
 | `notes/` | Raw thinking and brain dumps |
 
 ## TODO

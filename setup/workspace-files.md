@@ -4,77 +4,70 @@ These files live on the VPS at `/home/openclaw/.openclaw/workspace/` and shape h
 
 ## The files
 
-| File | Purpose | Who writes it |
-|---|---|---|
-| `SOUL.md` | Personality, behaviour rules, boundaries | Pre-written by OpenClaw, yours to edit |
-| `IDENTITY.md` | Jimbo's name, vibe, emoji | Jimbo (during bootstrapping) |
-| `USER.md` | About you — name, projects, preferences | Jimbo (from conversations) |
-| `MEMORY.md` | Long-term curated memory | Jimbo (over time) |
-| `AGENTS.md` | Operating manual — memory system, safety | Pre-written by OpenClaw |
-| `HEARTBEAT.md` | Periodic check tasks | You or Jimbo |
-| `TOOLS.md` | Environment-specific notes (SSH hosts etc) | Jimbo |
-| `BOOTSTRAP.md` | First-run script — delete after setup | Pre-written, should be deleted |
-| `memory/*.md` | Daily conversation logs | Jimbo |
+| File | Purpose | Who maintains it | Tracked in repo? |
+|---|---|---|---|
+| `SOUL.md` | Personality, behaviour rules, output rules | Us | Yes (`workspace/SOUL.md`) |
+| `HEARTBEAT.md` | Periodic check tasks | Us | Yes (`workspace/HEARTBEAT.md`) |
+| `context/*.md` | Interests, priorities, taste, goals | Us | Yes (`context/`) |
+| `IDENTITY.md` | Jimbo's name, vibe, emoji | Jimbo | No |
+| `USER.md` | About you — name, projects, preferences | Jimbo | No |
+| `MEMORY.md` | Long-term curated memory | Jimbo | No |
+| `JIMBO_DIARY.md` | Jimbo's daily journal | Jimbo | No |
+| `AGENTS.md` | Operating manual — memory system, safety | Pre-written by OpenClaw | No |
+| `TOOLS.md` | Environment-specific notes (SSH hosts etc) | Jimbo | No |
+| `memory/*.md` | Daily conversation logs | Jimbo | No |
 
-## Quick commands
+## Editing workflow
 
-### Read a file
+**The rule: edit locally, commit, push.** Don't edit files on the VPS directly — changes get lost and aren't tracked.
+
+### Files we maintain
+
+Edit in the repo, commit, then deploy:
+
 ```bash
-# From your laptop
-ssh root@167.99.206.214 "cat /home/openclaw/.openclaw/workspace/USER.md"
-ssh root@167.99.206.214 "cat /home/openclaw/.openclaw/workspace/SOUL.md"
-ssh root@167.99.206.214 "cat /home/openclaw/.openclaw/workspace/IDENTITY.md"
-ssh root@167.99.206.214 "cat /home/openclaw/.openclaw/workspace/MEMORY.md"
+# Edit locally
+vim workspace/SOUL.md
+vim context/PRIORITIES.md
+
+# Commit
+git add -A && git commit -m "Update SOUL.md output rules"
+
+# Push to VPS (brain files + context files in one command)
+./scripts/workspace-push.sh
+```
+
+### Files Jimbo maintains
+
+These live only on the VPS. Read them via SSH but don't overwrite:
+
+```bash
+# Read Jimbo's files
+ssh jimbo "cat /home/openclaw/.openclaw/workspace/USER.md"
+ssh jimbo "cat /home/openclaw/.openclaw/workspace/MEMORY.md"
+ssh jimbo "cat /home/openclaw/.openclaw/workspace/JIMBO_DIARY.md"
 
 # Read all at once
-ssh root@167.99.206.214 "for f in SOUL.md IDENTITY.md USER.md MEMORY.md; do echo '===== '\$f' ====='; cat /home/openclaw/.openclaw/workspace/\$f 2>/dev/null || echo '(not created yet)'; echo; done"
-
-# Check daily memory logs
-ssh root@167.99.206.214 "ls /home/openclaw/.openclaw/workspace/memory/ 2>/dev/null"
-ssh root@167.99.206.214 "cat /home/openclaw/.openclaw/workspace/memory/2026-02-16.md 2>/dev/null"
+ssh jimbo "for f in SOUL.md IDENTITY.md USER.md MEMORY.md; do echo '===== '\$f' ====='; cat /home/openclaw/.openclaw/workspace/\$f 2>/dev/null || echo '(not created yet)'; echo; done"
 ```
 
-### Edit a file interactively
-```bash
-# SSH in and edit with nano
-ssh -t root@167.99.206.214 "nano /home/openclaw/.openclaw/workspace/USER.md"
-ssh -t root@167.99.206.214 "nano /home/openclaw/.openclaw/workspace/SOUL.md"
-```
+### Emergency edits on VPS
 
-### Overwrite a file from your laptop
-```bash
-# Write a local file then push it
-scp ~/my-user.md root@167.99.206.214:/home/openclaw/.openclaw/workspace/USER.md
-```
+Only for quick fixes that can't wait for a commit (e.g. Jimbo wrote something wrong in USER.md, or you need to delete sensitive info from memory):
 
-### Append to a file
 ```bash
-ssh root@167.99.206.214 "echo '- Prefers direct, no-fluff communication' >> /home/openclaw/.openclaw/workspace/USER.md"
+ssh -t jimbo "nano /home/openclaw/.openclaw/workspace/USER.md"
 ```
 
 ## You can also just tell Jimbo
 
 In Telegram, you can say things like:
 - "Update your USER.md to note that I'm building Spoons and LocalShout"
-- "Add to your SOUL.md that you should never be sycophantic"
 - "Show me what's in your MEMORY.md"
 - "What do you know about me?" (it'll read USER.md)
 
-Jimbo will update the files itself. But if you want to make sure it's right, check via SSH.
-
-## When to edit manually vs let Jimbo write
-
-**Let Jimbo write:**
-- Day-to-day memory updates
-- Learning about your preferences from conversation
-- Daily logs
-
-**Edit manually when:**
-- Jimbo got something wrong about you
-- You want to set hard boundaries (SOUL.md)
-- You're switching models and want to seed quality content before the weaker model takes over
-- You want to delete sensitive info from memory files
+Jimbo will update its own files. But for files we maintain (SOUL.md, HEARTBEAT.md, context/), always edit locally and push.
 
 ## No restart needed
 
-Changes to workspace files take effect on Jimbo's next message — no restart required. It reads these files at the start of each session.
+Changes to workspace files take effect on Jimbo's next session — no restart required.

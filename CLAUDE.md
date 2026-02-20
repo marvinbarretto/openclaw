@@ -33,8 +33,9 @@ SSH alias: `ssh jimbo` connects to VPS.
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
 decisions/        ADRs (001-015) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades
-scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, model-swap.sh, sift-cron.sh
+scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing)
+workspace/        Jimbo's brain files that WE maintain (SOUL.md, HEARTBEAT.md). Deploy via workspace-push.sh.
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
@@ -49,6 +50,10 @@ notes/            Brain dumps
 - `scripts/sift-cron.sh` — Automated pipeline: mbsync → classify → push. Runs via launchd at 4am.
 - `scripts/sift-push.sh` — Rsyncs email-digest.json to VPS workspace
 - `scripts/skills-push.sh` — Rsyncs custom skills to VPS workspace
+- `scripts/workspace-push.sh` — Pushes brain files + context files to VPS workspace (one command for everything we maintain)
+- `workspace/SOUL.md` — Jimbo's personality, behaviour rules, output rules
+- `workspace/HEARTBEAT.md` — Periodic self-check tasks for Jimbo
+- `context/*.md` — Marvin's interests, priorities, taste, goals, preferences
 - `scripts/model-swap.sh` — SSH helper to switch LLM model on VPS
 - `skills/sift-digest/SKILL.md` — Teaches Jimbo to present email digests
 - `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings
@@ -144,6 +149,8 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 **How context flows:**
 - `sift-classify.py` reads INTERESTS + PRIORITIES locally to build the Ollama prompt (classifier sorts)
 - Context files are pushed to VPS workspace so Jimbo can read ALL of them (Jimbo curates with taste + judgment)
+
+**Deploy:** `./scripts/workspace-push.sh` pushes both context files and workspace brain files (SOUL.md, HEARTBEAT.md) to the VPS in one command.
 
 ## Data Files (Gitignored)
 
