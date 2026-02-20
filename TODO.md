@@ -36,6 +36,12 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 - Gmail IMAP rate-limits after ~25k emails per run — wait 15 min between retries
 - Once caught up, `--hours 24` will work for daily pipeline
 
+### Briefing quality
+- [ ] Fix Gemini thinking leak — reasoning tokens appear in Telegram (see ADR-015). Try Claude Haiku or wait for OpenClaw update.
+- [ ] Try other models that don't leak thinking: Claude Haiku 4.5 (~$2.49/mo), Qwen3 235B free tier, or Gemini with reasoning off + better prompting
+- [ ] Redesign briefing as conversational — short headlines first, then Marvin asks to drill into what interests him, instead of one huge report message
+- [ ] Run classifier on full batch to measure new queue/skip ratio (target ~50%, down from ~97%)
+
 ### Future
 - [ ] Design digest-feedback.json schema for learning loop
 - [ ] Implement time-budget tracking (content-queue.json)
@@ -47,6 +53,10 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 
 ## Done
 
+- [x] Upgrade VPS model to Gemini 2.5 Flash via direct Google AI — working, ~$0.78/mo (ADR-015) (2026-02-20)
+- [x] Tighten classifier prompt + bump default to qwen2.5-coder:14b (ADR-015) (2026-02-20)
+- [x] Track workspace brain files in repo + workspace-push.sh deploy script (2026-02-20)
+- [x] Add provider setup cheatsheet to setup/configuration.md (2026-02-20)
 - [x] Fix compaction config — reserveTokensFloor 5000→20000, enable memoryFlush (ADR-013) (2026-02-19)
 
 - [x] Set up mbsync, sync 28,799 emails from Gmail to local Maildir (2026-02-18)
