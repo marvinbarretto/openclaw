@@ -131,6 +131,8 @@ Look for `[gateway] agent model: provider/model-id` and no config errors.
 | Missing env var | `MissingEnvVarError`, service starts but can't handle messages | Add to `/opt/openclaw.env`, then `systemctl daemon-reload && systemctl restart openclaw` |
 | Google AI without `/v1beta` | 404 on every API call | baseUrl must be `https://generativelanguage.googleapis.com/v1beta` |
 | Added env var but didn't restart | Service doesn't pick up new vars | `systemctl daemon-reload && systemctl restart openclaw` |
+| `agents.defaults.thinking` | Not a valid config key — crashes service | Thinking level is per-session only (`--thinking` CLI flag), no persistent config in v2026.2.12 |
+| Gemini `reasoning: true` | Thinking tokens leak into Telegram output | No fix in OpenClaw yet. SOUL.md "never show working" helps partially. Quality is better with reasoning on. See ADR-015. |
 
 ### Current working provider configs (2026-02-20)
 

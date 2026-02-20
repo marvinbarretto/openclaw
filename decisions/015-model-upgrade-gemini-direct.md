@@ -65,11 +65,32 @@ Working config:
 
 Added `daily` tier (google/gemini-2.5-flash) and `haiku` tier (anthropic/claude-haiku-4.5). Gemini tiers now use `google/` prefix (direct) instead of `openrouter/google/`.
 
+### Gemini thinking leak (known issue)
+
+Gemini 2.5 Flash with `"reasoning": true` leaks its chain-of-thought into the response text. The thinking appears before the actual briefing in Telegram ("Okay, I have read all the context files... Let me check...").
+
+**What we tried:**
+- `"reasoning": false` in model config → thinking stops but briefing quality drops significantly (shallow, no curation depth)
+- `"reasoning": true` + SOUL.md instruction "Never show your working" → reduces it slightly but Gemini still does it
+- `agents.defaults.thinking: "off"` → not a valid config key in OpenClaw 2026.2.12, crashes the service
+
+**Current state:** `reasoning: true` with SOUL.md instruction. Thinking leaks but briefing quality is good — proper event highlights, travel deals with prices, context-aware grouping, security alerts surfaced. The substance matters more than the cosmetics.
+
+**To fix later:**
+- Check if a future OpenClaw update adds thinking token filtering for the `google-generative-ai` provider
+- Or try a model that separates thinking from output natively (Claude Haiku would do this correctly)
+- The `--thinking` CLI flag exists per-session but there's no persistent config equivalent yet
+
+### SOUL.md update
+
+Added "Output Rules" section to SOUL.md on VPS telling Jimbo to never show his working. This helps generally even if it doesn't fully fix the Gemini thinking leak.
+
 ## Consequences
 
 - Daily briefing cost rises from $0 to ~$0.78/month — trivial for usable quality
 - Three providers now in use: Google AI (daily), OpenRouter (free/coding), Anthropic (claude/opus)
 - Classifier prompt is much longer but gives the small model concrete rules instead of vague guidance
 - The `/v1beta` baseUrl and full model object schema are critical gotchas — document for future reference
+- **Gemini thinking leak:** reasoning tokens appear in Telegram output. Cosmetic issue — quality is good. Parked for now.
 - Need to verify classifier improvement by running on same batch before/after (not yet done)
 - Need to monitor Gemini briefing quality over next few days — fallback to Claude Haiku if needed
