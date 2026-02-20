@@ -37,7 +37,15 @@ Read Marvin's context to understand what matters today:
 - "You mentioned chasing Daniel about the DisplayLink fix" or "YNAB setup is on your list"
 - Only mention 1-2 things, not the whole list
 
-### 5. Heartbeat tasks
+### 5. Context freshness
+- Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
+- If PRIORITIES is more than 10 days old, nudge: "Your priorities file is [N] days old — worth a quick review?"
+- If GOALS is more than 45 days old, nudge: "Your goals file hasn't been updated in [N] days"
+- If INTERESTS is more than 90 days old, mention it too
+- Only mention stale files, skip this section if everything is fresh
+- Keep it to one line per stale file — this is a nudge, not a nag
+
+### 6. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
 - If there are pending checks, mention briefly
 - If nothing due, skip this section
