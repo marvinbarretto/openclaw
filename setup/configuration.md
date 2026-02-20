@@ -149,6 +149,21 @@ Look for `[gateway] agent model: provider/model-id` and no config errors.
 - Built-in provider, no explicit config needed
 - env var: `ANTHROPIC_API_KEY`
 
+## Sandbox Environment Variables
+
+These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaults.sandbox.docker.env`). Both places matter — the Dockerfile bakes them into the image, and openclaw.json ensures they persist if the image is rebuilt without them.
+
+| Variable | Value | Why |
+|----------|-------|-----|
+| `HOME` | `/workspace` | Root filesystem is read-only. Tools write config/cache to `$HOME`. Without this, any tool that touches `~/.config/`, `~/.cache/`, `~/.npm/` etc. crashes with EROFS. |
+| `XDG_CONFIG_HOME` | `/workspace/.config` | XDG-compliant tools (Astro telemetry, etc.) write config here. Redirects to writable mount. |
+| `npm_config_cache` | `/workspace/.npm-cache` | npm's package cache directory. Must be on writable mount. |
+| `npm_config_unsafe_perm` | `true` | Suppresses fchown warnings. CHOWN capability is dropped so npm can't change file ownership — this tells it not to try. Packages install correctly either way. |
+| `GIT_CONFIG_GLOBAL` | `/workspace/.gitconfig` | Git config can't live at `/root/.gitconfig` (read-only). Points git to the workspace copy which has `safe.directory = /workspace`. |
+| `JIMBO_GH_TOKEN` | `${JIMBO_GH_TOKEN}` | GitHub PAT for jimbo-workspace repo access. Interpolated from `/opt/openclaw.env`. |
+
+**Key insight (ADR-016):** The original "uid mismatch causes fchown errors" diagnosis was misleading. The fchown warnings were always harmless. The real blocker was tools crashing when trying to write to the read-only root filesystem at `$HOME=/root/`. Setting `HOME=/workspace` fixes everything.
+
 ## API Keys
 
 | Key | Where | Purpose | Created |

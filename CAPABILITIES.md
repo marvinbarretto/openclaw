@@ -18,7 +18,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Git commit & push (jimbo-workspace) | WORKING | Fixed 2026-02-18 (ADR-011) |
 | GitHub Pages blog | WORKING | Static HTML at `gh-pages` branch |
 | Read Marvin's repos (GitHub) | DISABLED | Token exists but skill disabled for free model (ADR-006) |
-| npm / Node build tools | BROKEN | uid mismatch causes fchown errors — static files only |
+| npm / Node build tools | WORKING | Fixed 2026-02-20 (ADR-016). Astro, webpack, npm install all work. Node 18. |
 | Python scripts | WORKING | Python 3.11 in sandbox, stdlib only |
 
 ## Email
@@ -38,7 +38,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
 | Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
 | Heartbeat / self-monitoring | NOT STARTED | HEARTBEAT.md planned |
-| Install packages (npm/pip) | BROKEN | Sandbox permission issues |
+| Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
 
 ## VPS Model
 

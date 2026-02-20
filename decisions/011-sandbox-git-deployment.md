@@ -39,10 +39,10 @@ Jimbo builds a static HTML/JS blog (no framework, no build step). This avoids al
 **Known limitations:**
 - Permissions may drift: new directories created by root inside the container will have restrictive permissions. A periodic `chmod` or umask fix may be needed.
 - The PAT is hardcoded in `.git/config` (the remote URL). Functional but not ideal — could be moved to a credential helper reading `JIMBO_GH_TOKEN` env var.
-- Node-based build tools (Astro, webpack, etc.) still won't work reliably due to the uid mismatch. Static files only for now.
+- ~~Node-based build tools (Astro, webpack, etc.) still won't work reliably due to the uid mismatch. Static files only for now.~~ **Fixed in ADR-016** — setting `HOME=/workspace` and `XDG_CONFIG_HOME=/workspace/.config` resolves the EROFS errors. The fchown warnings were always harmless.
 - The `jimbo-vps` token expires ~May 2026 and will need regeneration.
 
 **Future improvements:**
-- Set a default umask in the Dockerfile entrypoint so new files are created world-writable
+- ~~Set a default umask in the Dockerfile entrypoint so new files are created world-writable~~ Partially done (bash.bashrc), full fix needs OpenClaw entrypoint control
 - Move PAT from git remote URL to credential helper
 - Consider running the container as uid 1000 if OpenClaw adds a `docker.user` config option

@@ -29,18 +29,23 @@ RUN apt-get update -qq && \
 # Note: @types/node is NOT installed globally — it only works as a local project dependency
 RUN npm install -g typescript ts-node
 
-# npm needs a writable cache directory at runtime.
-# The root filesystem is read-only, so point npm's cache into /workspace
-# which is the only writable bind-mount in the sandbox.
+# --- Writable paths ---
+# The root filesystem is read-only. The only writable mount is /workspace.
+# We redirect HOME, XDG, npm cache, and git config there so all tools
+# can write their config/cache without hitting EROFS or EPERM.
+ENV HOME=/workspace
+ENV XDG_CONFIG_HOME=/workspace/.config
 ENV npm_config_cache=/workspace/.npm-cache
-
-# Git config lives in /workspace since the root filesystem is read-only.
-# The container runs as root but workspace files are owned by openclaw (uid 1000),
-# so git needs safe.directory set to avoid "dubious ownership" errors.
 ENV GIT_CONFIG_GLOBAL=/workspace/.gitconfig
+
+# Suppress harmless fchown warnings from npm (CHOWN capability is dropped).
+# Packages still install correctly — they just keep root's ownership.
+ENV npm_config_unsafe_perm=true
 
 # Default umask so new files/dirs created by root are world-readable/writable.
 # Prevents permission drift when Jimbo creates new blog posts or directories.
 # The workspace is owned by openclaw (uid 1000) but the container runs as root.
+# Note: bash.bashrc only applies to interactive shells. The ENV UMASK is
+# documentation — the actual process umask depends on the parent process.
 RUN echo 'umask 0000' >> /etc/bash.bashrc
 ENV UMASK=0000
