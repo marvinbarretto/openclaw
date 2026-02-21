@@ -32,7 +32,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-OLLAMA_MODEL = "qwen2.5-coder:14b"
+OLLAMA_MODEL = "qwen2.5:7b"
 BODY_SNIPPET_LEN = 200
 BODY_MAX_CHARS = 2000
 VALID_CATEGORIES = {"newsletter", "tech", "local", "deals", "event", "transactional", "health", "other", "personal"}
