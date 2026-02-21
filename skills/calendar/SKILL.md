@@ -65,7 +65,7 @@ Shares a calendar with another user (reader access by default). Optional `--role
 
 Jimbo has a dedicated "Jimbo Suggestions" calendar for proactive day planning. This is separate from Jimbo's primary calendar.
 
-- **Calendar ID:** _(set after one-time setup — run `list-calendars` to find it)_
+- **Calendar ID:** `2244d4f6d61cbc9f2041405c16dea6726a34f2c895e49dce7c5e1e4f0287789c@group.calendar.google.com`
 - **Purpose:** Recommendations, not commitments. Marvin sees these alongside real events but can ignore them.
 - **Visual distinction:** All suggestion events use emoji prefixes (see day-planner skill for the convention).
 - **Shared with Marvin:** Reader access so suggestions appear on his Google Calendar automatically.

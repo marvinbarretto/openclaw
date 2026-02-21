@@ -114,7 +114,7 @@ python3 /workspace/calendar-helper.py create-event \
   --summary "🔨 Spoons: review open PRs" \
   --start 2026-02-21T09:00:00 \
   --end 2026-02-21T10:00:00 \
-  --calendar-id SUGGESTIONS_CALENDAR_ID \
+  --calendar-id 2244d4f6d61cbc9f2041405c16dea6726a34f2c895e49dce7c5e1e4f0287789c@group.calendar.google.com \
   --attendee marvin@example.com \
   --description "Suggested by Jimbo — 4 days overdue from PRIORITIES"
 ```
