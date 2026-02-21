@@ -36,7 +36,7 @@ if [ "$SKIP_SYNC" = false ]; then
     MAX_WAIT=60
     WAIT_INTERVAL=5
     WAITED=0
-    while ! curl -s --max-time 3 https://imap.gmail.com > /dev/null 2>&1; do
+    while ! curl -s --max-time 3 https://www.google.com > /dev/null 2>&1; do
         if [ "$WAITED" -ge "$MAX_WAIT" ]; then
             log "ERROR: Network not ready after ${MAX_WAIT}s. Aborting."
             exit 1
@@ -73,7 +73,7 @@ log "Classifying emails from last ${HOURS}h..."
 if python3 "$REPO_ROOT/scripts/sift-classify.py" \
     --input "$MAILDIR" \
     --hours "$HOURS" \
-    --output data/email-digest.json >> "$LOG_FILE" 2>&1; then
+    --output data/email-digest.json 2>&1 | tee -a "$LOG_FILE"; then
     log "Classification complete"
 else
     log "ERROR: sift-classify.py failed (exit $?)"
