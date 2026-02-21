@@ -38,10 +38,13 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Read email digest | WORKING | JSON pushed from laptop daily |
-| Classify emails | N/A | Runs on laptop via Ollama (qwen2.5-coder:14b), not in sandbox |
-| Send/delete/modify email | BLOCKED | By design (ADR-002) |
-| Email backlog processing | NOT STARTED | ADR-009 planned |
+| Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. No laptop dependency. (ADR-022) |
+| Read email digest | WORKING | JSON written directly in sandbox by gmail-helper.py |
+| Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
+| Deep newsletter reading | WORKING | Full body (5000 chars), links extracted. Jimbo applies judgment. |
+| Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
+| LLM email classification | REMOVED | Redundant — Jimbo reads raw emails directly (ADR-022) |
+| Old Sift pipeline (laptop) | DEPRECATED | mbsync + Ollama + sift-push.sh no longer needed |
 
 ## Autonomy
 
@@ -84,9 +87,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | `jimbo-vps` (fine-grained PAT) | 2026-05-18 | Read+write jimbo-workspace |
 | `openclaw-readonly` (fine-grained PAT) | ~2026-04-17 | Read-only Marvin's repos (currently disabled) |
-| Google Calendar refresh token | Non-expiring* | Calendar API access (* if app is published; 7 days if in testing mode) |
+| Google OAuth refresh token | Non-expiring* | Calendar + Gmail read-only API access (* if app is published; 7 days if in testing mode) |
 
 ---
 
 *Last updated: 2026-02-21*
-*Day planner / suggestions calendar added: 2026-02-21*
+*Gmail API migration (ADR-022): 2026-02-21*

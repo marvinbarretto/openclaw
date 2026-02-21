@@ -16,15 +16,18 @@ Marvin Barretto. Projects: Spoons (pub check-in app, Angular/Firebase/Capacitor)
 Laptop (MacBook Air 24GB)
   ├── This repo (openclaw/)
   ├── Ollama (qwen2.5:7b, qwen2.5-coder:14b)
-  ├── mbsync → Gmail Maildir at ~/Mail/gmail/INBOX (~28k emails)
-  └── Sift pipeline: sift-classify.py (Ollama) → email-digest.json → sift-push.sh → VPS
+  └── google-auth.py — one-time OAuth for Calendar + Gmail scopes
 
 VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   ├── OpenClaw v2026.2.12 (Node 22, systemd, openclaw user)
   ├── Docker sandbox (Python 3.11, Node 18, git, hardened)
-  │     └── /workspace — Jimbo's brain files + skills + email digest
+  │     ├── /workspace — Jimbo's brain files + skills + email digest
+  │     ├── gmail-helper.py — fetches email via Gmail API, writes digest directly
+  │     └── calendar-helper.py — Calendar API client
   └── Caddy (auto TLS)
 ```
+
+Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, Jimbo reads the rest deeply. No LLM classification step.
 
 SSH alias: `ssh jimbo` connects to VPS.
 
@@ -46,9 +49,11 @@ notes/            Brain dumps
 
 ## Key Files
 
-- `scripts/sift-classify.py` — Core Sift pipeline. Reads Maildir, classifies via Ollama, outputs email-digest.json
-- `scripts/sift-cron.sh` — Automated pipeline: mbsync → classify → push. Runs via launchd at 4am.
-- `scripts/sift-push.sh` — Rsyncs email-digest.json to VPS workspace
+- `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
+- `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail read-only scopes (replaces calendar-auth.py)
+- `scripts/sift-classify.py` — **LEGACY** Sift pipeline. Replaced by gmail-helper.py (ADR-022).
+- `scripts/sift-cron.sh` — **LEGACY** Automated pipeline. No longer needed — gmail-helper.py runs in sandbox.
+- `scripts/sift-push.sh` — **LEGACY** Rsyncs email-digest.json to VPS. No longer needed.
 - `scripts/skills-push.sh` — Rsyncs custom skills to VPS workspace
 - `scripts/workspace-push.sh` — Pushes brain files + context files to VPS workspace (one command for everything we maintain)
 - `workspace/SOUL.md` — Jimbo's personality, behaviour rules, output rules
@@ -78,11 +83,12 @@ notes/            Brain dumps
 - Reader outputs fixed-schema JSON only; Actor never sees raw untrusted text
 - Email classification runs fully offline via local Ollama — content never leaves the laptop
 
-### Email Security (ADR-002)
-- No Gmail credentials on VPS — ever
-- Email classified locally (Ollama), only the digest JSON is pushed to VPS
-- HTML stripped, body truncated to 2000 chars, strict schema validation
-- Agent cannot send, delete, or modify email
+### Email Security (ADR-002, updated ADR-022)
+- Gmail API access is **read-only** (gmail.readonly scope). Agent cannot send, delete, or modify email.
+- OAuth credentials on VPS (same token as Calendar — just wider scope)
+- gmail-helper.py fetches email in sandbox, applies blacklist, writes digest locally
+- HTML stripped, body truncated to 5000 chars
+- No LLM classification step — Jimbo reads raw emails and applies own judgment
 
 ### Plugin Policy (ADR-008)
 - No ClawHub community skills — supply chain risk (ClawHavoc incident, 7%+ flawed)
@@ -97,48 +103,46 @@ notes/            Brain dumps
 - Blog deploys to GitHub Pages via `gh-pages` branch. PAT is in the git remote URL.
 - `jimbo-vps` token expires ~May 2026 — check `CAPABILITIES.md` for all token dates.
 
-## Sift Email Pipeline
+## Email Pipeline (ADR-022)
 
-### Manual workflow
+### How it works now
+
+Gmail API runs IN the sandbox. No laptop dependency, no Ollama, no mbsync.
+
 ```
-mbsync -a                                                     # sync Gmail → ~/Mail/gmail/INBOX
-python3 scripts/sift-classify.py --input ~/Mail/gmail/INBOX   # classify via Ollama (local)
-./scripts/sift-push.sh                                        # push digest to VPS
+VPS sandbox:
+  gmail-helper.py fetch --hours 24    → calls Gmail API
+                                       → applies blacklist (rules, no LLM)
+                                       → writes /workspace/email-digest.json
+
+  Jimbo reads digest during briefing  → applies TASTE/PRIORITIES/GOALS/INTERESTS
+                                       → deeply reads newsletters (full body, links)
+                                       → presents highlights via sift-digest skill
 ```
 
-### Automated workflow (ADR-010)
+### gmail-helper.py commands
 ```
-04:00  launchd (laptop)     sift-cron.sh: mbsync → classify → push
-07:00  OpenClaw cron (VPS)  Jimbo sends morning briefing via Telegram
-~30m   Heartbeat (VPS)      Jimbo checks for fresh/stale digest
+python3 /workspace/gmail-helper.py fetch --hours 24              # fetch + filter, write digest
+python3 /workspace/gmail-helper.py fetch --hours 48 --no-filter  # bypass blacklist
+python3 /workspace/gmail-helper.py fetch --hours 24 --limit 50   # limit email count
 ```
 
-Laptop produces (needs Gmail creds + local Ollama). VPS consumes (always on, sends Telegram).
-Use OpenClaw's built-in cron/heartbeat for VPS-side scheduling, NOT laptop cron.
-See: https://docs.openclaw.ai/automation/cron-vs-heartbeat
+### Blacklist design
 
-### sift-classify.py flags
-- `--hours N` — look back N hours (default 24)
-- `--all` — ignore date filters, process all emails
-- `--limit N` — max emails to classify
-- `--model MODEL` — Ollama model (default qwen2.5:7b)
+A simple rules-based filter in gmail-helper.py. Two types:
+- **Sender blacklist:** match by email or domain (e.g. `noreply@uber.com`, `@linkedin.com`)
+- **Subject blacklist:** match by phrase (e.g. "your order", "delivery update")
 
-### Classifier design (important)
+Newsletters are NOT blacklisted. Jimbo reads them deeply — extracts links, meaning, events, deals. The blacklist only removes obvious junk (receipts, retail spam, loyalty schemes, social media notifications).
 
-The classifier (Ollama) does the **grunt work** — rough sort into queue/skip. It should NOT apply taste or nuanced judgment. Its job:
-- Always queue: personal replies, events, travel deals, booking updates
-- Always skip: order confirmations, brand marketing, loyalty schemes, spam
-- Use judgment for newsletters: when unsure, queue it and let Jimbo decide
+To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists in `workspace/gmail-helper.py`.
 
-Jimbo does the **thinking** — reads `context/` files (interests, priorities, taste, goals) and applies judgment to decide what to highlight, mention, or skip in the briefing. A weak issue of a normally-good newsletter should still get dropped. A surprisingly good email from an unknown sender should surface.
-
-### Known Issues
-- **mbsync mtime:** mbsync sets file mtime to sync time, not email receive time. The mtime pre-filter uses a 7-day buffer to compensate but first syncs may need `--all`.
-- **Laptop must be awake at 4am:** macOS Power Nap should handle this if plugged in. If on battery, the launchd job may not fire and the 7am briefing will use stale data. The heartbeat catches this.
+### Legacy pipeline (deprecated)
+The old pipeline (mbsync → sift-classify.py → sift-push.sh) is no longer used. Scripts remain in `scripts/` for reference but are marked LEGACY. The old pipeline had issues: 2.5 hour classify time, laptop dependency, broken network check, LLM-classifying-for-LLM redundancy.
 
 ## Context Files
 
-The `context/` directory contains Marvin's personal context — pushed to VPS so Jimbo can read them, and used locally by sift-classify.py. These are NOT hard rules or blocklists. They teach taste and judgment that evolves over time.
+The `context/` directory contains Marvin's personal context — pushed to VPS so Jimbo can read them. These are NOT hard rules or blocklists. They teach taste and judgment that evolves over time.
 
 - `INTERESTS.md` — topics, hobbies, communities (changes slowly)
 - `PRIORITIES.md` — active projects, this week's focus (changes weekly)
@@ -147,8 +151,8 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 - `PREFERENCES.md` — the glue: how Jimbo should combine the above for decisions
 
 **How context flows:**
-- `sift-classify.py` reads INTERESTS + PRIORITIES locally to build the Ollama prompt (classifier sorts)
-- Context files are pushed to VPS workspace so Jimbo can read ALL of them (Jimbo curates with taste + judgment)
+- Context files are pushed to VPS workspace so Jimbo can read them during briefings
+- Jimbo reads ALL context files and applies judgment to decide what to highlight from the email digest
 
 **Deploy:** `./scripts/workspace-push.sh` pushes both context files and workspace brain files (SOUL.md, HEARTBEAT.md) to the VPS in one command.
 
@@ -161,7 +165,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 019).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 022).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.

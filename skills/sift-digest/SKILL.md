@@ -1,10 +1,10 @@
 ---
 name: sift-digest
-description: Read and present the Sift email digest using Marvin's context
+description: Read and present the email digest using Marvin's context — deeply read newsletters
 user-invokable: true
 ---
 
-# Sift Email Digest
+# Email Digest
 
 When the user asks about email, their inbox, or says "check my email", read and present the email digest.
 
@@ -22,87 +22,97 @@ If any context files are missing, proceed without them but mention it.
 ## Loading the digest
 
 1. Read `/workspace/email-digest.json`
-2. If the file does not exist, tell the user: "No email digest found. Run the Sift pipeline from your laptop."
+2. If the file does not exist, tell the user: "No email digest found. Run `python3 /workspace/gmail-helper.py fetch --hours 24` to generate one."
 3. If the file exists, check `generated_at`. If more than 24 hours old, mention the digest is stale.
 
 ## Digest structure
 
+The digest contains raw emails with junk already filtered out by a blacklist. There are NO pre-classifications — you do all the thinking.
+
 ```json
 {
-  "date": "2026-02-17",
+  "date": "2026-02-21",
   "generated_at": "ISO timestamp",
-  "total_items": 18,
+  "total_items": 95,
+  "filtered_count": 55,
   "items": [
     {
-      "id": "msg_abc123",
+      "id": "msg_12hexchars",
+      "gmail_id": "18dfa3b2c1e",
       "date": "ISO timestamp",
       "sender": { "name": "...", "email": "..." },
       "subject": "...",
-      "category": "personal|event|deals|newsletter|tech|local|transactional|health|other",
-      "subcategory": "1-2 word label",
-      "keywords": ["k1", "k2", "k3"],
-      "summary": "1-2 sentence summary",
-      "time_estimate_min": 2,
-      "project_relevance": "spoons|localshout|pomodoro|null",
-      "suggested_action": "queue|skip",
-      "confidence": 0.95,
-      "body_snippet": "First 200 chars",
-      "links": ["https://..."]
+      "body": "full plain text, up to 5000 chars",
+      "body_snippet": "first 200 chars",
+      "links": ["https://..."],
+      "labels": ["INBOX", "CATEGORY_UPDATES"]
     }
   ],
   "stats": {
-    "by_category": { "newsletter": 5, "tech": 3, ... },
-    "by_suggested_action": { "queue": 4, "skip": 10 },
-    "total_queue_time_min": 12
+    "total_fetched": 150,
+    "blacklist_filtered": 55,
+    "items_kept": 95
   }
 }
 ```
 
-## Your job: curate, don't just list
+## Your job: read deeply, curate ruthlessly
 
-The classifier has already done a rough sort (queue/skip). Your job is to apply judgment using the context files. Not everything marked "queue" deserves a highlight, and something marked "skip" might be worth mentioning if it's surprisingly relevant.
+There is no pre-classification. Every item in the digest passed a basic junk filter, but YOU decide what matters. Read each email's full body — especially newsletters — and apply judgment using the context files.
 
-Ask yourself for each queued email:
-- Does this match his current PRIORITIES? (e.g. if LocalShout isn't live, Sentry alerts don't matter)
+For each email, ask yourself:
+- Does this match his current PRIORITIES?
 - Does this match his TASTE? (timely, curated, surprising, actionable, niche > generic, mainstream)
 - Would he regret missing this? That's the real test.
 - Is this time-sensitive? Events, tickets, deals with deadlines — flag these prominently.
 
+### Newsletters deserve deep reading
+
+Don't just skim newsletter subjects. Read the body. Extract:
+- Specific links that connect to Marvin's interests or goals
+- Events, deals, or opportunities with deadlines
+- Surprising or contrarian takes on topics he cares about
+- Tools, resources, or projects relevant to his work
+
+A mediocre issue of a normally-good newsletter should get dropped. A surprisingly good email from an unknown sender should surface.
+
 ## Presentation format
 
 ### 1. Quick stats (always show first)
-- Total emails, digest date
-- Reading time: "~X minutes of reading queued"
-- Brief breakdown by category
+- Total emails fetched, how many filtered by blacklist, how many you're reviewing
+- Digest date and freshness
 
 ### 2. Needs attention NOW (time-sensitive)
 Events, tickets, deals with deadlines, personal replies needing action. These go first because their value drops to zero after the date passes. Include: what, when, where, and price if available.
 
 ### 3. Worth reading
-The best of the queued emails — ones you genuinely think match his interests, priorities, and taste. For each:
+The best emails — ones you genuinely think match his interests, priorities, and taste. For each:
 - Sender and subject
 - Why it's worth reading (1 line — connect it to his interests/goals)
-- Time estimate
-- If project_relevance is set, flag it
+- Key links if relevant
+- If it relates to a project (Spoons, LocalShout, Pomodoro), flag it
 
-Don't just list everything marked "queue". If a queued email is mediocre, demote it or skip it. If a skipped email is genuinely good based on his context, promote it.
+### 4. Newsletter highlights
+For newsletters you read deeply, pull out the best bits:
+- "Dense Discovery #287: great link to [X], relevant to your LocalShout work"
+- "TLDR: OpenAI released [thing] — connects to your AI tooling interest"
+Don't summarize the whole newsletter. Just the parts that matter for Marvin.
 
-### 4. Quick mentions
-Emails that are interesting but not essential. One line each. "Morning Brew has a decent issue today" or "Jack's Flight Club: Zurich £40 return — not amazing."
+### 5. Quick mentions
+Emails that are interesting but not essential. One line each.
 
-### 5. Skipped
-Just the count: "X emails skipped." Don't list them unless asked.
+### 6. Skipped
+Just the count: "X emails skipped (not relevant today)." Don't list them unless asked.
 
-### 6. Themes or surprises (optional)
+### 7. Themes or surprises (optional)
 If you notice patterns ("3 emails about the same event", "lots of AI news today") or something unexpected, mention it briefly.
 
 ## Rules
 
 - Never dump raw JSON
 - Keep it concise — short lines, not paragraphs. The whole briefing should be scannable in under 2 minutes.
-- If the user asks about a specific email, find it and give full details including body_snippet and links
-- If the user asks to drill into a category, filter and show those items
-- Low-confidence classifications (< 0.5): flag as "uncertain"
+- If the user asks about a specific email, find it and give full details including body and links
+- If the user asks to drill into a category or sender, filter and show those items
 - Surprise him sometimes — if something unexpected looks genuinely good, surface it with a note like "this might interest you"
+- Be honest about your judgment — "I think this UnHerd piece is strong" or "this one's borderline" is more useful than listing everything equally
 - When unsure, mention it briefly rather than hiding it
-- Be honest about your judgment — "I think this UnHerd piece is strong" or "this one's borderline" is more useful than just listing everything equally
