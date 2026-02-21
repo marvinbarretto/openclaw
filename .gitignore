@@ -6,6 +6,7 @@ data/sample-maildir/
 data/sift-cron*.log
 data/sift-perf.log
 data/.sift-seen.json
+data/.calendar-tokens.json
 
 # Python
 __pycache__/

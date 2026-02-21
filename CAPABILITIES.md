@@ -21,6 +21,17 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | npm / Node build tools | WORKING | Fixed 2026-02-20 (ADR-016). Astro, webpack, npm install all work. Node 18. |
 | Python scripts | WORKING | Python 3.11 in sandbox, stdlib only |
 
+## Calendar
+
+| Capability | Status | Notes |
+|---|---|---|
+| Read Jimbo's own calendar | READY | Via `calendar-helper.py` in sandbox. Needs setup first. |
+| Read Marvin's shared calendars | READY | Marvin must share calendars with Jimbo's Google account |
+| Create events (Jimbo's calendar) | READY | Always on primary calendar, invites Marvin |
+| Modify/delete Marvin's events | BLOCKED | By design — no update/delete commands exist |
+| Check scheduling conflicts | READY | FreeBusy API across all visible calendars |
+| Calendar in morning briefing | READY | daily-briefing skill includes today's schedule |
+
 ## Email
 
 | Capability | Status | Notes |
@@ -48,6 +59,13 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | `google/gemini-2.5-flash` | WORKING | Daily driver (~$0.78/month). Direct Google AI API. See ADR-015 for setup. |
 | `anthropic/claude-haiku-4.5` | AVAILABLE | Fallback if Gemini quality disappoints (~$2.49/month) |
 
+## MCP Servers
+
+| Server | Status | Notes |
+|---|---|---|
+| Native MCP support | BLOCKED | Not available in OpenClaw v2026.2.12. PR #21530 pending. Revisit on upgrade. (ADR-017) |
+| Community MCP plugins | REJECTED | Violates ADR-008 (no community plugins, supply chain risk) |
+
 ## Security Boundaries
 
 | Boundary | Status | Notes |
@@ -63,7 +81,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | `jimbo-vps` (fine-grained PAT) | 2026-05-18 | Read+write jimbo-workspace |
 | `openclaw-readonly` (fine-grained PAT) | ~2026-04-17 | Read-only Marvin's repos (currently disabled) |
+| Google Calendar refresh token | Non-expiring* | Calendar API access (* if app is published; 7 days if in testing mode) |
 
 ---
 
 *Last updated: 2026-02-20*
+*Calendar section added: 2026-02-20*

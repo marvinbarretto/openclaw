@@ -25,6 +25,9 @@ TELEGRAM_BOT_TOKEN=<bot-token>
 ANTHROPIC_API_KEY=<api-key>
 OPENROUTER_API_KEY=<api-key>
 GOOGLE_AI_API_KEY=<api-key>        # added 2026-02-20
+GOOGLE_CALENDAR_CLIENT_ID=<id>     # added by calendar-setup.sh
+GOOGLE_CALENDAR_CLIENT_SECRET=<secret>
+GOOGLE_CALENDAR_REFRESH_TOKEN=<token>
 ```
 
 ## Config file: `/home/openclaw/.openclaw/openclaw.json`
@@ -161,6 +164,9 @@ These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaul
 | `npm_config_unsafe_perm` | `true` | Suppresses fchown warnings. CHOWN capability is dropped so npm can't change file ownership — this tells it not to try. Packages install correctly either way. |
 | `GIT_CONFIG_GLOBAL` | `/workspace/.gitconfig` | Git config can't live at `/root/.gitconfig` (read-only). Points git to the workspace copy which has `safe.directory = /workspace`. |
 | `JIMBO_GH_TOKEN` | `${JIMBO_GH_TOKEN}` | GitHub PAT for jimbo-workspace repo access. Interpolated from `/opt/openclaw.env`. |
+| `GOOGLE_CALENDAR_CLIENT_ID` | `${GOOGLE_CALENDAR_CLIENT_ID}` | Google Calendar OAuth client ID. Interpolated from `/opt/openclaw.env`. |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` | `${GOOGLE_CALENDAR_CLIENT_SECRET}` | Google Calendar OAuth client secret. Interpolated from `/opt/openclaw.env`. |
+| `GOOGLE_CALENDAR_REFRESH_TOKEN` | `${GOOGLE_CALENDAR_REFRESH_TOKEN}` | Google Calendar OAuth refresh token. Interpolated from `/opt/openclaw.env`. |
 
 **Key insight (ADR-016):** The original "uid mismatch causes fchown errors" diagnosis was misleading. The fchown warnings were always harmless. The real blocker was tools crashing when trying to write to the read-only root filesystem at `$HOME=/root/`. Setting `HOME=/workspace` fixes everything.
 
@@ -172,6 +178,7 @@ These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaul
 | Telegram bot token | VPS `/opt/openclaw.env` | Telegram channel | 2026-02-16 |
 | OpenRouter `openclaw-vps` | VPS `/opt/openclaw.env` | Free/cheap LLM tiers | 2026-02-16 |
 | Google AI `GOOGLE_AI_API_KEY` | VPS `/opt/openclaw.env` | Daily driver (Gemini 2.5 Flash) | 2026-02-20 |
+| Google Calendar OAuth creds | VPS `/opt/openclaw.env` | Calendar API (Jimbo's account) | 2026-02-20 |
 | GitHub fine-grained `openclaw-readonly` | VPS sandbox `docker.env` as `GH_TOKEN` | Read-only access to LocalShout, Spoons, Pomodoro (Zone 2) | 2026-02-16, expires ~60 days |
 | GitHub fine-grained `jimbo-vps` | VPS sandbox `docker.env` as `JIMBO_GH_TOKEN` | Read+write access to `jimbo-workspace` only | 2026-02-17, expires ~90 days |
 
@@ -188,6 +195,14 @@ The GitHub skill lets Jimbo read repos via `gh` CLI inside the Docker sandbox.
 4. Container killed and service restarted for changes to take effect
 
 **Before switching to free model:** Disable GitHub skill by removing `GH_TOKEN` from sandbox env. See ADR-006.
+
+## MCP Servers (ADR-017 — Rejected)
+
+Native MCP support is **not available** in OpenClaw v2026.2.12. The `mcpServers` config key is rejected as unrecognised. Community adapter plugins exist but violate ADR-008 (no community plugins).
+
+**Revisit when:** OpenClaw merges PR #21530 (native MCP client support) and we upgrade.
+
+See `decisions/017-mcp-server-integration.md` for full investigation and lessons learned.
 
 ## Notes
 

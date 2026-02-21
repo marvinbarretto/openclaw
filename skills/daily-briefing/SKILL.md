@@ -21,23 +21,28 @@ Read Marvin's context to understand what matters today:
 - Today's date and day of the week
 - Brief, friendly greeting (match the tone in SOUL.md)
 
-### 2. Anything time-sensitive from email
+### 2. Today's schedule
+- Run `python3 /workspace/calendar-helper.py list-events --days 1` in the sandbox
+- If it works: show today's events in chronological order. Flag anything in the next 2 hours. Suppress routine recurring meetings — just mention the count.
+- If it fails or the script doesn't exist: skip this section silently (calendar may not be set up yet)
+
+### 3. Anything time-sensitive from email
 - Read `/workspace/email-digest.json`
 - If fresh (< 24h): scan for events, tickets, deadlines, personal replies needing action. Call these out first — even before the stats.
 - If stale: "Your email digest is from [date] — might be outdated"
 - If missing: "No email digest today"
 
-### 3. Email quick stats
+### 4. Email quick stats
 - Total emails, reading time, how many queued vs skipped
 - Mention any standout emails: "There's a good Product Hunt issue and an Anjuna event worth looking at"
 - Keep to 2-3 lines. Say "ask me about email for the full rundown" for details.
 
-### 4. Priority reminders
+### 5. Priority reminders
 - Check PRIORITIES.md for anything due or active
 - "You mentioned chasing Daniel about the DisplayLink fix" or "YNAB setup is on your list"
 - Only mention 1-2 things, not the whole list
 
-### 5. Context freshness
+### 6. Context freshness
 - Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
 - If PRIORITIES is more than 10 days old, nudge: "Your priorities file is [N] days old — worth a quick review?"
 - If GOALS is more than 45 days old, nudge: "Your goals file hasn't been updated in [N] days"
@@ -45,7 +50,7 @@ Read Marvin's context to understand what matters today:
 - Only mention stale files, skip this section if everything is fresh
 - Keep it to one line per stale file — this is a nudge, not a nag
 
-### 6. Heartbeat tasks
+### 7. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
 - If there are pending checks, mention briefly
 - If nothing due, skip this section
@@ -56,6 +61,8 @@ Keep the entire briefing under 15 lines. Scannable in 30 seconds. Example:
 
 ```
 Morning, Marvin. It's Thursday 20 Feb.
+
+Schedule: Dentist at 10:30, then clear until a Spoons standup at 16:00.
 
 Heads up: There's an Anjuna fabric event — tickets might go fast.
 
