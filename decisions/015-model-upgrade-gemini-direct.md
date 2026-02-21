@@ -94,3 +94,18 @@ Added "Output Rules" section to SOUL.md on VPS telling Jimbo to never show his w
 - **Gemini thinking leak:** reasoning tokens appear in Telegram output. Cosmetic issue — quality is good. Parked for now.
 - Need to verify classifier improvement by running on same batch before/after (not yet done)
 - Need to monitor Gemini briefing quality over next few days — fallback to Claude Haiku if needed
+
+## Rate Limits (observed 2026-02-20)
+
+Hit `429 RESOURCE_EXHAUSTED` errors — `GenerateContentPaidTierInputTokensPerModelPerMinute` quota exceeded (1M tokens/min). Saw 1.65M peak TPM, 39 RPD.
+
+**Root cause:** The `GOOGLE_AI_API_KEY` was shared with another project ("Watford Events") under the same Google Cloud project. The other app's traffic consumed most of the per-minute token quota, leaving insufficient headroom for Jimbo.
+
+**Lesson:** Always use a dedicated API key per project/application. Google AI rate limits are per-project, not per-key — but separate projects get separate quotas.
+
+**TODO:**
+- [ ] Create a dedicated Google Cloud project for OpenClaw/Jimbo
+- [ ] Generate a new API key under that project
+- [ ] Update `/opt/openclaw.env` on VPS with the new key
+- [ ] Restart openclaw service
+- [ ] Restrict the new key to VPS IP (167.99.206.214) via Google Cloud Console API key restrictions
