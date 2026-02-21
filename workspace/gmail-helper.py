@@ -35,8 +35,10 @@ import urllib.request
 
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-TOKEN_CACHE = "/workspace/.gmail-access-token.json"
-OUTPUT_PATH = "/workspace/email-digest.json"
+# Write output next to this script (works in sandbox /workspace/ and on laptop)
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+TOKEN_CACHE = os.path.join(_script_dir, ".gmail-access-token.json")
+OUTPUT_PATH = os.path.join(_script_dir, "email-digest.json")
 MAX_BODY_LENGTH = 5000
 SNIPPET_LENGTH = 200
 
@@ -61,6 +63,8 @@ SENDER_BLACKLIST = [
     # Social media notifications
     "@linkedin.com", "@facebookmail.com",
     "@info.nextdoor.com", "@twitter.com", "@x.com",
+    # GitHub notifications
+    "notifications@github.com",
     # Generic noreply / account stuff
     "no-reply@accounts.google.com",
     "noreply@notify.google.com",
