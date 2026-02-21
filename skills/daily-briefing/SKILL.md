@@ -21,10 +21,16 @@ Read Marvin's context to understand what matters today:
 - Today's date and day of the week
 - Brief, friendly greeting (match the tone in SOUL.md)
 
-### 2. Today's schedule
+### 2. Today's schedule + day plan proposal
 - Run `python3 /workspace/calendar-helper.py list-events --days 1` in the sandbox
-- If it works: show today's events in chronological order. Flag anything in the next 2 hours. Suppress routine recurring meetings — just mention the count.
+- If it works: show today's **fixed** events (non-suggestion calendar items) in chronological order. Flag anything in the next 2 hours. Suppress routine recurring meetings — just mention the count.
 - If it fails or the script doesn't exist: skip this section silently (calendar may not be set up yet)
+- **Then propose a day plan.** Read the day-planner skill (`skills/day-planner/SKILL.md`) for the full logic. In short:
+  - Identify free gaps (30+ minutes) between fixed events
+  - Cross-reference with email digest, PRIORITIES, GOALS, INTERESTS
+  - Suggest 3-5 activities for those gaps with emoji prefixes
+  - End with "Anything you'd swap or skip?" to invite negotiation
+- This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response. See the day-planner skill for the negotiation flow and event creation rules.
 
 ### 3. Anything time-sensitive from email
 - Read `/workspace/email-digest.json`
@@ -57,22 +63,26 @@ Read Marvin's context to understand what matters today:
 
 ## Presentation format
 
-Keep the entire briefing under 15 lines. Scannable in 30 seconds. Example:
+Keep the briefing concise — the day plan proposal adds a few lines but the total should still be scannable in under a minute. Example:
 
 ```
 Morning, Marvin. It's Thursday 20 Feb.
 
-Schedule: Dentist at 10:30, then clear until a Spoons standup at 16:00.
+Fixed: Dentist at 10:30, Spoons standup at 16:00.
 
-Heads up: There's an Anjuna fabric event — tickets might go fast.
+I'd suggest:
+  🔨 09:00-10:00 — Spoons PR review (4 days overdue)
+  📧 11:30-12:00 — Chase Daniel about DisplayLink
+  🎯 14:00-15:30 — LocalShout: plan auth flow
+  💰 15:30-16:00 — YNAB setup (keeps slipping)
 
-Email: 145 messages overnight, ~25 min of reading queued. Standouts: strong UnHerd piece, Product Hunt daily, and a Watford FC ticket alert.
+Anything you'd swap or skip?
 
-Priorities: DisplayLink fix still has an action on you. YNAB setup ongoing.
+Heads up: Anjuna fabric event — tickets might go fast.
+
+Email: 145 messages overnight, ~25 min queued. Standouts: strong UnHerd piece, Watford FC ticket alert.
 
 Heartbeat: All clear — digest is fresh, tokens valid.
-
-Ask me about email for the full rundown.
 ```
 
 ## Rules

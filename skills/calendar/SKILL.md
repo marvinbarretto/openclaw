@@ -47,7 +47,49 @@ python3 /workspace/calendar-helper.py create-event \
   --end 2026-02-21T15:30:00 \
   --attendee marvin@example.com
 ```
-Creates an event on Jimbo's primary calendar only. Optional `--description` and `--attendee` flags.
+Creates an event on Jimbo's primary calendar by default. Optional `--description`, `--attendee`, and `--calendar-id` flags. Use `--calendar-id` to target the suggestions calendar.
+
+### Create calendar (one-time setup)
+```bash
+python3 /workspace/calendar-helper.py create-calendar --summary "Jimbo Suggestions"
+```
+Creates a new secondary calendar. Used once to set up the suggestions calendar.
+
+### Share calendar (one-time setup)
+```bash
+python3 /workspace/calendar-helper.py share-calendar --calendar-id CALENDAR_ID --email marvin@example.com
+```
+Shares a calendar with another user (reader access by default). Optional `--role` flag.
+
+## Suggestions calendar
+
+Jimbo has a dedicated "Jimbo Suggestions" calendar for proactive day planning. This is separate from Jimbo's primary calendar.
+
+- **Calendar ID:** _(set after one-time setup — run `list-calendars` to find it)_
+- **Purpose:** Recommendations, not commitments. Marvin sees these alongside real events but can ignore them.
+- **Visual distinction:** All suggestion events use emoji prefixes (see day-planner skill for the convention).
+- **Shared with Marvin:** Reader access so suggestions appear on his Google Calendar automatically.
+
+### Event naming convention (suggestions calendar only)
+
+Prefix with emoji category:
+- `🔨` Project work — `🔨 Spoons: review open PRs`
+- `📧` Email action — `📧 Chase Daniel about DisplayLink`
+- `🎯` Priority item — `🎯 LocalShout: plan auth flow`
+- `🎵` Event/gig — `🎵 Six Nations: England vs France`
+- `💰` Finance — `💰 YNAB setup`
+- `🏃` Health — `🏃 Gym session`
+- `🎲` Wildcard — `🎲 Check out that Product Hunt tool`
+
+### One-time setup commands
+
+```bash
+# Create the suggestions calendar
+python3 /workspace/calendar-helper.py create-calendar --summary "Jimbo Suggestions" --description "Proactive suggestions from Jimbo"
+
+# Share it with Marvin (reader access)
+python3 /workspace/calendar-helper.py share-calendar --calendar-id CALENDAR_ID --email marvin@example.com
+```
 
 ## Rules
 
@@ -55,17 +97,20 @@ Creates an event on Jimbo's primary calendar only. Optional `--description` and 
 
 2. **Always invite Marvin.** Use `--attendee` with Marvin's email when creating events. Jimbo owns the calendar but events are for Marvin.
 
-3. **Never modify shared calendars.** The `create-event` command only writes to Jimbo's primary calendar. There are no update or delete commands. This is by design.
+3. **Never modify shared calendars.** There are no update or delete commands. This is by design.
 
-4. **Use Europe/London timezone.** All times are in `Europe/London` by default. If Marvin mentions a different timezone, convert before passing to the script.
+4. **Use the right calendar.** Explicit events and reminders go on the primary calendar. Proactive suggestions go on the suggestions calendar using `--calendar-id`.
 
-5. **Be specific with times.** Always use ISO 8601 format: `2026-02-20T14:00:00`. Don't guess times — ask Marvin if unclear.
+5. **Use Europe/London timezone.** All times are in `Europe/London` by default. If Marvin mentions a different timezone, convert before passing to the script.
+
+6. **Be specific with times.** Always use ISO 8601 format: `2026-02-20T14:00:00`. Don't guess times — ask Marvin if unclear.
 
 ## When to create events
 
 - **Time-sensitive emails:** If the email digest mentions an event, ticket sale, or deadline, offer to add it to the calendar.
 - **Deadlines from PRIORITIES.md:** If something has a due date, offer to create a reminder.
 - **Explicit requests:** "Remind me on Friday at 3pm to..." → create an event.
+- **Day planning suggestions:** See the day-planner skill. These always go on the suggestions calendar.
 - **Don't auto-create** unless asked. Always suggest first, let Marvin confirm.
 
 ## Presenting calendar information

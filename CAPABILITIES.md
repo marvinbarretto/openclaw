@@ -27,10 +27,12 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Read Jimbo's own calendar | READY | Via `calendar-helper.py` in sandbox. Needs setup first. |
 | Read Marvin's shared calendars | READY | Marvin must share calendars with Jimbo's Google account |
-| Create events (Jimbo's calendar) | READY | Always on primary calendar, invites Marvin |
+| Create events (Jimbo's calendar) | READY | Primary calendar or suggestions calendar, invites Marvin |
+| Suggestions calendar | READY | "Jimbo Suggestions" — proactive day planning events. Needs one-time setup. |
+| Proactive day planning | READY | Morning negotiation + heartbeat nudges via day-planner skill (ADR-019) |
 | Modify/delete Marvin's events | BLOCKED | By design — no update/delete commands exist |
 | Check scheduling conflicts | READY | FreeBusy API across all visible calendars |
-| Calendar in morning briefing | READY | daily-briefing skill includes today's schedule |
+| Calendar in morning briefing | READY | daily-briefing skill includes today's schedule + day plan proposal |
 
 ## Email
 
@@ -49,6 +51,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
 | Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
 | Heartbeat / self-monitoring | NOT STARTED | HEARTBEAT.md planned |
+| Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
 | Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
 
 ## VPS Model
@@ -85,5 +88,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-20*
-*Calendar section added: 2026-02-20*
+*Last updated: 2026-02-21*
+*Day planner / suggestions calendar added: 2026-02-21*

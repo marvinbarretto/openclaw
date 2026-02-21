@@ -17,6 +17,8 @@ Usage:
     python3 calendar-helper.py check-conflicts --start 2026-02-20T14:00:00 --end 2026-02-20T15:00:00
     python3 calendar-helper.py create-event --summary "Review PRs" --start 2026-02-21T15:00:00 --end 2026-02-21T15:30:00
     python3 calendar-helper.py create-event --summary "Lunch" --start 2026-02-21T12:00:00 --end 2026-02-21T13:00:00 --attendee marvin@example.com
+    python3 calendar-helper.py create-calendar --summary "Jimbo Suggestions"
+    python3 calendar-helper.py share-calendar --calendar-id CALENDAR_ID --email marvin@example.com
 """
 
 import argparse
@@ -209,7 +211,7 @@ def cmd_check_conflicts(access_token, args):
 
 
 def cmd_create_event(access_token, args):
-    """Create an event on Jimbo's primary calendar only."""
+    """Create an event on a specified calendar (defaults to primary)."""
     event = {
         "summary": args.summary,
         "start": {
@@ -234,8 +236,10 @@ def cmd_create_event(access_token, args):
     if args.attendee:
         event["attendees"] = [{"email": args.attendee}]
 
-    # Always create on primary calendar only — never on shared calendars
-    result = api_request(access_token, "calendars/primary/events", method="POST", body=event)
+    # Create on specified calendar, or primary by default
+    cal_id = args.calendar_id if args.calendar_id else "primary"
+    encoded_cal = urllib.parse.quote(cal_id, safe="")
+    result = api_request(access_token, f"calendars/{encoded_cal}/events", method="POST", body=event)
 
     output = {
         "created": True,
@@ -257,6 +261,44 @@ def cmd_subscribe(access_token, args):
         "id": result.get("id", ""),
         "summary": result.get("summary", "(no name)"),
         "access_role": result.get("accessRole", "unknown"),
+    }
+    print(json.dumps(output, indent=2))
+
+
+def cmd_create_calendar(access_token, args):
+    """Create a new secondary calendar."""
+    body = {
+        "summary": args.summary,
+        "timeZone": DEFAULT_TZ,
+    }
+    if args.description:
+        body["description"] = args.description
+
+    result = api_request(access_token, "calendars", method="POST", body=body)
+    output = {
+        "created": True,
+        "id": result.get("id", ""),
+        "summary": result.get("summary", ""),
+    }
+    print(json.dumps(output, indent=2))
+
+
+def cmd_share_calendar(access_token, args):
+    """Share a calendar with another user (reader access)."""
+    encoded_id = urllib.parse.quote(args.calendar_id, safe="")
+    body = {
+        "role": args.role,
+        "scope": {
+            "type": "user",
+            "value": args.email,
+        },
+    }
+    result = api_request(access_token, f"calendars/{encoded_id}/acl", method="POST", body=body)
+    output = {
+        "shared": True,
+        "calendar_id": args.calendar_id,
+        "email": args.email,
+        "role": result.get("role", ""),
     }
     print(json.dumps(output, indent=2))
 
@@ -285,10 +327,22 @@ def main():
     ce.add_argument("--end", required=True, help="End time (ISO 8601)")
     ce.add_argument("--description", default=None, help="Event description")
     ce.add_argument("--attendee", default=None, help="Email address to invite")
+    ce.add_argument("--calendar-id", default=None, help="Target calendar ID (default: primary)")
 
     # subscribe
     sub = subparsers.add_parser("subscribe", help="Subscribe to a shared calendar")
     sub.add_argument("--calendar-id", required=True, help="Calendar ID (usually an email address)")
+
+    # create-calendar
+    ccal = subparsers.add_parser("create-calendar", help="Create a new secondary calendar")
+    ccal.add_argument("--summary", required=True, help="Calendar name")
+    ccal.add_argument("--description", default=None, help="Calendar description")
+
+    # share-calendar
+    sc = subparsers.add_parser("share-calendar", help="Share a calendar with another user")
+    sc.add_argument("--calendar-id", required=True, help="Calendar ID to share")
+    sc.add_argument("--email", required=True, help="Email address to share with")
+    sc.add_argument("--role", default="reader", help="Access role: reader (default) or writer")
 
     args = parser.parse_args()
 
@@ -305,6 +359,8 @@ def main():
         "check-conflicts": cmd_check_conflicts,
         "create-event": cmd_create_event,
         "subscribe": cmd_subscribe,
+        "create-calendar": cmd_create_calendar,
+        "share-calendar": cmd_share_calendar,
     }
     commands[args.command](access_token, args)
 
