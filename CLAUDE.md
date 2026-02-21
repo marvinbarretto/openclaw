@@ -32,9 +32,9 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-015) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades
+decisions/        ADRs (001-019) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh
-skills/           Custom OpenClaw skills (sift-digest, daily-briefing)
+skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide)
 workspace/        Jimbo's brain files that WE maintain (SOUL.md, HEARTBEAT.md). Deploy via workspace-push.sh.
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
@@ -161,7 +161,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 015).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 019).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
