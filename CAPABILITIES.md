@@ -46,6 +46,21 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | LLM email classification | REMOVED | Redundant — Jimbo reads raw emails directly (ADR-022) |
 | Old Sift pipeline (laptop) | DEPRECATED | mbsync + Ollama + sift-push.sh no longer needed |
 
+## Notes Vault
+
+| Capability | Status | Notes |
+|---|---|---|
+| Google Tasks dump | WORKING | `tasks-dump.py` — fetches all tasks via Tasks API |
+| Tasks ingest to vault | WORKING | `ingest-tasks.py` — tasks-dump.json → vault inbox markdown |
+| Keep ingest to vault | WORKING | `ingest-keep.py` — Google Takeout JSON → vault inbox markdown |
+| LLM batch classification | WORKING | `process-inbox.py` — Claude Haiku classifies inbox → notes/needs-context/archive |
+| Vault browsing (Obsidian) | WORKING | Point Obsidian at `data/vault/`, frontmatter compatible |
+| Classification patterns | WORKING | `context/PATTERNS.md` — learned from review sessions, improves classification |
+| Mobile review queue | NOT STARTED | ADR-024 — needs personal website (Vercel/Cloudflare TBD) |
+| Daily ingest from Tasks API | NOT STARTED | ADR-023 Phase C — `tasks-helper.py` on VPS |
+| Jimbo vault skill | NOT STARTED | ADR-023 Phase C — vault queries + triage via Telegram |
+| Tasks read-write scope | READY | `google-auth.py` updated with `tasks.readonly`. Upgrade to `tasks` for mark-complete. |
+
 ## Autonomy
 
 | Capability | Status | Notes |
@@ -91,5 +106,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-21*
-*Gmail API migration (ADR-022): 2026-02-21*
+*Last updated: 2026-02-22*
+*Notes vault pipeline (ADR-023, ADR-024): 2026-02-22*

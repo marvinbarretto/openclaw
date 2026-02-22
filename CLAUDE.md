@@ -16,7 +16,8 @@ Marvin Barretto. Projects: Spoons (pub check-in app, Angular/Firebase/Capacitor)
 Laptop (MacBook Air 24GB)
   ├── This repo (openclaw/)
   ├── Ollama (qwen2.5:7b, qwen2.5-coder:14b)
-  └── google-auth.py — one-time OAuth for Calendar + Gmail scopes
+  ├── google-auth.py — one-time OAuth for Calendar + Gmail + Tasks scopes
+  └── Notes vault pipeline (ingest → process → review)
 
 VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   ├── OpenClaw v2026.2.12 (Node 22, systemd, openclaw user)
@@ -35,22 +36,22 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-022) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration
-scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh
+decisions/        ADRs (001-024) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue
+scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide)
 workspace/        Jimbo's brain files that WE maintain (SOUL.md, HEARTBEAT.md). Deploy via workspace-push.sh.
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
 sandbox/          Custom Docker image Dockerfile
-data/             Email digest output + feedback files (gitignored)
+data/             Email digest output + feedback files + vault (all gitignored)
 notes/            Brain dumps
 ```
 
 ## Key Files
 
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
-- `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail read-only scopes (replaces calendar-auth.py)
+- `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
 - `scripts/sift-classify.py` — **LEGACY** Sift pipeline. Replaced by gmail-helper.py (ADR-022).
 - `scripts/sift-cron.sh` — **LEGACY** Automated pipeline. No longer needed — gmail-helper.py runs in sandbox.
 - `scripts/sift-push.sh` — **LEGACY** Rsyncs email-digest.json to VPS. No longer needed.
@@ -70,6 +71,11 @@ notes/            Brain dumps
 - `context/TASTE.md` — What "good" looks like, what bores him
 - `context/GOALS.md` — Longer-term ambitions (changes monthly)
 - `context/PREFERENCES.md` — How to combine context files for decision-making
+- `context/PATTERNS.md` — Learned patterns from note review sessions (living document)
+- `scripts/tasks-dump.py` — Dumps all Google Tasks to JSON via Tasks API
+- `scripts/ingest-tasks.py` — Converts tasks-dump.json → vault inbox markdown files
+- `scripts/ingest-keep.py` — Converts Google Keep JSON export → vault inbox markdown files
+- `scripts/process-inbox.py` — LLM batch classifier: inbox → notes/needs-context/archive (uses Claude Haiku)
 
 ## Security Model (Critical — Read Before Changing)
 
@@ -140,6 +146,36 @@ To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists
 ### Legacy pipeline (deprecated)
 The old pipeline (mbsync → sift-classify.py → sift-push.sh) is no longer used. Scripts remain in `scripts/` for reference but are marked LEGACY. The old pipeline had issues: 2.5 hour classify time, laptop dependency, broken network check, LLM-classifying-for-LLM redundancy.
 
+## Notes Vault Pipeline (ADR-023, ADR-024)
+
+### How it works
+
+~13,000 scattered notes from Google Tasks and Google Keep, processed into a structured vault.
+
+```
+data/vault/
+  ├── notes/          — processed notes (markdown + YAML frontmatter)
+  ├── inbox/          — raw unprocessed items awaiting triage
+  ├── needs-context/  — items the LLM couldn't classify
+  └── archive/        — stale, done, or discarded items
+```
+
+### Pipeline
+
+```
+1. Export:     tasks-dump.py → data/tasks-dump.json
+2. Ingest:     ingest-tasks.py / ingest-keep.py → data/vault/inbox/
+3. Classify:   process-inbox.py → notes/ | needs-context/ | archive/
+4. Review:     (ADR-024, not yet built) mobile web UI for needs-context items
+```
+
+### Key details
+- All scripts are stdlib Python only (no pip). process-inbox.py calls Claude Haiku API.
+- Vault lives in `data/vault/` (gitignored — contains personal notes, never commit)
+- `context/PATTERNS.md` captures classification patterns learned from review sessions
+- Notes use 8 types: bookmark, recipe, idea, task, reference, travel, media, checklist
+- Google Tasks scope upgraded: `tasks.readonly` added to google-auth.py
+
 ## Context Files
 
 The `context/` directory contains Marvin's personal context — pushed to VPS so Jimbo can read them. These are NOT hard rules or blocklists. They teach taste and judgment that evolves over time.
@@ -161,11 +197,14 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 - `data/email-digest.json` — classified email output (contains email content, never commit)
 - `data/feedback-*.json` — per-batch email feedback from Marvin (contains email content, never commit)
 - `data/sample-maildir/` — test email fixtures
+- `data/vault/` — notes vault (personal notes, never commit)
+- `data/tasks-dump.json` — raw Google Tasks dump (personal data, never commit)
+- `data/export/` — Google Takeout exports (Keep, etc.)
 - `~/Mail/gmail/INBOX` — full Gmail Maildir (on laptop, not in repo)
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 022).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 024).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
@@ -200,7 +239,7 @@ See `setup/vps-automation.md` for full cheatsheet and explanation of why simpler
 
 ## What NOT to Do
 
-- Don't commit email content or API keys
+- Don't commit email content, vault notes, or API keys
 - Don't install ClawHub community skills without full source review (see ADR-008)
 - Don't put Gmail credentials on the VPS
 - Don't use `openclaw config set` (writes to wrong config path — edit openclaw.json directly)

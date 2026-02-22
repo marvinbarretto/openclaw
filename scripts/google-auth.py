@@ -29,7 +29,7 @@ import webbrowser
 
 CALLBACK_PORT = 8090
 REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}"
-SCOPES = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly"
+SCOPES = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/tasks.readonly"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -83,7 +83,7 @@ def main():
     # Start callback server
     server = http.server.HTTPServer(("localhost", CALLBACK_PORT), CallbackHandler)
     print(f"Opening browser for Google consent...")
-    print(f"Scopes: Calendar (read/write) + Gmail (read-only)")
+    print(f"Scopes: Calendar (read/write) + Gmail (read-only) + Tasks (read-only)")
     print(f"(If the browser doesn't open, visit: {consent_url})")
     webbrowser.open(consent_url)
 

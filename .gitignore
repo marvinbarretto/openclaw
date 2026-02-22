@@ -1,3 +1,15 @@
+# Vault (personal notes — never commit)
+data/vault/
+
+# Google Takeout exports (personal data)
+data/export/
+data/tasks-dump.json
+
+# OAuth tokens (credentials — never commit)
+data/.gmail-access-token.json
+data/.google-tokens.json
+data/.calendar-tokens.json
+
 # Email digest data (contains email content — never commit)
 data/email-digest.json
 data/email-backlog-*.json
@@ -6,7 +18,9 @@ data/sample-maildir/
 data/sift-cron*.log
 data/sift-perf.log
 data/.sift-seen.json
-data/.calendar-tokens.json
+
+# Firebase
+firebase-debug.log
 
 # Python
 __pycache__/
