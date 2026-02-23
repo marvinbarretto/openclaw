@@ -52,6 +52,21 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 - Some notes serve two purposes at once — e.g. "HK eye" = trip planning (travel) motivated by a health need (health).
 - Tag with both dimensions rather than forcing a single type. Use the primary purpose as the type and the secondary as a tag (e.g. type: travel, tags: health, hong-kong, eyes).
 
+## Recurring nudges / habit triggers
+
+- Google Keep had "recurring notes" which Google migrated into Tasks. These are not real tasks — they're periodic self-prompts like "exercise this week?", "any walks?", "try cooking X again".
+- Recipes with ratings (e.g. "Beef Massaman 10/10", "Jambalaya 9/10") are also recurring Keep notes — nudges to cook a dish again. These stay in Keep as reference; archive from the vault.
+- These should be archived as stale. The nudge pattern belongs in `context/PRIORITIES.md` under "Recurring Nudges", not in the vault.
+- Recognise them by: question format ("any bargains?", "weather good for?"), weekly planning language, or recipe names with ratings.
+
+## Agent self-awareness gaps
+
+- Jimbo doesn't reliably check his own filesystem before claiming he hasn't built something.
+- Skills teach him *how* to do things, but don't make him *aware* of what he's already done.
+- Fix: SOUL.md needs explicit "Your Creations" sections listing what exists and where, with instructions to check before answering.
+- Session continuity: OpenClaw sessions are long-lived (heartbeat keeps them alive, compaction compresses context). Deleting the session file + restarting is the only reliable way to force a fresh start.
+- After updating SOUL.md, always delete session + restart so the old context doesn't override the new instructions.
+
 ## Duplicate/related notes
 
 - Marvin sometimes creates multiple notes about the same thing (e.g. "Dopesic" and "Dopesic painkiller").
