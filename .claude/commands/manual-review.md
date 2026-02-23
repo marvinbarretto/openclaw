@@ -138,4 +138,14 @@ After processing all notes, print:
 - X skipped
 ```
 
-If you notice recurring patterns across 2+ notes not already in PATTERNS.md, mention them. Do NOT edit PATTERNS.md automatically.
+## PATTERNS.md Update
+
+After the summary, review the decisions made in this session and check for recurring patterns across 2+ notes that aren't already in `context/PATTERNS.md`.
+
+If you spot new patterns:
+1. Read the current `context/PATTERNS.md`
+2. Propose specific edits — show exactly what you'd add or change, as a diff or quoted block
+3. Ask the user to approve or reject each proposed change
+4. Only write to PATTERNS.md after explicit approval
+
+This is critical — PATTERNS.md is the feedback loop that makes future classification better. If patterns aren't captured, the same mistakes repeat.
