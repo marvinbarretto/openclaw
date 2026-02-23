@@ -1,35 +1,56 @@
 ---
-description: Interactively review needs-context vault notes — triage, classify, and move them
-argument-hint: "[count] [oldest|newest|random]"
+description: Interactively review vault notes — classify inbox items or triage needs-context items
+argument-hint: "[count] [inbox|needs-context] [oldest|newest|random]"
 ---
 
-# Manual Review of Needs-Context Vault Notes
+# Manual Review of Vault Notes
 
-You are running an interactive review session for Marvin's personal notes vault. Notes in `data/vault/needs-context/` are items that the LLM classifier couldn't confidently categorise. Marvin will give you context so they can be properly classified and filed.
+You are running an interactive review session for Marvin's personal notes vault.
+
+Two sources:
+- **inbox** (`data/vault/inbox/`) — unprocessed notes. You suggest a classification for each one; Marvin approves, overrides, or archives.
+- **needs-context** (`data/vault/needs-context/`) — items a previous classifier couldn't handle. Marvin provides the missing context.
 
 ## Setup
 
 1. Parse arguments from `$ARGUMENTS`:
    - First argument: batch size (default 5)
-   - Second argument: sort order — `oldest` (default), `newest`, or `random`
-   - Examples: `10 newest`, `5`, `20 random`, empty = `10 oldest`
+   - Second argument: source — `inbox` or `needs-context` (default `needs-context`)
+   - Third argument: sort order — `oldest` (default), `newest`, or `random`
+   - Examples: `10 inbox newest`, `5 needs-context`, `20 inbox random`, empty = `5 needs-context oldest`
 2. Read `context/PATTERNS.md` — this tells you how Marvin's notes actually work
-3. List files in `data/vault/needs-context/`, read up to N of them in the chosen sort order
+3. List files in the chosen source directory, read up to N of them in the chosen sort order
 4. If there are fewer files than requested, just use what's there
 
 ## Present the Batch
 
-Show a numbered markdown table with all notes in the batch:
+Show a numbered markdown table with all notes in the batch.
+
+**For needs-context items:**
 
 | # | Title | Source | Created | Preview |
 |---|-------|--------|---------|---------|
+
+**For inbox items, add a Suggested column:**
+
+| # | Title | Source | Created | Preview | Suggested |
+|---|-------|--------|---------|---------|-----------|
 
 - **Title**: from frontmatter `title` field
 - **Source**: from frontmatter `source` field
 - **Created**: from frontmatter `created` field, formatted as `YYYY-MM-DD (Xd ago)` — e.g. `2025-09-14 (527d ago)`
 - **Preview**: first 60 chars of the body (after frontmatter), trimmed
+- **Suggested** (inbox only): your best-guess classification — e.g. `media [tv, drama]` or `archive (stale)` or `? (unclear)`
+
+For inbox items, use PATTERNS.md, the type taxonomy, and the note content to make your best guess. Mark uncertain ones with `?`. This gives Marvin a starting point — he can approve with a thumbs up or override.
 
 After the table, wait for the user's response. They will typically give feedback for multiple notes at once.
+
+**Response shortcuts for inbox items:**
+- Approving suggestions: "1,3,5 ok" or "all ok except 4" — accept the suggested classification
+- Overriding: "4: media, tags=documentary,nature" — override suggestion for specific notes
+- Archiving: "2,7 archive stale" — archive specific notes
+- Skipping: "6 skip"
 
 ## URL Enrichment
 
@@ -47,7 +68,7 @@ This enrichment is critical for notes that are just a bare URL — the URL IS th
 
 ## Note-by-Note Review
 
-For each note, show:
+For notes that need detailed discussion (user asked a question, said "direct" without details, etc.), show:
 
 ```
 ### Note N: [title]
@@ -68,6 +89,7 @@ Then ask what to do. Adapt to the user's response style:
 - **If they give context conversationally** like "this is a TV show I wanted to watch" — infer the action (that's a direct classify: type=media, tags from context) and confirm before processing
 - **If they say "skip"** — move on, leave the file untouched
 - **If they say "all — archive, stale"** or similar — apply the same action to all remaining notes in the batch
+- **If they approve suggestions** like "all ok" or "1,3,5 ok" — apply the suggested classifications
 
 ## Actions
 
@@ -77,7 +99,7 @@ Update frontmatter: set `type`, `tags` (JSON array), `status` to `active`, `proc
 
 ### Context (add context, leave for reprocessing)
 
-Prepend context text to note body (after frontmatter). Add `review_context` to frontmatter. Leave in `data/vault/needs-context/`.
+Prepend context text to note body (after frontmatter). Add `review_context` to frontmatter. Leave file in its current directory.
 
 ### Archive (move to archive/)
 
@@ -98,7 +120,7 @@ python3 scripts/review_helper.py move <filepath> <dest_dir> '<json_updates>'
 
 Example:
 ```bash
-python3 scripts/review_helper.py move "data/vault/needs-context/dopesic--note_85ded1a.md" "data/vault/notes" '{"type": "media", "tags": ["tv", "drama"], "status": "active", "processed": "2026-02-23"}'
+python3 scripts/review_helper.py move "data/vault/inbox/dopesic--note_85ded1a.md" "data/vault/notes" '{"type": "media", "tags": ["tv", "drama"], "status": "active", "processed": "2026-02-23"}'
 ```
 
 **Context (add context, no move):**
@@ -106,13 +128,10 @@ python3 scripts/review_helper.py move "data/vault/needs-context/dopesic--note_85
 python3 scripts/review_helper.py context <filepath> '<context_text>'
 ```
 
-Example:
-```bash
-python3 scripts/review_helper.py context "data/vault/needs-context/beer--note_b3fdc76.md" "This is about cheap beer prices in China, travel note"
-```
-
 For **direct**: dest_dir is `data/vault/notes`, updates must include type, tags, status=active, processed=today.
 For **archive**: dest_dir is `data/vault/archive`, updates must include status=archived, stale_reason, processed=today.
+
+Note: source directory may be `data/vault/inbox/` or `data/vault/needs-context/` depending on the session source. Use the correct path.
 
 ## Reference: Type Taxonomy
 
