@@ -10,10 +10,10 @@ This is a living document — when understanding changes, update the relevant se
 
 Marvin's notes often serve a hidden purpose — feeding into a specific project. Tag these with `project:<name>`.
 
-- **project:localshout** — venues, event sources, artists, festivals, comedy nights. Anything that could populate LocalShout's event/venue database. Examples: "100 Club", "Bristol Comedy Festival".
+- **project:localshout** — venues, event sources, artists, festivals, comedy nights. Anything that could populate LocalShout's event/venue database. Examples: "100 Club", "Bristol Comedy Festival", "Watford Film Club", "FANE what's on", "Bedford events". URLs to event listing sites (filmclub, fane.co.uk, dice) are LocalShout tasks, not bookmarks — they're sources to integrate.
 - **project:film-planner** — film, TV, show recommendations to watch. Marvin has a separate app (marvinbarretto.github.io/film-planner) for tracking these. Examples: "Dopesic", "The Offer".
-- **project:spoons** — pub-related data, Wetherspoons-specific notes.
-- **project:openclaw** — notes about improving Jimbo or this system.
+- **project:spoons** — pub-related data, Wetherspoons-specific notes. Also gamification ideas (badges, leaderboards, collecting).
+- **project:openclaw** — notes about improving Jimbo or this system. Includes prompts like "interview me about this plan", notes about model orchestration, links to Obsidian/productivity tool approaches.
 
 ## Travel notes
 
@@ -66,6 +66,34 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 - Fix: SOUL.md needs explicit "Your Creations" sections listing what exists and where, with instructions to check before answering.
 - Session continuity: OpenClaw sessions are long-lived (heartbeat keeps them alive, compaction compresses context). Deleting the session file + restarting is the only reliable way to force a fresh start.
 - After updating SOUL.md, always delete session + restart so the old context doesn't override the new instructions.
+
+## Completed tasks
+
+- Many notes are tasks that have already been done. The LLM has no way to know this without being told.
+- Look for signals: notes that describe actions Marvin is already doing (e.g. "help me work through my backlog" when the vault pipeline exists), or notes that match completed work in the repo.
+- Archive with stale_reason "completed", not "stale".
+
+## People as tasks
+
+- Notes with just a person's name (e.g. "Kat!", "Feather table", "Ring Alvin") are usually tasks to contact that person, not passive person records.
+- They often carry hidden context: "Kat" = ask her to test LocalShout. "Feather table" = ask about his table + suggest pool.
+- Tag with `person:<name>` and the relevant project/context if known.
+- If the contact action is old (> 3 months), archive as stale unless there's ongoing relationship value.
+
+## Sequential/related notes
+
+- Some notes only make sense in sequence. "Clean notes off old computer" followed by "Get them off, wipe" — the second refers to the first.
+- When processing, look at adjacent notes (by creation date) for context that might clarify an otherwise opaque note.
+
+## Conversation starters for Jimbo
+
+- Some notes are prompts designed to start a conversation with Jimbo: "interview me relentlessly about this plan", "help me work through my backlog", "be bold with reading and coding in the sandbox".
+- If the conversation has already happened, archive as completed. If not yet done, classify as task with `project:openclaw`.
+
+## "Shape Up" is not fitness
+
+- "Shape Up" by Basecamp is a product development methodology book, not a fitness book. The LLM consistently misclassifies this as health/fitness.
+- More generally: short titles that sound like one domain often belong to another. When uncertain, lean towards needs-context rather than guessing.
 
 ## Duplicate/related notes
 

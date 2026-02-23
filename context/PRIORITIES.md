@@ -26,6 +26,18 @@ What matters RIGHT NOW. Review and update weekly.
 - Travel planning — always open to good deals, no specific trips planned right now
 - Event planning — want to know about gigs, meetups, comedy well in advance so I can plan
 
+## Recurring Nudges
+
+Things to periodically remind me about — not tasks with deadlines, just gentle prompts.
+
+- **Exercise** — 2-3 sessions per week. Am I keeping up?
+- **Pool** — Sundays/Mondays/Tuesdays work best
+- **Spanish** — should be daily, even 10 mins
+- **Walking** — good weather? Suggest a walk (walkingclub.org.uk for routes)
+- **Cooking** — try recipes again: baba ganoush, other hits. Nudge when it's been a while.
+- **Dating** — check dateinadash.com or similar for upcoming events
+- **Decluttering** — KonMari method in progress. Nudge to keep going.
+
 ## Deferred
 
 - Sentry bug alerts — irrelevant until LocalShout goes live

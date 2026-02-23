@@ -46,7 +46,10 @@ NEEDS_CONTEXT_DIR = os.path.join(REPO_ROOT, "data", "vault", "needs-context")
 ARCHIVE_DIR = os.path.join(REPO_ROOT, "data", "vault", "archive")
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-MODEL = "claude-haiku-4-5-20251001"
+ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+
+OLLAMA_API_URL = "http://localhost:11434/api/chat"
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
 # ---------------------------------------------------------------------------
 # Context files (baked in at import time would be too large — read at runtime)
@@ -57,6 +60,7 @@ CONTEXT_FILES = [
     os.path.join(REPO_ROOT, "context", "PRIORITIES.md"),
     os.path.join(REPO_ROOT, "context", "TASTE.md"),
     os.path.join(REPO_ROOT, "context", "GOALS.md"),
+    os.path.join(REPO_ROOT, "context", "PATTERNS.md"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -106,7 +110,15 @@ CLASSIFICATION_RULES = """
 7. If the note has a created date older than 2 years and refers to a specific event or time-sensitive item, it's likely stale.
 8. If a URL is reported as dead (404/timeout), lean towards archiving unless the text content is valuable on its own.
 9. Bare URLs with no context: if the URL is dead, archive. If alive, classify based on the page title.
-10. Use "needs-context" sparingly — only when you genuinely cannot determine what this note is about.
+10. `confidence` — required. A number from 1-10 indicating how confident you are in your classification. Be honest.
+11. If your confidence is 5 or below, set status to "needs-context". It is better to flag something for manual review than to guess wrong.
+12. Recurring nudges/habit triggers (e.g. "plan the week", recipes with ratings like "9/10", questions like "any bargains?") should be archived as stale — these are converted Google Keep recurring notes, not real tasks.
+13. Opaque 2-3 word notes older than 3 months where the meaning is unclear should be set to "needs-context" — don't guess.
+14. URLs to event listing sites (filmclub, fane.co.uk, dice, etc.) are likely project:localshout tasks — sources of events to integrate, not passive bookmarks.
+15. Notes with just a person's name are usually contact tasks ("reach out to X"), not passive person records. Tag with person:<name>.
+16. Notes that look like prompts for an AI conversation ("interview me about", "help me work through") are project:openclaw tasks or completed items.
+17. "Shape Up" is a Basecamp product development book, not a fitness book. Be wary of short titles that sound like one domain but belong to another.
+18. Bare Twitter/X URLs without fetched content MUST go to needs-context — do NOT guess the topic.
 """
 
 # ---------------------------------------------------------------------------
@@ -328,7 +340,8 @@ Return ONLY valid JSON:
   "tags": ["tag1", "tag2"],
   "title": "Clean descriptive title",
   "status": "active",
-  "stale_reason": null
+  "stale_reason": null,
+  "confidence": 8
 }}
 """
 
@@ -359,10 +372,36 @@ def build_user_message(fm, body, url_info=None):
     return '\n'.join(parts)
 
 
+def call_ollama(system_prompt, user_message):
+    """Call Ollama chat API. Returns parsed JSON response or None."""
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "options": {"temperature": 0.1},
+    }).encode()
+
+    req = urllib.request.Request(OLLAMA_API_URL, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read().decode())
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        log(f"  Ollama error: {e}")
+        return None
+
+    text = result.get("message", {}).get("content", "")
+    return _parse_llm_json(text)
+
+
 def call_llm(api_key, system_prompt, user_message):
     """Call Anthropic Messages API. Returns parsed JSON response or None."""
     payload = json.dumps({
-        "model": MODEL,
+        "model": ANTHROPIC_MODEL,
         "max_tokens": 256,
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
@@ -390,7 +429,11 @@ def call_llm(api_key, system_prompt, user_message):
         if block.get("type") == "text":
             text += block["text"]
 
-    # Parse JSON from response — handle markdown fences and trailing commentary
+    return _parse_llm_json(text)
+
+
+def _parse_llm_json(text):
+    """Parse JSON from LLM response — handle markdown fences and trailing commentary."""
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r'^```\w*\n?', '', text)
@@ -457,7 +500,7 @@ def should_process(fm, wave_filter):
 # Processing
 # ---------------------------------------------------------------------------
 
-def process_file(filepath, api_key, system_prompt, dry_run=False):
+def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anthropic'):
     """Process a single inbox file. Returns (destination, classification) or None."""
     with open(filepath) as f:
         content = f.read()
@@ -481,7 +524,10 @@ def process_file(filepath, api_key, system_prompt, dry_run=False):
 
     # Build LLM message
     user_message = build_user_message(fm, body, url_info)
-    result = call_llm(api_key, system_prompt, user_message)
+    if provider == 'ollama':
+        result = call_ollama(system_prompt, user_message)
+    else:
+        result = call_llm(api_key, system_prompt, user_message)
     if result is None:
         return None
 
@@ -497,9 +543,17 @@ def process_file(filepath, api_key, system_prompt, dry_run=False):
     if rtype not in valid_types:
         rtype = 'reference'
 
+    confidence = result.get('confidence', 5)
+    if not isinstance(confidence, (int, float)):
+        confidence = 5
+
     status = result.get('status', 'active')
     if status not in valid_statuses:
         status = 'active'
+
+    # Override: low confidence → needs-context
+    if confidence <= 5 and status != 'archived':
+        status = 'needs-context'
 
     tags = result.get('tags', [])
     if not isinstance(tags, list):
@@ -524,6 +578,7 @@ def process_file(filepath, api_key, system_prompt, dry_run=False):
         'tags': tags,
         'title': title,
         'processed': datetime.date.today().isoformat(),
+        'confidence': int(confidence),
     }
     if stale_reason and status == 'archived':
         updates['stale_reason'] = stale_reason
@@ -588,6 +643,8 @@ def main():
                         help='Max items to process')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show LLM output without moving files')
+    parser.add_argument('--provider', default='anthropic', choices=['anthropic', 'ollama'],
+                        help='LLM provider: anthropic (default) or ollama (local)')
     args = parser.parse_args()
 
     # Validate wave
@@ -595,7 +652,11 @@ def main():
         print("ERROR: --wave must be 1, 2, 3, 4, or all", file=sys.stderr)
         sys.exit(1)
 
-    api_key = get_env("ANTHROPIC_API_KEY")
+    api_key = None
+    if args.provider == 'anthropic':
+        api_key = get_env("ANTHROPIC_API_KEY")
+    else:
+        log(f"Using Ollama ({OLLAMA_MODEL})")
 
     # Load context and build system prompt
     log("Loading context files...")
@@ -662,7 +723,7 @@ def main():
 
         log(f"[{i+1}/{total} {pct}% ETA:{eta_str}] {filename[:60]}")
 
-        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run)
+        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run, provider=args.provider)
         if result is None:
             errors += 1
             log(f"  FAILED — skipping")
@@ -670,7 +731,8 @@ def main():
 
         dest_dir, info = result
         dest_name = os.path.basename(dest_dir)
-        log(f"  → {dest_name}/ type={info.get('type')} tags={info.get('tags')}")
+        conf = info.get('confidence', '?')
+        log(f"  → {dest_name}/ type={info.get('type')} tags={info.get('tags')} confidence={conf}")
 
         if args.dry_run:
             log(f"    title: {info.get('title', '')[:70]}")
