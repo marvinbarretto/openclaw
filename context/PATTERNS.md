@@ -4,7 +4,7 @@ How Marvin's notes actually work. Learned through review sessions with Claude Co
 
 This is a living document — when understanding changes, update the relevant section. Never append contradictory entries; rewrite the old understanding instead.
 
-*Last updated: 2026-02-22*
+*Last updated: 2026-02-23*
 
 ## Projects as destinations
 
@@ -33,6 +33,24 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 
 - Phone numbers with names (e.g. "+15616322662 Isabel") are temporary — usually "call this person" or "add to address book".
 - If the note is old (> 3 months), archive it. The action is stale.
+
+## Bare URL notes
+
+- Many notes are just a URL with no body text — especially Twitter/X links.
+- The URL IS the note. Without fetching it, the note is unclassifiable.
+- During manual review, fetch the URL content (oEmbed for tweets, page title for others) before presenting.
+- During automated classification (`process-inbox.py`), bare URLs should be fetched before sending to the LLM. If the URL is dead, archive. If alive, classify based on the fetched content.
+
+## Research tasks vs bookmarks
+
+- Some single-name notes (e.g. "Paul Rosolie", "James Baldwin", "Scott Adams") are not passive bookmarks — they're active mini research tasks: "spend 10-20 mins learning about this person/topic."
+- Distinguish from media notes: "Dopesic" = watch this show (type: media). "Paul Rosolie" = research this person (type: task, tag: to-research).
+- If the name is a public figure or topic rather than a specific piece of media, lean towards type: task with a `to-research` tag.
+
+## Compound notes
+
+- Some notes serve two purposes at once — e.g. "HK eye" = trip planning (travel) motivated by a health need (health).
+- Tag with both dimensions rather than forcing a single type. Use the primary purpose as the type and the secondary as a tag (e.g. type: travel, tags: health, hong-kong, eyes).
 
 ## Duplicate/related notes
 
