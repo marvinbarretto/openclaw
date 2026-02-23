@@ -116,3 +116,34 @@ Running git on the VPS as root against the workspace requires two things:
 
 - Marvin sometimes creates multiple notes about the same thing (e.g. "Dopesic" and "Dopesic painkiller").
 - These should get the same tags and type. Don't archive one as a duplicate — both may have slightly different context.
+
+## BuzzFeed notes
+
+- Marvin still does some work for BuzzFeed — BuzzFeed notes are NOT automatically stale.
+- Internal tool references (Atlassian/Jira tickets, internal URLs like `bf-island-ui.dev.buzzfeed.io`) may be active work items. Don't archive without context.
+- BuzzFeed article URLs (buzzfeed.com/author/article) may be bookmarks worth keeping.
+- Only archive BuzzFeed notes if they're clearly outdated based on other signals (very old date, completed task language, etc.) — not just because they mention BuzzFeed.
+
+## Single-item shopping/packing lists
+
+- Notes like "milk, fill", "tissues", "shower and hand gel" are often completed shopping errands or packing checklists.
+- If old (> 1 month), archive as completed — the purchase was almost certainly made.
+- Don't classify as "task" — these aren't ongoing tasks, they're one-shot reminders.
+
+## Person nicknames
+
+- Some notes use nicknames or first names that map to specific people: "Silver" = Adam Silver (a friend), "Surath" = a specific person (not a place).
+- When a name appears with an action ("Surath goes Sunday", "Silver lunch"), it's a social plan or task, not a person record.
+- If old (> 3 months), archive as stale — the social event has passed.
+
+## Credentials and secrets in notes
+
+- Some notes contain API keys, AWS credentials, or passwords dumped from Google Keep.
+- These should be archived immediately. Flag to Marvin to rotate the credentials if still active.
+- Never include credential values in classification output or logs.
+
+## Opaque numbers and codes
+
+- Bare numbers like "12", "1520", "108" with no context are almost always unrecoverable.
+- If old (> 1 month), archive as stale. Don't send to needs-context — manual review won't help either.
+- Exception: numbers that look like prices ("45 yen"), dates ("17 v 22" = match score), or phone numbers.

@@ -121,7 +121,9 @@ CLASSIFICATION_RULES = """
 15. Notes with just a person's name are usually contact tasks ("reach out to X"), not passive person records. Tag with person:<name>.
 16. Notes that look like prompts for an AI conversation ("interview me about", "help me work through") are project:openclaw tasks or completed items.
 17. "Shape Up" is a Basecamp product development book, not a fitness book. Be wary of short titles that sound like one domain but belong to another.
-18. Bare Twitter/X URLs without fetched content MUST go to needs-context — do NOT guess the topic.
+18. Bare Twitter/X URLs: if tweet content has been fetched (shown as [Tweet] in the URL info), classify based on the tweet content. If no content was fetched and the URL is marked dead, archive as dead-url. If no content and not marked dead, set to needs-context.
+19. Single-item shopping/packing lists (e.g. "milk", "tissues", "hand gel") older than 1 month should be archived as completed — the purchase was almost certainly made.
+20. Opaque numbers or codes with no context (e.g. "12", "1520") older than 3 months are unrecoverable — archive as stale.
 """
 
 # ---------------------------------------------------------------------------
@@ -260,11 +262,10 @@ def fetch_url_title(url, timeout=5):
         return None, False
 
     # Skip known dead domains
-    dead_domains = ['twitter.com', 'x.com']  # Often block scraping
+    dead_domains = []  # Twitter handled via oEmbed now
     try:
         from urllib.parse import urlparse
         domain = urlparse(url).netloc.lower()
-        # Don't mark twitter as dead — just skip title fetch
         if any(d in domain for d in dead_domains):
             return None, False
     except Exception:
@@ -299,6 +300,75 @@ def fetch_url_title(url, timeout=5):
         return None, True
     except Exception:
         return None, False
+
+
+def fetch_tweet_oembed(url, timeout=5):
+    """Fetch tweet content via Twitter's oEmbed API. Returns tweet text or None."""
+    from urllib.parse import urlparse, quote
+    domain = urlparse(url).netloc.lower()
+    if not any(d in domain for d in ['twitter.com', 'x.com']):
+        return None
+
+    oembed_url = f"https://publish.twitter.com/oembed?url={quote(url, safe='')}"
+    req = urllib.request.Request(oembed_url)
+    req.add_header('User-Agent', 'Mozilla/5.0 (compatible; bot)')
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+            # Strip HTML tags from the tweet HTML to get plain text
+            html_content = data.get('html', '')
+            text = re.sub(r'<[^>]+>', '', html_content).strip()
+            author = data.get('author_name', '')
+            if text:
+                return f"@{author}: {text}" if author else text
+    except Exception:
+        pass
+    return None
+
+
+def note_age_days(fm):
+    """Calculate note age in days from created date. Returns None if unknown."""
+    created = fm.get('created', '')
+    if not created:
+        return None
+    try:
+        created_date = datetime.date.fromisoformat(str(created)[:10])
+        return (datetime.date.today() - created_date).days
+    except (ValueError, TypeError):
+        return None
+
+
+def pre_llm_triage(fm, body):
+    """Apply rule-based triage BEFORE sending to LLM. Returns (status, stale_reason, confidence) or None to proceed normally.
+
+    This catches clear-cut cases that don't need LLM judgment, saving API calls
+    and improving accuracy for patterns the LLM consistently gets wrong.
+    """
+    age = note_age_days(fm)
+    all_text = (fm.get('title', '') + ' ' + body).strip()
+
+    # Rule 1: Opaque numbers/codes older than 90 days → archive
+    # e.g. "12", "1520", "108" — unrecoverable without context
+    if age and age > 90:
+        stripped = re.sub(r'[\s\-\.]+', '', all_text)
+        if stripped.isdigit() and len(stripped) <= 6:
+            return 'archived', 'stale', 10
+
+    # Rule 2: Empty notes → archive
+    if not body.strip() and not fm.get('title', '').strip():
+        return 'archived', 'empty', 10
+
+    # Rule 3: Notes that are ONLY a bare tweet URL with no other content, older than 90 days
+    # These are almost certainly stale — the moment has passed
+    urls = extract_urls(all_text)
+    body_without_urls = re.sub(r'https?://[^\s<>"\')\]]+', '', all_text).strip()
+    if (age and age > 90 and urls and not body_without_urls
+            and any('twitter.com' in u or 'x.com' in u for u in urls)):
+        # Don't auto-archive — still try oEmbed. But if oEmbed fails, archive.
+        pass  # handled in process_file
+
+    return None
 
 
 def extract_urls(text):
@@ -552,7 +622,7 @@ def should_process(fm, wave_filter):
 # Processing
 # ---------------------------------------------------------------------------
 
-def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anthropic'):
+def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anthropic', skip_fetch=False):
     """Process a single inbox file. Returns (destination, classification) or None."""
     with open(filepath) as f:
         content = f.read()
@@ -562,17 +632,55 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
         log(f"  Skipping {os.path.basename(filepath)} — no frontmatter")
         return None
 
-    # Extract URLs and fetch titles
+    # Pre-LLM triage: catch clear-cut cases without burning an API call
+    triage = pre_llm_triage(fm, body)
+    if triage is not None:
+        status, stale_reason, confidence = triage
+        dest_dir = ARCHIVE_DIR if status == 'archived' else NEEDS_CONTEXT_DIR
+        updates = {
+            'type': fm.get('type', 'unknown'),
+            'status': status,
+            'tags': [],
+            'title': fm.get('title', ''),
+            'processed': datetime.date.today().isoformat(),
+            'confidence': confidence,
+        }
+        if stale_reason:
+            updates['stale_reason'] = stale_reason
+        if dry_run:
+            updates['_triage'] = 'pre-llm'
+            return dest_dir, {**updates, '_file': os.path.basename(filepath)}
+        new_content = update_frontmatter(content, updates)
+        with open(filepath, 'w') as f:
+            f.write(new_content)
+        os.makedirs(dest_dir, exist_ok=True)
+        shutil.move(filepath, os.path.join(dest_dir, os.path.basename(filepath)))
+        return dest_dir, updates
+
+    # Extract URLs and fetch titles + tweet content
     all_text = (fm.get('title', '') + ' ' + body).strip()
     urls = extract_urls(all_text)
     url_info = []
-    # Limit to first 3 URLs to avoid slow processing
-    for url in urls[:3]:
-        # Skip Keep links — they're source references, not content
-        if 'keep.google.com' in url:
-            continue
-        title, is_dead = fetch_url_title(url)
-        url_info.append((url, title, is_dead))
+    tweet_text = None
+    if not skip_fetch:
+        # Limit to first 3 URLs to avoid slow processing
+        for url in urls[:3]:
+            # Skip Keep links — they're source references, not content
+            if 'keep.google.com' in url:
+                continue
+            # Try oEmbed for Twitter/X URLs first
+            if 'twitter.com' in url or 'x.com' in url:
+                tweet = fetch_tweet_oembed(url)
+                if tweet:
+                    tweet_text = tweet
+                    url_info.append((url, f"[Tweet] {tweet[:120]}", False))
+                    continue
+                else:
+                    # oEmbed failed — URL might be dead or protected
+                    url_info.append((url, None, True))
+                    continue
+            title, is_dead = fetch_url_title(url)
+            url_info.append((url, title, is_dead))
 
     # Build LLM message
     user_message = build_user_message(fm, body, url_info)
@@ -699,6 +807,8 @@ def main():
                         help='Show LLM output without moving files')
     parser.add_argument('--provider', default='anthropic', choices=['anthropic', 'ollama', 'gemini'],
                         help='LLM provider: anthropic (default), ollama (local), or gemini')
+    parser.add_argument('--skip-fetch', action='store_true',
+                        help='Skip URL fetching (oEmbed, page titles) to save battery/bandwidth')
     args = parser.parse_args()
 
     # Validate wave
@@ -780,7 +890,7 @@ def main():
 
         log(f"[{i+1}/{total} {pct}% ETA:{eta_str}] {filename[:60]}")
 
-        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run, provider=args.provider)
+        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run, provider=args.provider, skip_fetch=args.skip_fetch)
         if result is None:
             errors += 1
             log(f"  FAILED — skipping")
@@ -795,6 +905,8 @@ def main():
             log(f"    title: {info.get('title', '')[:70]}")
             if info.get('stale_reason'):
                 log(f"    stale_reason: {info['stale_reason']}")
+            if info.get('_triage'):
+                log(f"    (auto-triaged: {info['_triage']})")
 
         results.append(result)
 

@@ -1,0 +1,163 @@
+Using Ollama (qwen2.5-coder:14b)
+Loading context files...
+Found 6584 inbox files, 50 matching wave=all
+Limited to 50 items
+DRY RUN — no files will be moved
+
+[1/50 2% ETA:0s] ai-confidential-23-feb-bbc2--note_1d09013.md
+  → notes/ type=event tags=['ai', 'bbc'] confidence=9
+    title: AI Confidential on BBC 23 Feb
+[2/50 4% ETA:28m20s] break-up-a-country-into-bits-you-collect-the-bits-can-an--no
+  → notes/ type=idea tags=['3d', 'animation', 'geography'] confidence=8
+    title: Break up a country into bits, animate slightly in 3D
+[3/50 6% ETA:21m29s] clean-notes-off-old-computer--note_5063474.md
+  → notes/ type=task tags=['computer', 'cleanup'] confidence=8
+    title: Clean notes off old computer
+[4/50 8% ETA:17m44s] get-them-off-wipe--note_ea1d93e.md
+  → notes/ type=task tags=['health', 'hygiene'] confidence=8
+    title: Remove and clean
+[5/50 10% ETA:15m39s] get-watford-games-on-with-some-youtube-on--note_ebe8baa.md
+  → notes/ type=task tags=['watford-fc', 'youtube'] confidence=9
+    title: Get Watford games on, with some YouTube on...
+[6/50 12% ETA:14m32s] help-me-work-through-my-backlog-of-notes-ask-me-questions-a-
+  → notes/ type=task tags=['openclaw', 'jimbo'] confidence=9
+    title: Work through note backlog and provide structured data for the system
+[7/50 14% ETA:14m01s] ring-alvin--note_89244f5.md
+  → notes/ type=reference tags=['contact', 'watford'] confidence=10
+    title: Alvin's phone number
+[8/50 16% ETA:13m22s] rules-around-content--note_150126c.md
+  → needs-context/ type=reference tags=[] confidence=3
+    title: Rules around content?
+[9/50 18% ETA:12m30s] wash-get-these-thoughts-out--note_1ed1210.md
+  → notes/ type=journal tags=['travel', 'reflection'] confidence=8
+    title: Wash ... Get these thoughts out
+[10/50 20% ETA:11m50s] watford-site-out--note_0d6b0b5.md
+  → notes/ type=reference tags=['watford', 'local'] confidence=9
+    title: Watford site out
+[11/50 22% ETA:11m13s] white-label-badge-follow-leaderboard-collecting-thing--note_
+  → notes/ type=idea tags=['white-label', 'badge', 'leaderboard', 'collection'] confidence=8
+    title: White label badge follow leaderboard collection
+[12/50 24% ETA:10m48s] with-jobs-i-want-to-look-deeply-into-each-one--note_9fba297.
+  → notes/ type=task tags=['job-market', 'finance'] confidence=9
+    title: Look deeply into each job opportunity
+[13/50 26% ETA:10m17s] dark-is-rising-susan-cooper--note_c9a2300.md
+  → notes/ type=media tags=['book', 'suspense', 'young-adult'] confidence=9
+    title: Dark Is Rising by Susan Cooper
+[14/50 28% ETA:9m50s] data-scraping-the-pdf-the-stuff-mat-pops-up-dice-et--note_97
+  → notes/ type=task tags=['data-scraping', 'pdf'] confidence=8
+    title: Scrape data from PDFs - Mat's info, Dice etc.
+[15/50 30% ETA:9m29s] httpsbuildnvidiacomblueprints--note_6d15ef7.md
+  → notes/ type=bookmark tags=['nvidia', 'api', 'developer'] confidence=9
+    title: NVIDIA NIM APIs
+[16/50 32% ETA:9m09s] httpswatfordfilmclubcom--note_c2506ff.md
+  → notes/ type=bookmark tags=['watford', 'film', 'watford-film-club'] confidence=10
+    title: Join the Watford Film Club for Exciting Screenings!
+[17/50 34% ETA:9m00s] httpswwwaitmplcomskills--note_c662e36.md
+  → notes/ type=bookmark tags=['ai', 'development', 'templates'] confidence=9
+    title: Claude Code Templates - Supercharge Your AI-Powered Development with A
+[18/50 36% ETA:8m42s] httpswwwfanecoukwhats-on--note_57b2faa.md
+  → notes/ type=bookmark tags=['fane', "what's-on"] confidence=10
+    title: FANE | What's On
+[19/50 38% ETA:9m07s] httpsxcomistatus2002017498422755504--note_230634c.md
+  → notes/ type=bookmark tags=['twitter', 'travel'] confidence=8
+    title: Tweet about travel deals
+[20/50 40% ETA:8m39s] httpsxcomistatus2024301253933633536--note_28e13ce.md
+  → notes/ type=bookmark tags=['twitter', 'social-media'] confidence=8
+    title: Twitter Status Update
+[21/50 42% ETA:8m13s] httpsxcomistatus2024301253933633536--note_7931c34.md
+  → notes/ type=bookmark tags=['twitter', 'social-media'] confidence=8
+    title: Tweet from @username
+[22/50 44% ETA:7m48s] httpsxcomistatus2024610896811524535--note_562dd1c.md
+  → notes/ type=bookmark tags=['twitter', 'social-media'] confidence=8
+    title: Tweet by @username
+[23/50 46% ETA:7m25s] internal-links--note_f722dd6.md
+  → needs-context/ type=reference tags=['links', 'internal'] confidence=3
+    title: Internal Links
+[24/50 48% ETA:7m04s] interview-me-relentlessly-about-every-aspect-of-this-plan-un
+  → notes/ type=task tags=['project:openclaw', 'planning'] confidence=8
+    title: Interview me about travel plan until shared understanding
+[25/50 50% ETA:6m46s] notifications-improvements--note_d5d5774.md
+  → notes/ type=task tags=['notifications', 'improvements'] confidence=8
+    title: Improve notifications
+[26/50 52% ETA:6m25s] opus-46-is-the-orchestrator-local-models-are-the-workers--no
+  → notes/ type=idea tags=['ai', 'local-models', 'orchestrator'] confidence=9
+    title: Opus 4.6 as orchestrator with local models MiniMax2.5, Qwen3.5, and ne
+[27/50 54% ETA:6m13s] the-odyssey--note_6565c47.md
+  → notes/ type=media tags=['book', 'classic'] confidence=9
+    title: The Odyssey
+[28/50 56% ETA:5m54s] tradexygmailcom--note_375f517.md
+  → notes/ type=reference tags=['contact'] confidence=10
+    title: tradexy@gmail.com
+[29/50 57% ETA:5m35s] weather-api--note_e4b5d59.md
+  → notes/ type=reference tags=['travel', 'api'] confidence=8
+    title: Weather API
+[30/50 60% ETA:5m16s] wish-the-kids-good-luck-on-their-exam--note_64193a4.md
+  → notes/ type=idea tags=['kids', 'exam'] confidence=9
+    title: Wish the kids good luck on their exam
+[31/50 62% ETA:4m58s] adam-tungatt-to-the-list--note_da0732b.md
+  → notes/ type=person tags=['contact'] confidence=10
+    title: Adam Tungatt
+[32/50 64% ETA:4m41s] e96-mark-to-the-left--note_826ca1b.md
+  → notes/ type=travel tags=['e96', 'mark-to-the-left'] confidence=8
+    title: E96, MARK TO THE LEFT
+[33/50 66% ETA:4m25s] kat--note_6b85bdf.md
+  → needs-context/ type=person tags=['contact'] confidence=3
+    title: Kat!
+[34/50 68% ETA:4m08s] feather-table--note_7c96c25.md
+  → notes/ type=reference tags=['furniture', 'travel'] confidence=8
+    title: Feather table
+[35/50 70% ETA:3m51s] httpswwwyoutubecomwatchvcxcb55zr2q8--note_3bdec6d.md
+  → notes/ type=bookmark tags=['ai', 'saas', 'business-model'] confidence=9
+    title: How AI is breaking the SaaS business model...
+[36/50 72% ETA:3m36s] marvin-nice-hey-i-was-thinking-you-could-turn-your-jimbo--no
+  Ollama error: timed out
+  FAILED — skipping
+[37/50 74% ETA:3m57s] retro-feedback--note_44e2f7b.md
+  → notes/ type=task tags=['feedback', 'retro'] confidence=8
+    title: Provide retro feedback
+[38/50 76% ETA:4m09s] 230-pancakes--note_3b1d147.md
+  → notes/ type=recipe tags=['pancakes', 'breakfast'] confidence=8
+    title: 230 Pancakes
+[39/50 78% ETA:3m46s] anti-gravity--note_e3071b2.md
+  → notes/ type=idea tags=['science', 'technology'] confidence=8
+    title: Anti Gravity
+[40/50 80% ETA:3m23s] bedford-events--note_87cb27e.md
+  → notes/ type=event tags=['bedford', 'local'] confidence=8
+    title: Bedford Events
+[41/50 82% ETA:3m01s] claude---resume-4c57abfb-4839-4289-a3cb-9ce37f644bf0--note_8
+  → notes/ type=reference tags=['claude', 'command'] confidence=9
+    title: Claude resume command
+[42/50 84% ETA:2m39s] httpsstephangocomvault--note_332f58e.md
+  → notes/ type=bookmark tags=['obsidian', 'productivity', 'knowledge-management'] confidence=9
+    title: How I use Obsidian — Steph Ango
+[43/50 86% ETA:2m19s] shape-up-ebook--note_33e25b4.md
+  → notes/ type=media tags=['fitness', 'health'] confidence=8
+    title: Shape Up ebook
+[44/50 88% ETA:1m58s] surath-goes-sunday--note_2506664.md
+  → notes/ type=event tags=['surath', 'sunday'] confidence=8
+    title: Surath goes to Surath on Sunday
+[45/50 90% ETA:1m37s] --be-bold-with-reading-organising-and-coding-in-the-sa--note
+  → notes/ type=reference tags=['sandbox-repo', 'coding-guidelines'] confidence=9
+    title: Coding guidelines for sandbox repo
+[46/50 92% ETA:1m17s] 1130-cassiobury-park-walk--note_c1f73f8.md
+  → notes/ type=event tags=['walking', 'cassiobury-park'] confidence=9
+    title: Cassiobury Park Walk at 11:30 AM
+[47/50 94% ETA:58s] 8228119735aafn2blnqfosbgcpcv0ov9kq9f6jq8ie0ja--note_ba9bfe5.
+  → notes/ type=reference tags=['phone-number'] confidence=10
+    title: +82 281 19735: AAFN2BLnqFoSBgcpCv0Ov9kq9f6JQ8Ie0jA
+[48/50 96% ETA:38s] api-provider-returned-a-billing-error-your-api-key-has--note
+  → notes/ type=finance tags=['api', 'billing', 'credits'] confidence=9
+    title: API Key Billing Error — Insufficient Credits
+[49/50 98% ETA:19s] api-provider-returned-a-billing-error-your-api-key-has--note
+  → notes/ type=finance tags=['api', 'billing', 'credits'] confidence=9
+    title: API Key Billing Error — Insufficient Credits
+[50/50 100% ETA:0s] before-we-go-further-on-email-i-need-to-share-some-impo--not
+  → notes/ type=reference tags=['openclaw', 'security', 'email-architecture'] confidence=9
+    title: Email Security and Architecture Context for OpenClaw
+
+Processed 49 items:
+  notes/: 46 (10 bookmark, 9 task, 9 reference, 5 idea, 4 event, 3 media, 2 finance, 1 journal, 1 person, 1 travel, 1 recipe)
+  needs-context/: 3
+  archive/: 0
+
+Completed in 1079s (1 errors)
