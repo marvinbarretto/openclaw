@@ -1,0 +1,57 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('posts', ({ data }) => !data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const allTags = [...new Set(posts.flatMap(p => p.data.tags))].sort();
+---
+<BaseLayout title="Home">
+  <div class="tag-filter" id="tag-filter">
+    <a class="tag active" data-tag="all" href="/">All</a>
+    {allTags.map(tag => (
+      <a class="tag" data-tag={tag} href={`/tags/${tag}/`}>#{tag}</a>
+    ))}
+  </div>
+
+  <div id="posts">
+    {posts.map(post => (
+      <article class="post-card" data-tags={post.data.tags.join(',')}>
+        <h2><a href={`/posts/${post.slug}/`}>{post.data.title}</a></h2>
+        <time datetime={post.data.date.toISOString().slice(0, 10)}>
+          {post.data.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </time>
+        <p>{post.data.description}</p>
+        <div class="tags">
+          {post.data.tags.map(tag => (
+            <a href={`/tags/${tag}/`} class="tag">#{tag}</a>
+          ))}
+        </div>
+      </article>
+    ))}
+  </div>
+
+  <script>
+    const filter = document.getElementById('tag-filter');
+    const posts = document.querySelectorAll('#posts .post-card');
+    if (filter) {
+      filter.addEventListener('click', (e) => {
+        const target = e.target as HTMLAnchorElement;
+        if (!target.dataset.tag) return;
+        e.preventDefault();
+        const tag = target.dataset.tag;
+        filter.querySelectorAll('.tag').forEach(t => t.classList.remove('active'));
+        target.classList.add('active');
+        posts.forEach(post => {
+          const el = post as HTMLElement;
+          if (tag === 'all' || el.dataset.tags?.split(',').includes(tag)) {
+            el.style.display = '';
+          } else {
+            el.style.display = 'none';
+          }
+        });
+      });
+    }
+  </script>
+</BaseLayout>

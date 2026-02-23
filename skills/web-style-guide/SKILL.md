@@ -57,7 +57,8 @@ Font stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
 
 ## CSS Approach
 
-- Inline `<style>` block per page (no shared stylesheet — sandbox limitation)
+- Blog styles live in `blog-src/src/styles/global.css` and Astro layouts (shared stylesheet, built by Astro)
+- For non-blog pages: inline `<style>` block per page (no shared stylesheet — sandbox limitation)
 - Mobile-first: base styles for small screens, `@media (min-width: 768px)` for larger
 - Max content width: `800px` for posts, `900px` for index/listing pages
 - Use `rem` for spacing, not `px` (exception: borders and fine details)

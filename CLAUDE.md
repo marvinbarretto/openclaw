@@ -22,7 +22,7 @@ Laptop (MacBook Air 24GB)
 VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   ├── OpenClaw v2026.2.12 (Node 22, systemd, openclaw user)
   ├── Docker sandbox (Python 3.11, Node 18, git, hardened)
-  │     ├── /workspace — Jimbo's brain files + skills + email digest + recommendations.db
+  │     ├── /workspace — Jimbo's brain files + skills + blog-src (Astro) + email digest + recommendations.db
   │     ├── gmail-helper.py — fetches email via Gmail API, writes digest directly
   │     ├── calendar-helper.py — Calendar API client
   │     └── recommendations-helper.py — SQLite CRUD for persistent recommendations store
@@ -37,10 +37,10 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-025) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store
+decisions/        ADRs (001-027) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide)
-workspace/        Jimbo's brain files that WE maintain (SOUL.md, HEARTBEAT.md). Deploy via workspace-push.sh.
+workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/). Deploy via workspace-push.sh + rsync.
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
@@ -79,6 +79,8 @@ notes/            Brain dumps
 - `scripts/ingest-tasks.py` — Converts tasks-dump.json → vault inbox markdown files
 - `scripts/ingest-keep.py` — Converts Google Keep JSON export → vault inbox markdown files
 - `scripts/process-inbox.py` — LLM batch classifier: inbox → notes/needs-context/archive (uses Claude Haiku)
+- `workspace/blog-src/` — Astro blog project. Posts in `src/content/posts/*.md`. Auto-generates index, tags, archive, RSS. Deployed via Cloudflare Pages (ADR-027).
+- `decisions/027-astro-blog-migration.md` — ADR for blog migration from static HTML to Astro
 
 ## Security Model (Critical — Read Before Changing)
 
@@ -108,8 +110,8 @@ notes/            Brain dumps
 - Container runs as `root` (uid 0) but workspace files are owned by `openclaw` (uid 1000)
 - `GIT_CONFIG_GLOBAL=/workspace/.gitconfig` must be set so git finds safe.directory config
 - If git fails with "dubious ownership" or "permission denied", fix with: `chmod -R a+rw /home/openclaw/.openclaw/workspace/.git/`
-- npm/Node build tools (Astro, webpack) don't work — uid mismatch causes fchown errors. Static files only.
-- Blog deploys to GitHub Pages via `gh-pages` branch. PAT is in the git remote URL.
+- npm/Node build tools work in sandbox (ADR-016). Astro, webpack, npm install all functional.
+- Blog is Astro-built, deployed via Cloudflare Pages from `blog-src/` on `gh-pages` branch. Live at `jimbo.pages.dev`. PAT is in the git remote URL. (ADR-027)
 - `jimbo-vps` token expires ~May 2026 — check `CAPABILITIES.md` for all token dates.
 
 ## Email Pipeline (ADR-022)
@@ -208,7 +210,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 024).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 027).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.

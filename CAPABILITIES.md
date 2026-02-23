@@ -16,7 +16,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Read/write workspace files | WORKING | `/workspace` in sandbox |
 | Git commit & push (jimbo-workspace) | WORKING | Fixed 2026-02-18 (ADR-011) |
-| GitHub Pages blog | WORKING | Static HTML at `gh-pages` branch |
+| Cloudflare Pages blog | WORKING | Astro-built from `blog-src/` on `gh-pages` branch, served via `jimbo.pages.dev`. Auto-generates index, tags, archive, RSS. (ADR-027) |
 | Read Marvin's repos (GitHub) | DISABLED | Token exists but skill disabled for free model (ADR-006) |
 | npm / Node build tools | WORKING | Fixed 2026-02-20 (ADR-016). Astro, webpack, npm install all work. Node 18. |
 | Python scripts | WORKING | Python 3.11 in sandbox, stdlib only |
@@ -74,7 +74,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Self-publish blog posts | WORKING | Commit + push to gh-pages |
+| Self-publish blog posts | WORKING | Write `.md` in `blog-src/src/content/posts/`, commit + push → Cloudflare auto-builds (ADR-027) |
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
 | Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
 | Heartbeat / self-monitoring | NOT STARTED | HEARTBEAT.md planned |
@@ -115,5 +115,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-22*
-*Notes vault pipeline (ADR-023, ADR-024): 2026-02-22*
+*Last updated: 2026-02-23*
+*Astro blog migration (ADR-027): 2026-02-23*

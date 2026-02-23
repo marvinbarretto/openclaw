@@ -29,5 +29,10 @@ firebase-debug.log
 __pycache__/
 *.pyc
 
+# Astro blog build artifacts
+workspace/blog-src/node_modules/
+workspace/blog-src/dist/
+workspace/blog-src/.astro/
+
 # OS
 .DS_Store
