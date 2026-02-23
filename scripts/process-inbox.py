@@ -51,6 +51,9 @@ ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
 # ---------------------------------------------------------------------------
 # Context files (baked in at import time would be too large — read at runtime)
 # ---------------------------------------------------------------------------
@@ -398,6 +401,42 @@ def call_ollama(system_prompt, user_message):
     return _parse_llm_json(text)
 
 
+def call_gemini(api_key, system_prompt, user_message):
+    """Call Google Gemini API. Returns parsed JSON response or None."""
+    url = GEMINI_API_URL.format(model=GEMINI_MODEL) + f"?key={api_key}"
+    payload = json.dumps({
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": user_message}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 2048,
+        },
+    }).encode()
+
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        log(f"  Gemini API error ({e.code}): {body[:200]}")
+        return None
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        log(f"  Gemini connection error: {e}")
+        return None
+
+    # Extract text from Gemini response
+    try:
+        text = result["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        log(f"  Gemini unexpected response: {json.dumps(result)[:200]}")
+        return None
+
+    return _parse_llm_json(text)
+
+
 def call_llm(api_key, system_prompt, user_message):
     """Call Anthropic Messages API. Returns parsed JSON response or None."""
     payload = json.dumps({
@@ -435,7 +474,12 @@ def call_llm(api_key, system_prompt, user_message):
 def _parse_llm_json(text):
     """Parse JSON from LLM response — handle markdown fences and trailing commentary."""
     text = text.strip()
-    if text.startswith("```"):
+
+    # Strip markdown fences anywhere in the text (not just at start)
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    elif text.startswith("```"):
         text = re.sub(r'^```\w*\n?', '', text)
         text = re.sub(r'\n?```.*', '', text, flags=re.DOTALL)
         text = text.strip()
@@ -446,13 +490,21 @@ def _parse_llm_json(text):
     except json.JSONDecodeError:
         pass
 
-    # Extract first JSON object if LLM added commentary around it
-    match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
-            pass
+    # Extract JSON object allowing nested braces (for arrays in tags etc.)
+    # Find first { and match to its closing }
+    start = text.find('{')
+    if start != -1:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:i+1])
+                    except json.JSONDecodeError:
+                        break
 
     log(f"  Failed to parse LLM response: {text[:200]}")
     return None
@@ -526,6 +578,8 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
     user_message = build_user_message(fm, body, url_info)
     if provider == 'ollama':
         result = call_ollama(system_prompt, user_message)
+    elif provider == 'gemini':
+        result = call_gemini(api_key, system_prompt, user_message)
     else:
         result = call_llm(api_key, system_prompt, user_message)
     if result is None:
@@ -643,8 +697,8 @@ def main():
                         help='Max items to process')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show LLM output without moving files')
-    parser.add_argument('--provider', default='anthropic', choices=['anthropic', 'ollama'],
-                        help='LLM provider: anthropic (default) or ollama (local)')
+    parser.add_argument('--provider', default='anthropic', choices=['anthropic', 'ollama', 'gemini'],
+                        help='LLM provider: anthropic (default), ollama (local), or gemini')
     args = parser.parse_args()
 
     # Validate wave
@@ -655,6 +709,9 @@ def main():
     api_key = None
     if args.provider == 'anthropic':
         api_key = get_env("ANTHROPIC_API_KEY")
+    elif args.provider == 'gemini':
+        api_key = get_env("GOOGLE_AI_API_KEY")
+        log(f"Using Gemini ({GEMINI_MODEL})")
     else:
         log(f"Using Ollama ({OLLAMA_MODEL})")
 
