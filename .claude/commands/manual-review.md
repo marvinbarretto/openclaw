@@ -1,6 +1,6 @@
 ---
 description: Interactively review needs-context vault notes — triage, classify, and move them
-argument-hint: "[number of notes, default 10]"
+argument-hint: "[count] [oldest|newest|random]"
 ---
 
 # Manual Review of Needs-Context Vault Notes
@@ -9,9 +9,12 @@ You are running an interactive review session for Marvin's personal notes vault.
 
 ## Setup
 
-1. Parse the batch size from arguments: `$ARGUMENTS` (default to 10 if empty or not a number)
-2. Read `context/PATTERNS.md` — this tells you how Marvin's notes actually work (projects, travel, note style, contacts, duplicates)
-3. List files in `data/vault/needs-context/` and read up to N of them, sorted by `created` date ascending (oldest first)
+1. Parse arguments from `$ARGUMENTS`:
+   - First argument: batch size (default 10)
+   - Second argument: sort order — `oldest` (default), `newest`, or `random`
+   - Examples: `10 newest`, `5`, `20 random`, empty = `10 oldest`
+2. Read `context/PATTERNS.md` — this tells you how Marvin's notes actually work
+3. List files in `data/vault/needs-context/`, read up to N of them in the chosen sort order
 4. If there are fewer files than requested, just use what's there
 
 ## Present the Batch
@@ -48,88 +51,79 @@ Then ask what to do. Adapt to the user's response style:
 - **If they say "archive"** without a reason — ask for the stale reason
 - **If they give context conversationally** like "this is a TV show I wanted to watch" — infer the action (that's a direct classify: type=media, tags from context) and confirm before processing
 - **If they say "skip"** — move on, leave the file untouched
+- **If they say "all — archive, stale"** or similar — apply the same action to all remaining notes in the batch
 
 ## Actions
 
 ### Direct (classify and move to notes/)
 
-Update the file's frontmatter:
-- `type`: set to the chosen type
-- `tags`: set to the chosen tags (JSON array)
-- `status`: set to `active`
-- `processed`: set to today's date (YYYY-MM-DD)
-
-Move the file from `data/vault/needs-context/` to `data/vault/notes/`.
+Update frontmatter: set `type`, `tags` (JSON array), `status` to `active`, `processed` to today (YYYY-MM-DD). Move file to `data/vault/notes/`.
 
 ### Context (add context, leave for reprocessing)
 
-Prepend the user's context text to the note body (after frontmatter, before existing content), on its own line with a blank line after.
-
-Add to frontmatter:
-- `review_context`: the user's context text (quoted string)
-
-Leave the file in `data/vault/needs-context/` — it will be reprocessed by `process-inbox.py` later with the added context.
+Prepend context text to note body (after frontmatter). Add `review_context` to frontmatter. Leave in `data/vault/needs-context/`.
 
 ### Archive (move to archive/)
 
-Update the file's frontmatter:
-- `status`: set to `archived`
-- `stale_reason`: set to one of: stale, dead-url, completed, duplicate, past-event, empty
-- `processed`: set to today's date (YYYY-MM-DD)
-
-Move the file from `data/vault/needs-context/` to `data/vault/archive/`.
+Update frontmatter: set `status` to `archived`, `stale_reason`, `processed` to today (YYYY-MM-DD). Move file to `data/vault/archive/`.
 
 ### Skip
 
-Do nothing. Leave the file untouched.
+Do nothing.
 
-## Type Taxonomy
+## File Operations — Use Python, Not Edit
 
-Use exactly one of these types for direct classification:
+**CRITICAL: Do NOT use the Edit tool for frontmatter changes.** Edit shows diffs to the user which clutters the review session. Instead, use a single inline Python script via Bash to update frontmatter and move the file in one silent operation.
 
-- **bookmark** — saved URL/link to read or reference later
-- **recipe** — food/drink recipe or restaurant/food recommendation
-- **media** — film, TV, music, podcast, YouTube, book recommendation
-- **travel** — destination, deal, flight, accommodation, trip idea
-- **idea** — personal thought, project idea, creative concept
-- **reference** — factual info saved for later (address, phone, how-to, code snippet)
-- **event** — specific event with a date/time (gig, meetup, match, appointment)
-- **task** — action item or to-do (may be completed/stale)
-- **checklist** — list of items (packing list, shopping list, routine)
-- **person** — contact info, someone to remember
-- **finance** — money, budgeting, deals, subscriptions, banking
-- **health** — fitness, nutrition, medical, wellbeing
-- **quote** — saved quote or passage
-- **journal** — personal reflection, diary entry, mood note
-- **political** — political commentary, article, opinion piece
+For each note that needs processing, run a single Bash command like:
 
-## Stale Reasons (for archive)
+```bash
+python3 -c "
+import re, json, shutil, os, datetime
+path = 'DATA_VAULT_PATH/needs-context/FILENAME'
+with open(path) as f: content = f.read()
+m = re.match(r'^---\n(.*?)\n---\n?(.*)', content, re.DOTALL)
+if not m: exit(1)
+yaml_text, body = m.group(1), m.group(2)
+# Update fields
+lines = yaml_text.split('\n')
+updates = {UPDATES_DICT}
+new_lines = []
+for line in lines:
+    km = re.match(r'^(\w[\w-]*)\s*:', line)
+    if km and km.group(1) in updates:
+        key = km.group(1)
+        val = updates.pop(key)
+        new_lines.append(f'{key}: {json.dumps(val) if isinstance(val, list) else val}')
+    else:
+        new_lines.append(line)
+for key, val in updates.items():
+    new_lines.append(f'{key}: {json.dumps(val) if isinstance(val, list) else val}')
+new_content = '---\n' + '\n'.join(new_lines) + '\n---\n' + body
+PREPEND_CONTEXT
+with open(path, 'w') as f: f.write(new_content)
+MOVE_COMMAND
+"
+```
 
-- **stale** — too old to be relevant
-- **dead-url** — URL is dead/broken
-- **completed** — task/action clearly done
-- **duplicate** — appears to be a duplicate
-- **past-event** — event that has already happened
-- **empty** — no meaningful content
+Adapt the template per action:
+- **Direct:** updates = status, type, tags, processed. Move to notes/.
+- **Archive:** updates = status, stale_reason, processed. Move to archive/.
+- **Context:** updates = review_context. Prepend text to body. No move.
 
-## Known Project Tags
+This keeps the entire operation silent — one "Done" from Bash, no diffs shown.
 
-From PATTERNS.md — suggest these when relevant:
+## Reference: Type Taxonomy
 
-- `project:localshout` — venues, event sources, artists, festivals, comedy nights
-- `project:film-planner` — film, TV, show recommendations to watch
-- `project:spoons` — pub-related data, Wetherspoons-specific
-- `project:openclaw` — notes about improving Jimbo or this system
+bookmark, recipe, media, travel, idea, reference, event, task, checklist, person, finance, health, quote, journal, political
 
-## File Operations
+## Reference: Stale Reasons
 
-When editing frontmatter, preserve the existing YAML structure. The frontmatter is between `---` markers. Update individual fields — don't rewrite the entire block unless necessary. Use the Edit tool for frontmatter changes and Bash `mv` for file moves.
+stale, dead-url, completed, duplicate, past-event, empty
 
-Ensure destination directories exist before moving files:
-- `data/vault/notes/`
-- `data/vault/archive/`
+## Reference: Project Tags
 
-**IMPORTANT: Keep processing silent.** Do NOT narrate or show diffs for file edits and moves. Just do them quietly and move on to the next note. The user doesn't need to see frontmatter changes or mv commands — they only care about the conversation and the final summary. After processing a note, just confirm briefly (e.g. "Archived." or "Moved to notes/.") and show the next one.
+project:localshout (venues, events, artists), project:film-planner (film/TV/shows), project:spoons (pub data), project:openclaw (Jimbo improvements)
 
 ## Session Summary
 
@@ -143,8 +137,4 @@ After processing all notes, print:
 - X skipped
 ```
 
-Then review the decisions made in this session. If you notice any recurring patterns across 2+ notes that aren't already captured in `context/PATTERNS.md`, mention them:
-
-"I noticed [pattern]. This might be worth adding to PATTERNS.md."
-
-Do NOT edit PATTERNS.md automatically — just flag observations for Marvin to decide.
+If you notice recurring patterns across 2+ notes not already in PATTERNS.md, mention them. Do NOT edit PATTERNS.md automatically.
