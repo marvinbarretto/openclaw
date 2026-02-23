@@ -31,6 +31,20 @@ Show a numbered markdown table with all notes in the batch:
 
 Then say: "Let's go through these one at a time. For each note I'll show the full content and you tell me what to do."
 
+## URL Enrichment
+
+Before presenting a note, check if its body contains URLs. If so, try to enrich them:
+
+**Twitter/X URLs** (x.com or twitter.com): Use WebFetch to call the oEmbed API:
+```
+https://publish.twitter.com/oembed?url=<tweet_url>
+```
+This returns the tweet text and author. Show it inline with the note.
+
+**Other URLs**: Use WebFetch to fetch the page and extract a title/summary. If the fetch fails, just show the raw URL — don't block the review.
+
+This enrichment is critical for notes that are just a bare URL — the URL IS the note, and without fetching it the note is unreviewable.
+
 ## Note-by-Note Review
 
 For each note, show:
@@ -42,6 +56,8 @@ For each note, show:
 **Current tags:** [tags]
 
 > [full body content]
+
+🔗 [Enriched URL content if available — tweet text, page title, summary]
 ```
 
 Then ask what to do. Adapt to the user's response style:
