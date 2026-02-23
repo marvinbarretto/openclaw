@@ -66,6 +66,23 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 - Fix: SOUL.md needs explicit "Your Creations" sections listing what exists and where, with instructions to check before answering.
 - Session continuity: OpenClaw sessions are long-lived (heartbeat keeps them alive, compaction compresses context). Deleting the session file + restarting is the only reliable way to force a fresh start.
 - After updating SOUL.md, always delete session + restart so the old context doesn't override the new instructions.
+- Fresh session command: `ssh jimbo "rm /home/openclaw/.openclaw/agents/main/sessions/sessions.json && systemctl restart openclaw"`
+- Check session state: `openclaw sessions --active 5` (shows recent sessions with token usage)
+
+## VPS sandbox git operations (from host)
+
+Running git on the VPS as root against the workspace requires two things:
+- `GIT_CONFIG_GLOBAL=/home/openclaw/.openclaw/workspace/.gitconfig` — so git finds user identity and safe.directory
+- The `.gitconfig` must include BOTH `safe.directory = /workspace` (container path) AND `safe.directory = /home/openclaw/.openclaw/workspace` (host path)
+- Without both paths, git works inside the sandbox but fails when accessed from the host via SSH.
+
+## Jimbo's git hygiene
+
+- Jimbo will `git add .` and commit everything in the workspace if not guided — OAuth tokens, Homebrew caches, node_modules, etc.
+- **Always have a `.gitignore`** in the workspace. Added one covering: `*.token.json`, `*access-token*`, `.cache/`, `.npm-cache/`, `.config/`, `node_modules/`, `memory/`.
+- GitHub push protection will block pushes containing secrets. Fix: rewrite history (reset to clean state, re-commit), don't just "allow" the secret.
+- Permissions drift: files created by root in the container get restrictive permissions (644). Periodic `chmod -R a+rw` on blog/posts/ needed.
+- The blog post directory (`blog/posts/`) was owned by `root:root` while the rest of `blog/` was `openclaw:openclaw` — this caused sandbox read tool failures even though exec worked.
 
 ## Completed tasks
 
