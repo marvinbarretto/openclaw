@@ -71,47 +71,32 @@ Update frontmatter: set `status` to `archived`, `stale_reason`, `processed` to t
 
 Do nothing.
 
-## File Operations — Use Python, Not Edit
+## File Operations — Use review_helper.py
 
-**CRITICAL: Do NOT use the Edit tool for frontmatter changes.** Edit shows diffs to the user which clutters the review session. Instead, use a single inline Python script via Bash to update frontmatter and move the file in one silent operation.
+**CRITICAL: Do NOT use the Edit tool for frontmatter changes.** Edit shows diffs to the user which clutters the review session. Use `scripts/review_helper.py` via Bash instead — it's tested and silent.
 
-For each note that needs processing, run a single Bash command like:
-
+**Direct or Archive (move + update frontmatter):**
 ```bash
-python3 -c "
-import re, json, shutil, os, datetime
-path = 'DATA_VAULT_PATH/needs-context/FILENAME'
-with open(path) as f: content = f.read()
-m = re.match(r'^---\n(.*?)\n---\n?(.*)', content, re.DOTALL)
-if not m: exit(1)
-yaml_text, body = m.group(1), m.group(2)
-# Update fields
-lines = yaml_text.split('\n')
-updates = {UPDATES_DICT}
-new_lines = []
-for line in lines:
-    km = re.match(r'^(\w[\w-]*)\s*:', line)
-    if km and km.group(1) in updates:
-        key = km.group(1)
-        val = updates.pop(key)
-        new_lines.append(f'{key}: {json.dumps(val) if isinstance(val, list) else val}')
-    else:
-        new_lines.append(line)
-for key, val in updates.items():
-    new_lines.append(f'{key}: {json.dumps(val) if isinstance(val, list) else val}')
-new_content = '---\n' + '\n'.join(new_lines) + '\n---\n' + body
-PREPEND_CONTEXT
-with open(path, 'w') as f: f.write(new_content)
-MOVE_COMMAND
-"
+python3 scripts/review_helper.py move <filepath> <dest_dir> '<json_updates>'
 ```
 
-Adapt the template per action:
-- **Direct:** updates = status, type, tags, processed. Move to notes/.
-- **Archive:** updates = status, stale_reason, processed. Move to archive/.
-- **Context:** updates = review_context. Prepend text to body. No move.
+Example:
+```bash
+python3 scripts/review_helper.py move "data/vault/needs-context/dopesic--note_85ded1a.md" "data/vault/notes" '{"type": "media", "tags": ["tv", "drama"], "status": "active", "processed": "2026-02-23"}'
+```
 
-This keeps the entire operation silent — one "Done" from Bash, no diffs shown.
+**Context (add context, no move):**
+```bash
+python3 scripts/review_helper.py context <filepath> '<context_text>'
+```
+
+Example:
+```bash
+python3 scripts/review_helper.py context "data/vault/needs-context/beer--note_b3fdc76.md" "This is about cheap beer prices in China, travel note"
+```
+
+For **direct**: dest_dir is `data/vault/notes`, updates must include type, tags, status=active, processed=today.
+For **archive**: dest_dir is `data/vault/archive`, updates must include status=archived, stale_reason, processed=today.
 
 ## Reference: Type Taxonomy
 
