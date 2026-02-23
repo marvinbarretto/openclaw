@@ -129,6 +129,8 @@ Ensure destination directories exist before moving files:
 - `data/vault/notes/`
 - `data/vault/archive/`
 
+**IMPORTANT: Keep processing silent.** Do NOT narrate or show diffs for file edits and moves. Just do them quietly and move on to the next note. The user doesn't need to see frontmatter changes or mv commands — they only care about the conversation and the final summary. After processing a note, just confirm briefly (e.g. "Archived." or "Moved to notes/.") and show the next one.
+
 ## Session Summary
 
 After processing all notes, print:
