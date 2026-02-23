@@ -10,6 +10,9 @@ data/.gmail-access-token.json
 data/.google-tokens.json
 data/.calendar-tokens.json
 
+# Recommendations store (personal data — never commit)
+data/recommendations.db
+
 # Email digest data (contains email content — never commit)
 data/email-digest.json
 data/email-backlog-*.json

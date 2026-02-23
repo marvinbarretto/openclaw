@@ -76,6 +76,48 @@ Don't just skim newsletter subjects. Read the body. Extract:
 
 A mediocre issue of a normally-good newsletter should get dropped. A surprisingly good email from an unknown sender should surface.
 
+## Log your recommendations
+
+After identifying highlights, log each recommendation to the persistent store so they accumulate across sessions.
+
+For each item you surface in sections 2-5 below, run:
+
+```bash
+python3 /workspace/recommendations-helper.py log \
+    --title "Article or event title" \
+    --source "Newsletter Name or sender" \
+    --url "https://..." \
+    --source-id "GMAIL_ID_FROM_DIGEST" \
+    --score 0.8 \
+    --urgency evergreen \
+    --tags '["topic1", "topic2"]' \
+    --reasoning "One sentence connecting to Marvin's context"
+```
+
+### Score guidance
+
+| Score | Meaning | Example |
+|---|---|---|
+| 0.9-1.0 | Strong match to active priorities + personally relevant | LocalShout competitor launch, Spoons-related pub news |
+| 0.7-0.8 | Good match to interests, timely | New AI tool matching his stack, good music event in London |
+| 0.5-0.6 | Interesting but not urgent | Thoughtful essay on a topic he follows |
+| 0.3-0.4 | Tangential, might be worth a glance | Broadly relevant but not a strong signal |
+| 0.1-0.2 | Included for completeness | Borderline item you aren't sure about |
+
+### Urgency
+
+- `time-sensitive` — events, deals, tickets with hard deadlines. Always set `--expires` with the date.
+- `this-week` — timely content that loses value after a few days. Set `--expires` if there's a clear date.
+- `evergreen` — read whenever. No expiry needed.
+
+### Dedup
+
+Always use `--source-id` with the `gmail_id` from the digest. If the same digest is processed twice, duplicates are automatically skipped.
+
+### Reasoning
+
+Include `--reasoning` with one sentence connecting the recommendation to Marvin's context files. This helps future queries explain *why* something was recommended.
+
 ## Presentation format
 
 ### 1. Quick stats (always show first)

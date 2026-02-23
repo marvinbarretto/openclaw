@@ -22,9 +22,10 @@ Laptop (MacBook Air 24GB)
 VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   ├── OpenClaw v2026.2.12 (Node 22, systemd, openclaw user)
   ├── Docker sandbox (Python 3.11, Node 18, git, hardened)
-  │     ├── /workspace — Jimbo's brain files + skills + email digest
+  │     ├── /workspace — Jimbo's brain files + skills + email digest + recommendations.db
   │     ├── gmail-helper.py — fetches email via Gmail API, writes digest directly
-  │     └── calendar-helper.py — Calendar API client
+  │     ├── calendar-helper.py — Calendar API client
+  │     └── recommendations-helper.py — SQLite CRUD for persistent recommendations store
   └── Caddy (auto TLS)
 ```
 
@@ -36,7 +37,7 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-024) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue
+decisions/        ADRs (001-025) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide)
 workspace/        Jimbo's brain files that WE maintain (SOUL.md, HEARTBEAT.md). Deploy via workspace-push.sh.
@@ -50,6 +51,7 @@ notes/            Brain dumps
 
 ## Key Files
 
+- `workspace/recommendations-helper.py` — SQLite CRUD for persistent recommendations store. Jimbo logs finds from email/vault, tracks scores, urgency, expiry. Stdlib only, no OAuth.
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
 - `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
 - `scripts/sift-classify.py` — **LEGACY** Sift pipeline. Replaced by gmail-helper.py (ADR-022).
@@ -194,6 +196,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Data Files (Gitignored)
 
+- `data/recommendations.db` — SQLite recommendations store (personal data, never commit)
 - `data/email-digest.json` — classified email output (contains email content, never commit)
 - `data/feedback-*.json` — per-batch email feedback from Marvin (contains email content, never commit)
 - `data/sample-maildir/` — test email fixtures

@@ -61,6 +61,15 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Jimbo vault skill | NOT STARTED | ADR-023 Phase C — vault queries + triage via Telegram |
 | Tasks read-write scope | READY | `google-auth.py` updated with `tasks.readonly`. Upgrade to `tasks` for mark-complete. |
 
+## Recommendations
+
+| Capability | Status | Notes |
+|---|---|---|
+| Recommendations store | WORKING | SQLite-backed via `recommendations-helper.py` (ADR-025) |
+| Recommendation logging (email) | WORKING | Sift-digest skill logs findings with scores + urgency |
+| Recommendation expiry tracking | WORKING | Briefing auto-expires past-due time-sensitive items |
+| Recommendation review queue | NOT STARTED | ADR-024 Phase 3 — mobile UI alongside vault review |
+
 ## Autonomy
 
 | Capability | Status | Notes |

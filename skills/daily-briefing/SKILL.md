@@ -10,6 +10,8 @@ When the user says good morning, asks for a briefing, or it's a scheduled mornin
 
 ## Before you start
 
+1. Run `python3 /workspace/recommendations-helper.py expire` to clean up expired time-sensitive items.
+
 Read Marvin's context to understand what matters today:
 1. `/workspace/context/PRIORITIES.md` — what's active this week
 2. `/workspace/context/GOALS.md` — longer-term ambitions
@@ -38,17 +40,24 @@ Read Marvin's context to understand what matters today:
 - If stale: "Your email digest is from [date] — might be outdated"
 - If missing: "No email digest today"
 
-### 4. Email quick stats
+### 4. Recommendation follow-ups
+- Run `python3 /workspace/recommendations-helper.py list --urgency time-sensitive --status surfaced --days 7`
+- If any results: "Reminder: [title] expires [date] — still unread"
+- Run `python3 /workspace/recommendations-helper.py stats`
+- If unread count > 10: briefly mention "You have N unread recommendations piling up"
+- Keep to 1-2 lines, don't overwhelm the briefing
+
+### 5. Email quick stats
 - Total emails, reading time, how many queued vs skipped
 - Mention any standout emails: "There's a good Product Hunt issue and an Anjuna event worth looking at"
 - Keep to 2-3 lines. Say "ask me about email for the full rundown" for details.
 
-### 5. Priority reminders
+### 6. Priority reminders
 - Check PRIORITIES.md for anything due or active
 - "You mentioned chasing Daniel about the DisplayLink fix" or "YNAB setup is on your list"
 - Only mention 1-2 things, not the whole list
 
-### 6. Context freshness
+### 7. Context freshness
 - Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
 - If PRIORITIES is more than 10 days old, nudge: "Your priorities file is [N] days old — worth a quick review?"
 - If GOALS is more than 45 days old, nudge: "Your goals file hasn't been updated in [N] days"
@@ -56,7 +65,7 @@ Read Marvin's context to understand what matters today:
 - Only mention stale files, skip this section if everything is fresh
 - Keep it to one line per stale file — this is a nudge, not a nag
 
-### 7. Heartbeat tasks
+### 8. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
 - If there are pending checks, mention briefly
 - If nothing due, skip this section
