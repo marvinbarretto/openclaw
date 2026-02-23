@@ -10,7 +10,7 @@ You are running an interactive review session for Marvin's personal notes vault.
 ## Setup
 
 1. Parse arguments from `$ARGUMENTS`:
-   - First argument: batch size (default 10)
+   - First argument: batch size (default 5)
    - Second argument: sort order — `oldest` (default), `newest`, or `random`
    - Examples: `10 newest`, `5`, `20 random`, empty = `10 oldest`
 2. Read `context/PATTERNS.md` — this tells you how Marvin's notes actually work
@@ -26,10 +26,10 @@ Show a numbered markdown table with all notes in the batch:
 
 - **Title**: from frontmatter `title` field
 - **Source**: from frontmatter `source` field
-- **Created**: from frontmatter `created` field
+- **Created**: from frontmatter `created` field, formatted as `YYYY-MM-DD (Xd ago)` — e.g. `2025-09-14 (527d ago)`
 - **Preview**: first 60 chars of the body (after frontmatter), trimmed
 
-Then say: "Let's go through these one at a time. For each note I'll show the full content and you tell me what to do."
+After the table, wait for the user's response. They will typically give feedback for multiple notes at once.
 
 ## URL Enrichment
 
