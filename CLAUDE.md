@@ -51,6 +51,7 @@ notes/            Brain dumps
 
 ## Key Files
 
+- `.claude/commands/manual-review.md` — Claude Code custom command for interactive review of `needs-context` vault notes. Invoke with `/manual-review 10`. Presents notes, collects triage decisions (direct/context/archive/skip), updates frontmatter, moves files.
 - `workspace/recommendations-helper.py` — SQLite CRUD for persistent recommendations store. Jimbo logs finds from email/vault, tracks scores, urgency, expiry. Stdlib only, no OAuth.
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
 - `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
