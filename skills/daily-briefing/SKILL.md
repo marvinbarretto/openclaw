@@ -94,6 +94,21 @@ Email: 145 messages overnight, ~25 min queued. Standouts: strong UnHerd piece, W
 Heartbeat: All clear — digest is fresh, tokens valid.
 ```
 
+### 9. Cost snapshot
+- Run `python3 /workspace/cost-tracker.py budget --check`
+- If a budget is set: show a one-liner like "Costs: $0.42 of $10 this month (4.2%)"
+- If over alert threshold: flag it clearly
+- If no budget set, skip this section
+
+## After the briefing
+
+Log the briefing to both trackers:
+
+```bash
+python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task briefing --input-tokens <est> --output-tokens <est>
+python3 /workspace/activity-log.py log --task briefing --description "Morning briefing: <brief summary of key points>" --model <model>
+```
+
 ## Rules
 
 - Be concise — this is a glance, not a deep dive

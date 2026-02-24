@@ -37,9 +37,9 @@ SSH alias: `ssh jimbo` connects to VPS.
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-027) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration
+decisions/        ADRs (001-028) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
-skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide)
+skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
 workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/). Deploy via workspace-push.sh + rsync.
 setup/            Configuration docs, architecture, workspace files guide, launchd plist
 security/         VPS hardening checklist
@@ -52,6 +52,8 @@ notes/            Brain dumps
 ## Key Files
 
 - `.claude/commands/manual-review.md` — Claude Code custom command for interactive review of `needs-context` vault notes. Invoke with `/manual-review 10`. Presents notes, collects triage decisions (direct/context/archive/skip), updates frontmatter, moves files.
+- `workspace/cost-tracker.py` — SQLite cost tracking for every API interaction. Logs provider, model, task type, tokens, estimated USD. Supports budgets + alerts. Stdlib only.
+- `workspace/activity-log.py` — SQLite activity log for everything Jimbo does. Logs task type, description, outcome, satisfaction scores. Stdlib only.
 - `workspace/recommendations-helper.py` — SQLite CRUD for persistent recommendations store. Jimbo logs finds from email/vault, tracks scores, urgency, expiry. Stdlib only, no OAuth.
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
 - `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
@@ -81,6 +83,7 @@ notes/            Brain dumps
 - `scripts/process-inbox.py` — LLM batch classifier: inbox → notes/needs-context/archive (uses Claude Haiku)
 - `workspace/blog-src/` — Astro blog project. Posts in `src/content/posts/*.md`. Auto-generates index, tags, archive, RSS. Deployed via Cloudflare Pages (ADR-027).
 - `decisions/027-astro-blog-migration.md` — ADR for blog migration from static HTML to Astro
+- `decisions/028-active-heartbeat-cost-tracking.md` — ADR for active heartbeat, cost tracking, activity logging, and dashboard
 
 ## Security Model (Critical — Read Before Changing)
 
@@ -200,6 +203,8 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 ## Data Files (Gitignored)
 
 - `data/recommendations.db` — SQLite recommendations store (personal data, never commit)
+- `workspace/cost-tracker.db` — SQLite cost tracking data (on VPS, never commit)
+- `workspace/activity-log.db` — SQLite activity log data (on VPS, never commit)
 - `data/email-digest.json` — classified email output (contains email content, never commit)
 - `data/feedback-*.json` — per-batch email feedback from Marvin (contains email content, never commit)
 - `data/sample-maildir/` — test email fixtures

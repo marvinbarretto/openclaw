@@ -70,6 +70,16 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Recommendation expiry tracking | WORKING | Briefing auto-expires past-due time-sensitive items |
 | Recommendation review queue | NOT STARTED | ADR-024 Phase 3 — mobile UI alongside vault review |
 
+## Cost & Activity Tracking
+
+| Capability | Status | Notes |
+|---|---|---|
+| Cost tracking | WORKING | `cost-tracker.py` — logs every API interaction with token counts + estimated USD (ADR-028) |
+| Activity logging | WORKING | `activity-log.py` — logs every task with description, outcome, satisfaction scores (ADR-028) |
+| Budget monitoring | WORKING | Monthly budget with alert threshold. `cost-tracker.py budget --check` |
+| Dashboard (personal site) | WORKING | `/app/jimbo/` on `site.marvinbarretto.workers.dev` — costs, activity feed (ADR-028) |
+| Dashboard data export | WORKING | JSON exports via heartbeat auto-commit, consumed by dashboard at build time |
+
 ## Autonomy
 
 | Capability | Status | Notes |
@@ -77,7 +87,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Self-publish blog posts | WORKING | Write `.md` in `blog-src/src/content/posts/`, commit + push → Cloudflare auto-builds (ADR-027) |
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
 | Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
-| Heartbeat / self-monitoring | NOT STARTED | HEARTBEAT.md planned |
+| Heartbeat / self-monitoring | WORKING | HEARTBEAT.md with monitoring + active daytime tasks (ADR-028) |
 | Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
 | Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
 
@@ -115,5 +125,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-23*
-*Astro blog migration (ADR-027): 2026-02-23*
+*Last updated: 2026-02-24*
+*Active heartbeat + cost tracking (ADR-028): 2026-02-24*
