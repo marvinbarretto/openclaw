@@ -33,7 +33,7 @@ echo "Pushing manifest ($TOTAL items) to VPS..."
 # Ensure remote directory exists
 ssh jimbo "mkdir -p /home/openclaw/.openclaw/workspace/triage"
 
-rsync -avz $DRY_RUN "$MANIFEST" "$REMOTE"
+rsync -avz $DRY_RUN "$MANIFEST" "${REMOTE}manifest.json"
 
 echo ""
-echo "Done. Manifest available at /workspace/triage/triage-manifest.json"
+echo "Done. Manifest available at /workspace/triage/manifest.json"
