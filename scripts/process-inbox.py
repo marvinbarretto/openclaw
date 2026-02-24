@@ -784,8 +784,9 @@ def build_manifest_item(filepath, fm, body, dest_dir, info, url_info=None):
     note_id = fm.get('id', '')
     age = note_age_days(fm)
 
-    # Preview: first 120 chars of body text
+    # Preview: first 120 chars for summary, full body for detail view
     preview = body.strip()[:120]
+    full_body = body.strip()
 
     # URL content from fetched tweets/pages
     url_content = None
@@ -813,6 +814,7 @@ def build_manifest_item(filepath, fm, body, dest_dir, info, url_info=None):
         'created': fm.get('created', ''),
         'age_days': age,
         'preview': preview,
+        'body': full_body,
         'word_count': len(all_text.split()),
         'has_url': len(urls) > 0,
         'url_content': url_content,
