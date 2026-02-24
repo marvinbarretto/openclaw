@@ -19,6 +19,7 @@ Usage:
     python3 scripts/process-inbox.py --limit 20            # first 20
     python3 scripts/process-inbox.py --dry-run             # show output, don't move
     python3 scripts/process-inbox.py --dry-run --limit 5   # quick test
+    python3 scripts/process-inbox.py --manifest --limit 50 --provider gemini --skip-fetch
 """
 
 import argparse
@@ -622,8 +623,12 @@ def should_process(fm, wave_filter):
 # Processing
 # ---------------------------------------------------------------------------
 
-def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anthropic', skip_fetch=False):
-    """Process a single inbox file. Returns (destination, classification) or None."""
+def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anthropic', skip_fetch=False, return_extra=False):
+    """Process a single inbox file. Returns (destination, classification) or None.
+
+    If return_extra=True, returns (destination, classification, fm, body, url_info)
+    for manifest building.
+    """
     with open(filepath) as f:
         content = f.read()
 
@@ -649,13 +654,14 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
             updates['stale_reason'] = stale_reason
         if dry_run:
             updates['_triage'] = 'pre-llm'
-            return dest_dir, {**updates, '_file': os.path.basename(filepath)}
+            result = (dest_dir, {**updates, '_file': os.path.basename(filepath)})
+            return (*result, fm, body, []) if return_extra else result
         new_content = update_frontmatter(content, updates)
         with open(filepath, 'w') as f:
             f.write(new_content)
         os.makedirs(dest_dir, exist_ok=True)
         shutil.move(filepath, os.path.join(dest_dir, os.path.basename(filepath)))
-        return dest_dir, updates
+        return (*( dest_dir, updates), fm, body, []) if return_extra else (dest_dir, updates)
 
     # Extract URLs and fetch titles + tweet content
     all_text = (fm.get('title', '') + ' ' + body).strip()
@@ -746,7 +752,8 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
         updates['stale_reason'] = stale_reason
 
     if dry_run:
-        return dest_dir, {**updates, '_file': os.path.basename(filepath)}
+        result = (dest_dir, {**updates, '_file': os.path.basename(filepath)})
+        return (*result, fm, body, url_info) if return_extra else result
 
     # Update file and move
     new_content = update_frontmatter(content, updates)
@@ -757,7 +764,92 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
     dest_path = os.path.join(dest_dir, os.path.basename(filepath))
     shutil.move(filepath, dest_path)
 
-    return dest_dir, updates
+    return (*(dest_dir, updates), fm, body, url_info) if return_extra else (dest_dir, updates)
+
+
+# ---------------------------------------------------------------------------
+# Manifest
+# ---------------------------------------------------------------------------
+
+DEST_TO_ACTION = {
+    NOTES_DIR: 'direct',
+    NEEDS_CONTEXT_DIR: 'needs-context',
+    ARCHIVE_DIR: 'archive',
+}
+
+
+def build_manifest_item(filepath, fm, body, dest_dir, info, url_info=None):
+    """Build a single manifest item dict for JSON output."""
+    filename = os.path.basename(filepath)
+    note_id = fm.get('id', '')
+    age = note_age_days(fm)
+
+    # Preview: first 120 chars of body text
+    preview = body.strip()[:120]
+
+    # URL content from fetched tweets/pages
+    url_content = None
+    if url_info:
+        for url, title, is_dead in url_info:
+            if title and title.startswith('[Tweet]'):
+                url_content = title[8:]  # strip "[Tweet] " prefix
+                break
+            elif title and not is_dead:
+                url_content = title
+                break
+
+    # Has URL?
+    all_text = (fm.get('title', '') + ' ' + body).strip()
+    urls = extract_urls(all_text)
+
+    action = DEST_TO_ACTION.get(dest_dir, 'needs-context')
+
+    item = {
+        'id': note_id,
+        'filename': filename,
+        'title': info.get('title', fm.get('title', '')),
+        'source': fm.get('source', 'unknown'),
+        'source_list': fm.get('source_list', ''),
+        'created': fm.get('created', ''),
+        'age_days': age,
+        'preview': preview,
+        'word_count': len(all_text.split()),
+        'has_url': len(urls) > 0,
+        'url_content': url_content,
+        'suggested': {
+            'action': action,
+            'type': info.get('type', 'unknown'),
+            'tags': info.get('tags', []),
+            'confidence': info.get('confidence', 5),
+            'title': info.get('title', ''),
+            'stale_reason': info.get('stale_reason'),
+        },
+    }
+    return item
+
+
+def write_manifest(items, output_path):
+    """Write manifest JSON file with metadata."""
+    summary = {'direct': 0, 'needs-context': 0, 'archive': 0}
+    for item in items:
+        action = item['suggested']['action']
+        summary[action] = summary.get(action, 0) + 1
+
+    manifest = {
+        'generated': datetime.datetime.now().isoformat(timespec='seconds'),
+        'total': len(items),
+        'summary': summary,
+        'items': items,
+    }
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    with open(output_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+
+    log(f"\nManifest written to {output_path}")
+    log(f"  {len(items)} items: {summary.get('direct', 0)} direct, "
+        f"{summary.get('needs-context', 0)} needs-context, "
+        f"{summary.get('archive', 0)} archive")
 
 
 # ---------------------------------------------------------------------------
@@ -809,7 +901,14 @@ def main():
                         help='LLM provider: anthropic (default), ollama (local), or gemini')
     parser.add_argument('--skip-fetch', action='store_true',
                         help='Skip URL fetching (oEmbed, page titles) to save battery/bandwidth')
+    parser.add_argument('--manifest', nargs='?', const='data/triage-manifest.json',
+                        metavar='PATH',
+                        help='Write JSON manifest instead of moving files (default: data/triage-manifest.json)')
     args = parser.parse_args()
+
+    # --manifest implies --dry-run
+    if args.manifest is not None:
+        args.dry_run = True
 
     # Validate wave
     if args.wave not in ('1', '2', '3', '4', 'all'):
@@ -866,7 +965,9 @@ def main():
     log(f"Found {len(all_files)} inbox files, {total} matching wave={args.wave}")
     if args.limit:
         log(f"Limited to {args.limit} items")
-    if args.dry_run:
+    if args.manifest is not None:
+        log(f"MANIFEST MODE — writing to {args.manifest}")
+    elif args.dry_run:
         log("DRY RUN — no files will be moved")
     log("")
 
@@ -876,6 +977,8 @@ def main():
 
     # Process files
     results = []
+    manifest_items = []
+    manifest_mode = args.manifest is not None
     errors = 0
     start_time = time.time()
 
@@ -890,32 +993,49 @@ def main():
 
         log(f"[{i+1}/{total} {pct}% ETA:{eta_str}] {filename[:60]}")
 
-        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run, provider=args.provider, skip_fetch=args.skip_fetch)
+        result = process_file(filepath, api_key, system_prompt, dry_run=args.dry_run,
+                              provider=args.provider, skip_fetch=args.skip_fetch,
+                              return_extra=manifest_mode)
         if result is None:
             errors += 1
             log(f"  FAILED — skipping")
             continue
 
-        dest_dir, info = result
+        if manifest_mode:
+            dest_dir, info, fm, body, url_info_result = result
+            manifest_items.append(
+                build_manifest_item(filepath, fm, body, dest_dir, info, url_info_result)
+            )
+            # Also keep (dest_dir, info) for summary
+            results.append((dest_dir, info))
+        else:
+            dest_dir, info = result
+            results.append(result)
+
         dest_name = os.path.basename(dest_dir)
         conf = info.get('confidence', '?')
         log(f"  → {dest_name}/ type={info.get('type')} tags={info.get('tags')} confidence={conf}")
 
-        if args.dry_run:
+        if args.dry_run and not manifest_mode:
             log(f"    title: {info.get('title', '')[:70]}")
             if info.get('stale_reason'):
                 log(f"    stale_reason: {info['stale_reason']}")
             if info.get('_triage'):
                 log(f"    (auto-triaged: {info['_triage']})")
 
-        results.append(result)
-
         # Rate limit: ~10/sec max (100ms between calls)
         time.sleep(0.1)
 
-    # Summary
+    # Output
     elapsed = time.time() - start_time
-    print_summary(results)
+    if manifest_mode:
+        # Resolve manifest path relative to repo root
+        manifest_path = args.manifest
+        if not os.path.isabs(manifest_path):
+            manifest_path = os.path.join(REPO_ROOT, manifest_path)
+        write_manifest(manifest_items, manifest_path)
+    else:
+        print_summary(results)
     log(f"\nCompleted in {elapsed:.0f}s ({errors} errors)")
 
 
