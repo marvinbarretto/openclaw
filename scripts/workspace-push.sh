@@ -3,6 +3,7 @@
 #
 # This pushes:
 #   workspace/SOUL.md, HEARTBEAT.md  →  /workspace/         (brain files)
+#   workspace/*.py                   →  /workspace/         (helpers: cost-tracker, activity-log, etc.)
 #   context/*.md                     →  /workspace/context/  (interests, priorities, taste, goals)
 #
 # Files Jimbo writes himself (IDENTITY.md, USER.md, MEMORY.md, JIMBO_DIARY.md)
@@ -40,6 +41,24 @@ for f in "${BRAIN_FILES[@]}"; do
     fi
 done
 
+# --- Helper scripts (*.py) ---
+HELPER_FILES=()
+for f in "$WORKSPACE_DIR"/*.py; do
+    if [ -f "$f" ]; then
+        HELPER_FILES+=("$(basename "$f")")
+    fi
+done
+
+echo ""
+echo "Helper scripts:"
+if [ ${#HELPER_FILES[@]} -gt 0 ]; then
+    for f in "${HELPER_FILES[@]}"; do
+        echo "  $f"
+    done
+else
+    echo "  (none found)"
+fi
+
 # --- Context files ---
 CONTEXT_COUNT=0
 if [ -d "$CONTEXT_DIR" ]; then
@@ -56,7 +75,7 @@ else
     echo "  (none found)"
 fi
 
-TOTAL=$((BRAIN_FOUND + CONTEXT_COUNT))
+TOTAL=$((BRAIN_FOUND + ${#HELPER_FILES[@]} + CONTEXT_COUNT))
 if [ "$TOTAL" -eq 0 ]; then
     echo ""
     echo "ERROR: Nothing to push."
@@ -77,6 +96,20 @@ for f in "${BRAIN_FILES[@]}"; do
         fi
     fi
 done
+
+# Push helper scripts individually (same approach as brain files)
+if [ ${#HELPER_FILES[@]} -gt 0 ]; then
+    echo ""
+    echo "Pushing helper scripts..."
+    for f in "${HELPER_FILES[@]}"; do
+        if [[ -n "$DRY_RUN" ]]; then
+            echo "  Would push: $f → /workspace/$f"
+        else
+            scp "$WORKSPACE_DIR/$f" "$REMOTE_BASE/$f"
+            echo "  Pushed: $f"
+        fi
+    done
+fi
 
 # Push context directory (rsync with --delete so removed files get cleaned up)
 if [ "$CONTEXT_COUNT" -gt 0 ]; then

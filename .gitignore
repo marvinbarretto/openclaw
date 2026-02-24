@@ -13,6 +13,10 @@ data/.calendar-tokens.json
 # Recommendations store (personal data — never commit)
 data/recommendations.db
 
+# Cost + activity tracking DBs (live on VPS, never commit)
+workspace/cost-tracker.db
+workspace/activity-log.db
+
 # Email digest data (contains email content — never commit)
 data/email-digest.json
 data/email-backlog-*.json
