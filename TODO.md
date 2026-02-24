@@ -24,17 +24,18 @@ Active work is tracked in [GitHub Issues](https://github.com/marvinbarretto/open
 - [x] Decode MIME-encoded subjects (=?UTF-8?B?...=) before classification (2026-02-18)
 - [x] Tune classification prompt — 18/20 queue → 3/20 queue, much stricter filtering (2026-02-18)
 
-### Automation (see ADR-010)
-- [x] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (2026-02-18)
+### Automation (see ADR-010, updated ADR-022)
+- [x] Set up sift-cron.sh with launchd for 6am laptop-side pipeline (2026-02-18) — RETIRED 2026-02-24, replaced by VPS cron
+- [x] Set up VPS root crontab: gmail-helper.py fetch at 06:00 UTC, no laptop dependency (2026-02-24)
+- [x] Unload laptop launchd job (com.openclaw.sift-cron) (2026-02-24)
 - [x] Configure OpenClaw cron job for 7am morning briefing (isolated session, Telegram) (2026-02-18)
 - [x] Add email digest freshness check + token expiry check to HEARTBEAT.md (2026-02-18)
 - [x] Configure heartbeat timing: every 30m, active 07:00–01:00 London (2026-02-18)
 - [ ] Process 28k email backlog in batches (see ADR-009)
 
-### Gmail sync
-- mbsync pulling ~100k emails from Gmail archive, ~75% complete (2026-02-18)
-- Gmail IMAP rate-limits after ~25k emails per run — wait 15 min between retries
-- Once caught up, `--hours 24` will work for daily pipeline
+### Gmail sync (RETIRED — replaced by Gmail API on VPS)
+- ~~mbsync pulling ~100k emails from Gmail archive~~ — no longer needed, Gmail API fetches directly
+- `--hours 24` works daily via VPS cron at 06:00 UTC
 
 ### Briefing quality
 - [ ] Fix Gemini thinking leak — reasoning tokens appear in Telegram (see ADR-015). Try Claude Haiku or wait for OpenClaw update.

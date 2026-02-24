@@ -7,7 +7,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Capability | Status | Notes |
 |---|---|---|
 | Telegram chat | WORKING | Via `@fourfold_openclaw_bot` |
-| Morning briefing | READY | Needs OpenClaw cron config (ADR-010) |
+| Morning briefing | WORKING | OpenClaw cron at 07:00 London. Digest fetched by VPS cron at 06:00 UTC. |
 | Email digest summary | WORKING | Via `sift-digest` skill |
 
 ## Code & Files
@@ -44,7 +44,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Deep newsletter reading | WORKING | Full body (5000 chars), links extracted. Jimbo applies judgment. |
 | Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
 | LLM email classification | REMOVED | Redundant — Jimbo reads raw emails directly (ADR-022) |
-| Old Sift pipeline (laptop) | DEPRECATED | mbsync + Ollama + sift-push.sh no longer needed |
+| Old Sift pipeline (laptop) | RETIRED | mbsync + Ollama + sift-push.sh removed. launchd job unloaded. |
 
 ## Notes Vault
 
@@ -86,7 +86,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Self-publish blog posts | WORKING | Write `.md` in `blog-src/src/content/posts/`, commit + push → Cloudflare auto-builds (ADR-027) |
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
-| Automated daily pipeline | NOT STARTED | Laptop launchd + VPS cron (ADR-010) |
+| Automated daily pipeline | WORKING | VPS root cron at 06:00 UTC → gmail-helper.py fetch. No laptop dependency. |
 | Heartbeat / self-monitoring | WORKING | HEARTBEAT.md with monitoring + active daytime tasks (ADR-028) |
 | Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
 | Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |

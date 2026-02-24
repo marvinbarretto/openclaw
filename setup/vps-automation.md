@@ -41,6 +41,18 @@ sudo -E -u openclaw openclaw cron list
 
 ## Cron Jobs
 
+### Email digest fetch (VPS root crontab, done 2026-02-24)
+
+Daily at 06:00 UTC. Sources Google OAuth env vars from `/opt/openclaw.env` and passes them into the sandbox container. Logs to `/var/log/gmail-fetch.log`.
+
+```bash
+# View: crontab -l
+# Edit: crontab -e
+0 6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN $(docker ps -q --filter name=openclaw-sbx) python3 /workspace/gmail-helper.py fetch --hours 24 >> /var/log/gmail-fetch.log 2>&1
+```
+
+**Replaces** the old laptop launchd job (`com.openclaw.sift-cron.plist` → `sift-cron.sh`). Laptop no longer needs to be awake for email.
+
 ### Add the morning briefing (done 2026-02-18)
 
 ```bash
@@ -153,9 +165,13 @@ sudo -E -u openclaw HOME=/home/openclaw openclaw plugins doctor
 These run from the laptop (this repo):
 
 ```bash
-./scripts/sift-push.sh             # push email digest
 ./scripts/skills-push.sh           # push custom skills
 ./scripts/skills-push.sh --dry-run # preview skill push
-./scripts/sift-cron.sh             # full pipeline: sync + classify + push
-./scripts/sift-cron.sh --no-sync   # skip mbsync, reclassify + push
+./scripts/workspace-push.sh        # push brain files + context files
+```
+
+Legacy (no longer needed — email pipeline runs on VPS):
+```bash
+./scripts/sift-push.sh             # RETIRED — digest written directly in sandbox
+./scripts/sift-cron.sh             # RETIRED — replaced by VPS root crontab
 ```

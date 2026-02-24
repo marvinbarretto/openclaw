@@ -41,7 +41,7 @@ decisions/        ADRs (001-028) — sandbox, email triage, prompt injection, mo
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
 workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/). Deploy via workspace-push.sh + rsync.
-setup/            Configuration docs, architecture, workspace files guide, launchd plist
+setup/            Configuration docs, architecture, workspace files guide
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
 sandbox/          Custom Docker image Dockerfile
@@ -95,7 +95,7 @@ notes/            Brain dumps
 ### Prompt Injection (ADR-003)
 - **Reader/Actor split:** Untrusted text (email, issues) goes to a Reader model with NO tool access
 - Reader outputs fixed-schema JSON only; Actor never sees raw untrusted text
-- Email classification runs fully offline via local Ollama — content never leaves the laptop
+- Email fetched via Gmail API on VPS (read-only). No local processing — content stays on VPS.
 
 ### Email Security (ADR-002, updated ADR-022)
 - Gmail API access is **read-only** (gmail.readonly scope). Agent cannot send, delete, or modify email.
@@ -151,8 +151,22 @@ Newsletters are NOT blacklisted. Jimbo reads them deeply — extracts links, mea
 
 To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists in `workspace/gmail-helper.py`.
 
-### Legacy pipeline (deprecated)
-The old pipeline (mbsync → sift-classify.py → sift-push.sh) is no longer used. Scripts remain in `scripts/` for reference but are marked LEGACY. The old pipeline had issues: 2.5 hour classify time, laptop dependency, broken network check, LLM-classifying-for-LLM redundancy.
+### Scheduling
+
+Email fetch runs on a VPS root crontab, daily at 06:00 UTC:
+```
+0 6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+  docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
+              -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET \
+              -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN \
+  $(docker ps -q --filter name=openclaw-sbx) \
+  python3 /workspace/gmail-helper.py fetch --hours 24 \
+  >> /var/log/gmail-fetch.log 2>&1
+```
+
+The morning briefing (OpenClaw cron, 07:00 London) reads the digest written by this job.
+
+No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 
 ## Notes Vault Pipeline (ADR-023, ADR-024)
 

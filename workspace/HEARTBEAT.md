@@ -1,7 +1,7 @@
 # HEARTBEAT.md
 
 # Existing monitoring tasks
-- Check `/workspace/email-digest.json`: If the file exists and `generated_at` is more than 24 hours old, tell Marvin the email digest is stale and ask him to run the pipeline on his laptop.
+- Check `/workspace/email-digest.json`: If the file exists and `generated_at` is more than 24 hours old, tell Marvin the email digest is stale — the VPS cron (daily 06:00 UTC) may have failed. Check `/var/log/gmail-fetch.log` for errors.
 - If email digest was updated since the last heartbeat, briefly mention how many emails are in the digest and how many are queued for reading
 - Check if any token expiry dates in `/workspace/CAPABILITIES.md` are within 14 days - warn Marvin if so
 - Check context file freshness: if `/workspace/context/PRIORITIES.md` is >10 days old or `/workspace/context/GOALS.md` is >45 days old, remind Marvin to update them
