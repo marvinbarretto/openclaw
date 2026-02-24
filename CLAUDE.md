@@ -26,7 +26,9 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── gmail-helper.py — fetches email via Gmail API, writes digest directly
   │     ├── calendar-helper.py — Calendar API client
   │     └── recommendations-helper.py — SQLite CRUD for persistent recommendations store
-  └── Caddy (auto TLS)
+  ├── notes-triage-api (Hono/Node, port 3100, systemd)
+  │     └── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
+  └── Caddy (auto TLS, routes /api/triage/* → notes-triage-api)
 ```
 
 Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, Jimbo reads the rest deeply. No LLM classification step.
@@ -38,7 +40,7 @@ SSH alias: `ssh jimbo` connects to VPS.
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
 decisions/        ADRs (001-028) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking
-scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py
+scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
 workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/). Deploy via workspace-push.sh + rsync.
 setup/            Configuration docs, architecture, workspace files guide
@@ -80,7 +82,11 @@ notes/            Brain dumps
 - `scripts/tasks-dump.py` — Dumps all Google Tasks to JSON via Tasks API
 - `scripts/ingest-tasks.py` — Converts tasks-dump.json → vault inbox markdown files
 - `scripts/ingest-keep.py` — Converts Google Keep JSON export → vault inbox markdown files
-- `scripts/process-inbox.py` — LLM batch classifier: inbox → notes/needs-context/archive (uses Claude Haiku)
+- `scripts/process-inbox.py` — LLM batch classifier + manifest generator: inbox → notes/needs-context/archive, or `--manifest` mode for triage UI
+- `scripts/push-manifest.sh` — Rsyncs triage manifest to VPS for the triage API
+- `scripts/pull-decisions.sh` — Pulls triage decisions from VPS after mobile review
+- `scripts/apply-decisions.py` — Applies triage decisions to move vault files to notes/archive/needs-context
+- `notes/triage-deploy.md` — Full triage pipeline architecture, deployment, and operations guide
 - `workspace/blog-src/` — Astro blog project. Posts in `src/content/posts/*.md`. Auto-generates index, tags, archive, RSS. Deployed via Cloudflare Pages (ADR-027).
 - `decisions/027-astro-blog-migration.md` — ADR for blog migration from static HTML to Astro
 - `decisions/028-active-heartbeat-cost-tracking.md` — ADR for active heartbeat, cost tracking, activity logging, and dashboard
@@ -187,15 +193,24 @@ data/vault/
 ```
 1. Export:     tasks-dump.py → data/tasks-dump.json
 2. Ingest:     ingest-tasks.py / ingest-keep.py → data/vault/inbox/
-3. Classify:   process-inbox.py → notes/ | needs-context/ | archive/
-4. Review:     (ADR-024, not yet built) mobile web UI for needs-context items
+3. Classify:   process-inbox.py --manifest → data/triage-manifest.json (LLM suggests actions)
+4. Push:       push-manifest.sh → VPS triage data dir
+5. Review:     Mobile web UI at site.marvinbarretto.workers.dev/app/jimbo/notes-triage
+6. Pull:       pull-decisions.sh → data/triage-decisions.json
+7. Apply:      apply-decisions.py → moves vault files to notes/archive/needs-context
 ```
 
+### Triage UI stack
+- **notes-triage-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/notes-triage-api (private)
+- **site** — React triage UI at `/app/jimbo/notes-triage`. Deployed to Cloudflare Workers.
+- **Caddy** routes `/api/triage/*` to the API, everything else to OpenClaw.
+- See `notes/triage-deploy.md` for full deployment and operations guide.
+
 ### Key details
-- All scripts are stdlib Python only (no pip). process-inbox.py calls Claude Haiku API.
+- All scripts are stdlib Python only (no pip). process-inbox.py calls Gemini Flash or Claude Haiku API.
 - Vault lives in `data/vault/` (gitignored — contains personal notes, never commit)
 - `context/PATTERNS.md` captures classification patterns learned from review sessions
-- Notes use 8 types: bookmark, recipe, idea, task, reference, travel, media, checklist
+- Notes use 15 types: bookmark, recipe, idea, task, reference, travel, media, checklist, person, finance, health, quote, journal, political, event
 - Google Tasks scope upgraded: `tasks.readonly` added to google-auth.py
 
 ## Context Files

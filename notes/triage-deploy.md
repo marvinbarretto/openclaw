@@ -4,9 +4,9 @@
 
 A mobile-friendly web UI for triaging ~6,500 vault notes from the inbox. Three pieces work together:
 
-1. **process-inbox.py** (this repo) — generates a `manifest.json` describing every inbox note with LLM-suggested actions
-2. **notes-triage-api** (Hono/Node) — serves the manifest as a queue and stores triage decisions as JSON
-3. **site** (Astro/React) — the triage UI at `/app/jimbo/notes-triage`, swipe cards to accept/archive/skip
+1. **process-inbox.py** (openclaw repo) — generates a `manifest.json` describing every inbox note with LLM-suggested actions
+2. **notes-triage-api** (github.com/marvinbarretto/notes-triage-api, private) — Hono/Node API, serves the manifest as a queue and stores triage decisions as JSON
+3. **site** (github.com/marvinbarretto/site) — Astro/React triage UI at `/app/jimbo/notes-triage`, swipe cards to accept/archive/skip
 
 ## Architecture
 
@@ -32,7 +32,7 @@ Laptop                                VPS (167.99.206.214)
 1. **Generate manifest**: `python3 scripts/process-inbox.py --manifest --provider gemini --skip-fetch`
    - Reads every file in `data/vault/inbox/`
    - Calls LLM for suggested action (direct/archive/context/skip)
-   - Writes `data/vault/triage/manifest.json`
+   - Writes `data/triage-manifest.json`
 
 2. **Push to VPS**: `./scripts/push-manifest.sh`
    - Rsyncs manifest.json to `/home/openclaw/.openclaw/workspace/triage/` on VPS
@@ -43,7 +43,7 @@ Laptop                                VPS (167.99.206.214)
    - Decisions stored in `decisions.json` on VPS
 
 4. **Pull decisions back**: `./scripts/pull-decisions.sh`
-   - Rsyncs decisions.json from VPS to `data/vault/triage/decisions.json`
+   - Rsyncs decisions.json from VPS to `data/triage-decisions.json`
 
 5. **Apply decisions**: `python3 scripts/apply-decisions.py`
    - Reads decisions.json, moves files in the vault accordingly
