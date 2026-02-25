@@ -1,0 +1,16 @@
+{
+  "task_id": "heartbeat",
+  "description": "Run periodic system checks — digest freshness, token validity, cost budget",
+  "default_model": "gemini-2.5-flash",
+  "fallback_model": null,
+  "provider": "openclaw",
+  "evaluation": {
+    "method": "automated",
+    "criteria": [
+      "all_checks_completed",
+      "issues_reported_accurately"
+    ]
+  },
+  "budget_ceiling_per_run": 0.005,
+  "notes": "Low-complexity, high-frequency task. Flash is fine."
+}

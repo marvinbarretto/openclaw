@@ -1,0 +1,40 @@
+{
+  "task_id": "newsletter-deep-read",
+  "description": "Deep read shortlisted newsletters, extract specific articles, links, events, prices, and gems matching Marvin's context",
+  "default_model": "claude-haiku-4.5",
+  "fallback_model": "gemini-2.5-flash",
+  "provider": "anthropic",
+  "evaluation": {
+    "method": "conductor-review",
+    "criteria": [
+      "cited_specific_articles",
+      "extracted_links",
+      "linked_to_context_files",
+      "surfaced_surprises",
+      "prices_and_dates_included"
+    ]
+  },
+  "budget_ceiling_per_run": 0.08,
+  "batch_size": 15,
+  "context_files": ["INTERESTS.md", "TASTE.md", "PRIORITIES.md", "GOALS.md"],
+  "output_schema": {
+    "gems": [
+      {
+        "gmail_id": "string",
+        "source": "string",
+        "title": "string",
+        "why": "string",
+        "links": ["url"],
+        "time_sensitive": "boolean",
+        "deadline": "ISO date or null",
+        "price": "string or null",
+        "surprise_candidate": "boolean"
+      }
+    ],
+    "stats": {
+      "newsletters_read": "integer",
+      "gems_extracted": "integer",
+      "links_found": "integer"
+    }
+  }
+}

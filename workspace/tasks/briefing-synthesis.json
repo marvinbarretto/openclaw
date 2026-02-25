@@ -1,0 +1,18 @@
+{
+  "task_id": "briefing-synthesis",
+  "description": "Conductor task — Jimbo synthesises worker outputs into the morning briefing",
+  "default_model": "claude-haiku-4.5",
+  "fallback_model": null,
+  "provider": "openclaw",
+  "evaluation": {
+    "method": "user-rating",
+    "criteria": [
+      "followed_presentation_format",
+      "time_sensitive_items_first",
+      "surprise_attempt_included",
+      "concise_and_scannable"
+    ]
+  },
+  "budget_ceiling_per_run": 0.10,
+  "notes": "This task is performed by Jimbo himself (conductor), not a worker script. Logged for tracking."
+}
