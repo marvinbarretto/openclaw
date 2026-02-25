@@ -38,5 +38,8 @@ workspace/blog-src/node_modules/
 workspace/blog-src/dist/
 workspace/blog-src/.astro/
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # OS
 .DS_Store
