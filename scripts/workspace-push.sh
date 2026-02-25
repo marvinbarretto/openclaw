@@ -4,6 +4,9 @@
 # This pushes:
 #   workspace/SOUL.md, HEARTBEAT.md  →  /workspace/         (brain files)
 #   workspace/*.py                   →  /workspace/         (helpers: cost-tracker, activity-log, etc.)
+#   workspace/workers/               →  /workspace/workers/  (orchestrator worker scripts)
+#   workspace/tasks/                 →  /workspace/tasks/    (task registry configs)
+#   workspace/tests/                 →  /workspace/tests/    (worker test suite)
 #   context/*.md                     →  /workspace/context/  (interests, priorities, taste, goals)
 #
 # Files Jimbo writes himself (IDENTITY.md, USER.md, MEMORY.md, JIMBO_DIARY.md)
@@ -59,6 +62,21 @@ else
     echo "  (none found)"
 fi
 
+# --- Worker directories (workers/, tasks/, tests/) ---
+WORKER_DIRS=(workers tasks tests)
+WORKER_DIR_COUNT=0
+echo ""
+echo "Worker directories:"
+for d in "${WORKER_DIRS[@]}"; do
+    if [ -d "$WORKSPACE_DIR/$d" ]; then
+        FILE_COUNT=$(find "$WORKSPACE_DIR/$d" -type f | wc -l | tr -d ' ')
+        echo "  $d/ ($FILE_COUNT files)"
+        WORKER_DIR_COUNT=$((WORKER_DIR_COUNT + FILE_COUNT))
+    else
+        echo "  $d/ (not found, skipping)"
+    fi
+done
+
 # --- Context files ---
 CONTEXT_COUNT=0
 if [ -d "$CONTEXT_DIR" ]; then
@@ -75,7 +93,7 @@ else
     echo "  (none found)"
 fi
 
-TOTAL=$((BRAIN_FOUND + ${#HELPER_FILES[@]} + CONTEXT_COUNT))
+TOTAL=$((BRAIN_FOUND + ${#HELPER_FILES[@]} + WORKER_DIR_COUNT + CONTEXT_COUNT))
 if [ "$TOTAL" -eq 0 ]; then
     echo ""
     echo "ERROR: Nothing to push."
@@ -110,6 +128,15 @@ if [ ${#HELPER_FILES[@]} -gt 0 ]; then
         fi
     done
 fi
+
+# Push worker directories (rsync with --delete so removed files get cleaned up)
+for d in "${WORKER_DIRS[@]}"; do
+    if [ -d "$WORKSPACE_DIR/$d" ]; then
+        echo ""
+        echo "Pushing $d/ ..."
+        rsync -avz --delete $DRY_RUN "$WORKSPACE_DIR/$d/" "$REMOTE_BASE/$d/"
+    fi
+done
 
 # Push context directory (rsync with --delete so removed files get cleaned up)
 if [ "$CONTEXT_COUNT" -gt 0 ]; then
