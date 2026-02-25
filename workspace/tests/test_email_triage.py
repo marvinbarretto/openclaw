@@ -23,6 +23,15 @@ class TestBuildTriagePrompt(unittest.TestCase):
         self.assertIn("Surprising, niche", prompt)
         self.assertIn("abc", prompt)
 
+    def test_prompt_uses_custom_categories(self):
+        emails = [{"gmail_id": "abc", "sender": {"name": "S", "email": "s@e.com"},
+                    "subject": "Test", "body_snippet": "snip",
+                    "date": "2026-02-24T06:00:00Z", "labels": []}]
+        categories = ["newsletter", "football", "job-alert"]
+        prompt = build_triage_prompt(emails, {}, categories=categories)
+        self.assertIn('"football"', prompt)
+        self.assertIn('"job-alert"', prompt)
+
     def test_prompt_batches_correctly(self):
         emails = [{"gmail_id": f"id_{i}", "sender": {"name": "S", "email": "s@e.com"},
                     "subject": f"Email {i}", "body_snippet": "snip", "body": "body",

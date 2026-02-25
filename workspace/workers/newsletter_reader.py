@@ -39,7 +39,7 @@ def build_reader_prompt(emails, context):
             f"Links found:\n{links_str}\n"
         )
 
-    return f"""You are a deep-reading assistant. Read each email carefully — every paragraph, every link — and extract what matters.
+    return f"""You are a deep-reading assistant. Read each email carefully — every paragraph, every link — and extract what matters. Be honest about what you find.
 
 # Marvin's Context
 {context_block}
@@ -56,24 +56,31 @@ For each email, read the FULL BODY carefully. Don't just read the subject line. 
 - Surprising or non-obvious connections to Marvin's interests or projects
 - Links worth clicking
 
-For each gem you find, note whether it could be a "surprise" — something non-obvious that connects two unrelated things, or a buried find Marvin wouldn't expect.
+It is completely fine to read an email and find nothing worth extracting. If there are no gems, say so — include the email in "skipped" with a reason. Honesty is more valuable than padding the list with weak finds.
 
 Return a JSON object with:
-- "gems": array of extracted items
-- "stats": object with newsletters_read, gems_extracted, links_found
+- "gems": array of extracted items (can be empty)
+- "skipped": array of emails you read but found nothing worth extracting
+- "stats": object with newsletters_read, gems_extracted, links_found, skipped_count
 
 Each gem must have:
 - "gmail_id": which email it came from
 - "source": sender/newsletter name
 - "title": the specific article/event/deal title
-- "why": one sentence connecting it to Marvin's context (reference specific interests/priorities)
+- "why": one sentence connecting it to Marvin's context (reference specific interests/priorities). If the connection is weak, say so — "tangential to X" is better than pretending it's a strong match
+- "confidence": float 0.0-1.0. How confident are you this is genuinely relevant? 0.9 = strong match to active priorities. 0.5 = interesting but might not land. 0.2 = a stretch.
 - "links": array of relevant URLs
 - "time_sensitive": boolean
 - "deadline": ISO date if time-sensitive, null otherwise
 - "price": price string if relevant, null otherwise
-- "surprise_candidate": boolean — true if this is a non-obvious find
+- "surprise_candidate": boolean — true if this is a non-obvious find. A surprise means: connecting two unrelated emails, finding a deal buried deep in a newsletter, surfacing something from an unexpected sender, or a fact Marvin wouldn't have found himself.
 
-Be specific. "Interesting AI article" is bad. "OpenAI released Codex 2 — connects to your agent-building work on Spoons" is good.
+Each skipped item must have:
+- "gmail_id": which email
+- "source": sender name
+- "reason": one sentence on why nothing was worth extracting (e.g. "generic marketing issue, nothing specific to Marvin's interests")
+
+Be specific. "Interesting AI article" is bad. "OpenAI released Codex 2 — connects to your agent-building work on Spoons" is good. "Tangential link to frontend dev, low confidence" is better than pretending a weak match is strong.
 
 Respond with ONLY the JSON object, no markdown fences, no explanation."""
 
@@ -104,6 +111,7 @@ class NewsletterReaderWorker(BaseWorker):
         batch_size = self.config.get("batch_size", 15)
 
         all_gems = []
+        all_skipped = []
         total_input_tokens = 0
         total_output_tokens = 0
 
@@ -118,16 +126,19 @@ class NewsletterReaderWorker(BaseWorker):
             try:
                 parsed = json.loads(result["text"])
                 all_gems.extend(parsed.get("gems", []))
+                all_skipped.extend(parsed.get("skipped", []))
             except json.JSONDecodeError:
                 sys.stderr.write(f"Failed to parse batch {i // batch_size + 1} response as JSON\n")
                 continue
 
         output = {
             "gems": all_gems,
+            "skipped": all_skipped,
             "stats": {
                 "newsletters_read": len(emails_to_read),
                 "gems_extracted": len(all_gems),
                 "links_found": sum(len(g.get("links", [])) for g in all_gems),
+                "skipped_count": len(all_skipped),
             }
         }
 
@@ -136,7 +147,7 @@ class NewsletterReaderWorker(BaseWorker):
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
             input_summary=f"{len(emails_to_read)} emails deep-read in {(len(emails_to_read) + batch_size - 1) // batch_size} batches",
-            output_summary=f"{len(all_gems)} gems extracted, {output['stats']['links_found']} links",
+            output_summary=f"{len(all_gems)} gems, {len(all_skipped)} skipped, {output['stats']['links_found']} links",
         )
 
         return output

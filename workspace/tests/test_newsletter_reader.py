@@ -46,15 +46,19 @@ class TestNewsletterReaderWorker(unittest.TestCase):
         os.environ.pop("EXPERIMENT_TRACKER_DB", None)
 
     @patch("workers.base_worker.call_model")
-    def test_run_returns_gems(self, mock_call):
+    def test_run_returns_gems_and_skipped(self, mock_call):
         mock_call.return_value = {
             "text": json.dumps({
                 "gems": [
                     {"gmail_id": "abc", "source": "Dense Discovery", "title": "Local-first article",
-                     "why": "Connects to LocalShout architecture", "links": ["https://example.com"],
+                     "why": "Connects to LocalShout architecture", "confidence": 0.85,
+                     "links": ["https://example.com"],
                      "time_sensitive": False, "deadline": None, "price": None, "surprise_candidate": True}
                 ],
-                "stats": {"newsletters_read": 1, "gems_extracted": 1, "links_found": 1}
+                "skipped": [
+                    {"gmail_id": "def", "source": "Generic Sender", "reason": "Marketing fluff, nothing specific"}
+                ],
+                "stats": {"newsletters_read": 2, "gems_extracted": 1, "links_found": 1, "skipped_count": 1}
             }),
             "input_tokens": 40000,
             "output_tokens": 2000,
@@ -63,19 +67,26 @@ class TestNewsletterReaderWorker(unittest.TestCase):
         worker = NewsletterReaderWorker()
         shortlist_data = {
             "shortlist": [
-                {"gmail_id": "abc", "rank": 1, "category": "newsletter", "reason": "AI content"}
+                {"gmail_id": "abc", "rank": 1, "category": "newsletter", "reason": "AI content"},
+                {"gmail_id": "def", "rank": 2, "category": "newsletter", "reason": "Maybe useful"},
             ],
             "emails": {
                 "abc": {"gmail_id": "abc", "sender": {"name": "DD", "email": "dd@e.com"},
                         "subject": "Issue 287", "body": "Full newsletter body here...",
-                        "links": ["https://example.com"], "labels": []}
+                        "links": ["https://example.com"], "labels": []},
+                "def": {"gmail_id": "def", "sender": {"name": "Generic", "email": "g@e.com"},
+                        "subject": "Weekly Update", "body": "Buy our stuff...",
+                        "links": [], "labels": []},
             }
         }
         result = worker.run(shortlist_data)
         self.assertIn("gems", result)
+        self.assertIn("skipped", result)
         self.assertEqual(len(result["gems"]), 1)
+        self.assertEqual(len(result["skipped"]), 1)
         self.assertTrue(result["gems"][0]["surprise_candidate"])
-        self.assertEqual(result["stats"]["gems_extracted"], 1)
+        self.assertEqual(result["gems"][0]["confidence"], 0.85)
+        self.assertEqual(result["stats"]["skipped_count"], 1)
 
     @patch("workers.base_worker.call_model")
     def test_run_handles_empty_shortlist(self, mock_call):

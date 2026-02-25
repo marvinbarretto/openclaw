@@ -15,13 +15,14 @@
   },
   "budget_ceiling_per_run": 0.02,
   "batch_size": 50,
+  "categories": ["newsletter", "event", "personal", "deal", "job-alert", "football", "notification", "other"],
   "context_files": ["INTERESTS.md", "TASTE.md"],
   "output_schema": {
     "shortlist": [
       {
         "gmail_id": "string",
         "rank": "integer",
-        "category": "newsletter|event|personal|deal|notification|other",
+        "category": "string (from categories list)",
         "reason": "string",
         "time_sensitive": "boolean",
         "deadline": "ISO date or null"

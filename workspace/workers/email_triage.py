@@ -20,8 +20,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from workers.base_worker import BaseWorker
 
 
-def build_triage_prompt(emails, context):
+def build_triage_prompt(emails, context, categories=None):
     """Build the prompt for the triage model."""
+    if categories is None:
+        categories = ["newsletter", "event", "personal", "deal", "job-alert", "football", "notification", "other"]
+    categories_str = ", ".join(f'"{c}"' for c in categories)
+
     context_block = ""
     for filename, content in context.items():
         context_block += f"\n## {filename}\n{content}\n"
@@ -39,7 +43,7 @@ def build_triage_prompt(emails, context):
             f"Labels: {', '.join(email.get('labels', []))}\n"
         )
 
-    return f"""You are an email triage assistant. Your job is to classify and rank emails by relevance.
+    return f"""You are an email triage assistant. Your job is to classify and rank emails by relevance. Most emails are junk — be ruthless.
 
 # Marvin's Context
 {context_block}
@@ -61,12 +65,12 @@ Return a JSON object with:
 Each shortlist item must have:
 - "gmail_id": the Gmail ID from the email
 - "rank": integer (1 = most relevant)
-- "category": one of "newsletter", "event", "personal", "deal", "notification", "other"
+- "category": one of {categories_str}
 - "reason": one sentence explaining why this is worth reading
 - "time_sensitive": boolean
 - "deadline": ISO date string if time-sensitive, otherwise null
 
-Be selective. Aim for 20-30 items from a batch of 50. Skip obvious marketing, generic notifications, and anything that fails the "would Marvin regret missing this?" test.
+Be ruthlessly selective. There is no target number — if only 5 emails from a batch of 50 are genuinely worth reading, return 5. Most emails are marketing, generic notifications, or low-value noise. Only shortlist things that pass the "would Marvin regret missing this?" test.
 
 Respond with ONLY the JSON object, no markdown fences, no explanation."""
 
@@ -83,6 +87,7 @@ class EmailTriageWorker(BaseWorker):
 
         context = self.get_context()
         batch_size = self.config.get("batch_size", 50)
+        categories = self.config.get("categories")
 
         all_shortlisted = []
         total_input_tokens = 0
@@ -91,7 +96,7 @@ class EmailTriageWorker(BaseWorker):
         # Process in batches
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
-            prompt = build_triage_prompt(batch, context)
+            prompt = build_triage_prompt(batch, context, categories=categories)
 
             result = self.call(prompt)
             total_input_tokens += result["input_tokens"]
