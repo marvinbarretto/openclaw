@@ -1,0 +1,36 @@
+{
+  "task_id": "email-triage",
+  "description": "Bulk classify emails from digest, rank by relevance, return shortlist",
+  "default_model": "gemini-2.5-flash",
+  "fallback_model": "gemini-2.5-flash-lite",
+  "provider": "google",
+  "evaluation": {
+    "method": "conductor-review",
+    "criteria": [
+      "shortlist_contains_newsletters",
+      "shortlist_excludes_obvious_junk",
+      "reasons_reference_context_files",
+      "time_sensitive_items_flagged"
+    ]
+  },
+  "budget_ceiling_per_run": 0.02,
+  "batch_size": 50,
+  "context_files": ["INTERESTS.md", "TASTE.md"],
+  "output_schema": {
+    "shortlist": [
+      {
+        "gmail_id": "string",
+        "rank": "integer",
+        "category": "newsletter|event|personal|deal|notification|other",
+        "reason": "string",
+        "time_sensitive": "boolean",
+        "deadline": "ISO date or null"
+      }
+    ],
+    "stats": {
+      "total_reviewed": "integer",
+      "shortlisted": "integer",
+      "skipped": "integer"
+    }
+  }
+}
