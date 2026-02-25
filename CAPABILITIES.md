@@ -41,9 +41,10 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. No laptop dependency. (ADR-022) |
 | Read email digest | WORKING | JSON written directly in sandbox by gmail-helper.py |
 | Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
-| Deep newsletter reading | WORKING | Full body (5000 chars), links extracted. Jimbo applies judgment. |
+| Deep newsletter reading | WORKING | Two-pass pipeline: Flash triages → Haiku deep-reads → Jimbo synthesises. Experiment tracked. (ADR-029) |
 | Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
-| LLM email classification | REMOVED | Redundant — Jimbo reads raw emails directly (ADR-022) |
+| Orchestrator pipeline | WORKING | `email_triage.py` (Flash) + `newsletter_reader.py` (Haiku). Workers call APIs directly from sandbox. (ADR-029) |
+| LLM email classification | REPLACED | By orchestrator workers — Flash triage + Haiku deep-read (ADR-029) |
 | Old Sift pipeline (laptop) | RETIRED | mbsync + Ollama + sift-push.sh removed. launchd job unloaded. |
 
 ## Notes Vault
@@ -79,6 +80,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Budget monitoring | WORKING | Monthly budget with alert threshold. `cost-tracker.py budget --check` |
 | Dashboard (personal site) | WORKING | `/app/jimbo/` on `site.marvinbarretto.workers.dev` — costs, activity feed (ADR-028) |
 | Dashboard data export | WORKING | JSON exports via heartbeat auto-commit, consumed by dashboard at build time |
+| Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. SQLite. (ADR-029) |
 
 ## Autonomy
 
@@ -96,8 +98,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Model | Status | Notes |
 |---|---|---|
 | `stepfun/step-3.5-flash:free` | RETIRED | Can't follow curation instructions (ADR-005) |
-| `google/gemini-2.5-flash` | WORKING | Daily driver (~$0.78/month). Direct Google AI API. See ADR-015 for setup. |
-| `anthropic/claude-haiku-4.5` | AVAILABLE | Fallback if Gemini quality disappoints (~$2.49/month) |
+| `google/gemini-2.5-flash` | WORKING | Worker model for email triage. Also available as conductor fallback. |
+| `anthropic/claude-haiku-4.5` | ACTIVE | Conductor model + newsletter deep-reader. Switched from Flash 2026-02-25. |
+| Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. (ADR-029) |
 
 ## MCP Servers
 
@@ -125,5 +128,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-24*
-*Active heartbeat + cost tracking (ADR-028): 2026-02-24*
+*Last updated: 2026-02-25*
+*Orchestrator-conductor pipeline (ADR-029): 2026-02-25*

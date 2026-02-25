@@ -25,24 +25,29 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── /workspace — Jimbo's brain files + skills + blog-src (Astro) + email digest + recommendations.db
   │     ├── gmail-helper.py — fetches email via Gmail API, writes digest directly
   │     ├── calendar-helper.py — Calendar API client
-  │     └── recommendations-helper.py — SQLite CRUD for persistent recommendations store
+  │     ├── recommendations-helper.py — SQLite CRUD for persistent recommendations store
+  │     ├── experiment-tracker.py — SQLite run logging for worker experiments
+  │     ├── workers/ — orchestrator workers (email_triage.py, newsletter_reader.py — call Flash/Haiku APIs directly)
+  │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
+  │     └── tests/ — worker test suite
   ├── notes-triage-api (Hono/Node, port 3100, systemd)
   │     └── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
   └── Caddy (auto TLS, routes /api/triage/* → notes-triage-api)
 ```
 
-Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, Jimbo reads the rest deeply. No LLM classification step.
+Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, then the orchestrator pipeline (Flash triage + Haiku deep-read) processes the digest before Jimbo synthesises the briefing.
 
-SSH alias: `ssh jimbo` connects to VPS.
+SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configured (`ControlMaster auto`) for `workspace-push.sh` reliability when running multiple rsync commands over the same connection.
 
 ## Repo Structure
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-028) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking
+decisions/        ADRs (001-029) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern
+docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
-workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/). Deploy via workspace-push.sh + rsync.
+workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/) + workers/ + tasks/ + tests/. Deploy via workspace-push.sh + rsync.
 setup/            Configuration docs, architecture, workspace files guide
 security/         VPS hardening checklist
 hosting/          VPS comparison, networking
@@ -90,6 +95,14 @@ notes/            Brain dumps
 - `workspace/blog-src/` — Astro blog project. Posts in `src/content/posts/*.md`. Auto-generates index, tags, archive, RSS. Deployed via Cloudflare Pages (ADR-027).
 - `decisions/027-astro-blog-migration.md` — ADR for blog migration from static HTML to Astro
 - `decisions/028-active-heartbeat-cost-tracking.md` — ADR for active heartbeat, cost tracking, activity logging, and dashboard
+- `decisions/029-orchestrator-conductor-pattern.md` — ADR for multi-model orchestrator-conductor pattern
+- `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
+- `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
+- `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
+- `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku)
+- `workspace/workers/email_triage.py` — Flash-powered email triage worker. Reads digest, scores/triages emails, outputs shortlist.
+- `workspace/workers/newsletter_reader.py` — Haiku-powered newsletter deep-reader. Extracts gems, links, events from shortlisted emails.
+- `workspace/tasks/*.json` — Task registry configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
 
 ## Security Model (Critical — Read Before Changing)
 
@@ -108,7 +121,7 @@ notes/            Brain dumps
 - OAuth credentials on VPS (same token as Calendar — just wider scope)
 - gmail-helper.py fetches email in sandbox, applies blacklist, writes digest locally
 - HTML stripped, body truncated to 5000 chars
-- No LLM classification step — Jimbo reads raw emails and applies own judgment
+- Orchestrator workers (Flash triage, Haiku deep-read) process email in sandbox — raw content never leaves VPS
 
 ### Plugin Policy (ADR-008)
 - No ClawHub community skills — supply chain risk (ClawHavoc incident, 7%+ flawed)
@@ -123,11 +136,11 @@ notes/            Brain dumps
 - Blog is Astro-built, deployed via Cloudflare Pages from `blog-src/` on `gh-pages` branch. Live at `jimbo.pages.dev`. PAT is in the git remote URL. (ADR-027)
 - `jimbo-vps` token expires ~May 2026 — check `CAPABILITIES.md` for all token dates.
 
-## Email Pipeline (ADR-022)
+## Email Pipeline (ADR-022, ADR-029)
 
 ### How it works now
 
-Gmail API runs IN the sandbox. No laptop dependency, no Ollama, no mbsync.
+Gmail API runs IN the sandbox. No laptop dependency, no Ollama, no mbsync. The orchestrator-conductor pattern (ADR-029) adds a two-pass worker pipeline before Jimbo synthesises the briefing.
 
 ```
 VPS sandbox:
@@ -135,9 +148,12 @@ VPS sandbox:
                                        → applies blacklist (rules, no LLM)
                                        → writes /workspace/email-digest.json
 
-  Jimbo reads digest during briefing  → applies TASTE/PRIORITIES/GOALS/INTERESTS
-                                       → deeply reads newsletters (full body, links)
-                                       → presents highlights via sift-digest skill
+  Orchestrator pipeline (triggered by sift-digest skill):
+    email_triage.py                   → Flash triages digest → shortlist (~30 emails)
+    newsletter_reader.py              → Haiku deep-reads shortlist → gems JSON
+    Jimbo (conductor)                 → reviews worker output, rates quality, synthesises briefing
+
+  experiment-tracker.py               → logs every run with model, tokens, config hash
 ```
 
 ### gmail-helper.py commands
@@ -169,6 +185,13 @@ Email fetch runs on a VPS root crontab, daily at 06:00 UTC:
   python3 /workspace/gmail-helper.py fetch --hours 24 \
   >> /var/log/gmail-fetch.log 2>&1
 ```
+
+### Sandbox API keys
+
+The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed via `docker exec -e` or openclaw.json sandbox config):
+- `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REFRESH_TOKEN` — Gmail + Calendar OAuth
+- `GOOGLE_AI_API_KEY` — Google AI (Gemini Flash) for email triage worker
+- `ANTHROPIC_API_KEY` — Anthropic (Claude Haiku) for newsletter reader worker
 
 The morning briefing (OpenClaw cron, 07:00 London) reads the digest written by this job.
 
@@ -244,7 +267,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 027).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 029).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
