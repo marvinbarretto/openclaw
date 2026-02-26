@@ -830,18 +830,37 @@ def build_manifest_item(filepath, fm, body, dest_dir, info, url_info=None):
     return item
 
 
-def write_manifest(items, output_path):
-    """Write manifest JSON file with metadata."""
+def write_manifest(items, output_path, append=False):
+    """Write manifest JSON file with metadata. If append=True, merge with existing."""
+    existing_items = []
+    if append and os.path.exists(output_path):
+        try:
+            with open(output_path) as f:
+                existing = json.load(f)
+            existing_items = existing.get('items', [])
+            log(f"Loaded existing manifest: {len(existing_items)} items")
+        except (json.JSONDecodeError, KeyError) as e:
+            log(f"WARNING: Could not read existing manifest ({e}), starting fresh")
+
+    if existing_items:
+        existing_ids = {item['id'] for item in existing_items}
+        new_items = [item for item in items if item['id'] not in existing_ids]
+        skipped = len(items) - len(new_items)
+        all_items = existing_items + new_items
+        log(f"  {len(new_items)} new, {skipped} skipped (already in manifest), {len(existing_items)} existing")
+    else:
+        all_items = items
+
     summary = {'direct': 0, 'needs-context': 0, 'archive': 0}
-    for item in items:
+    for item in all_items:
         action = item['suggested']['action']
         summary[action] = summary.get(action, 0) + 1
 
     manifest = {
         'generated': datetime.datetime.now().isoformat(timespec='seconds'),
-        'total': len(items),
+        'total': len(all_items),
         'summary': summary,
-        'items': items,
+        'items': all_items,
     }
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -849,7 +868,7 @@ def write_manifest(items, output_path):
         json.dump(manifest, f, indent=2)
 
     log(f"\nManifest written to {output_path}")
-    log(f"  {len(items)} items: {summary.get('direct', 0)} direct, "
+    log(f"  {len(all_items)} items: {summary.get('direct', 0)} direct, "
         f"{summary.get('needs-context', 0)} needs-context, "
         f"{summary.get('archive', 0)} archive")
 
@@ -906,7 +925,14 @@ def main():
     parser.add_argument('--manifest', nargs='?', const='data/triage-manifest.json',
                         metavar='PATH',
                         help='Write JSON manifest instead of moving files (default: data/triage-manifest.json)')
+    parser.add_argument('--append', action='store_true',
+                        help='Append to existing manifest instead of overwriting (requires --manifest)')
     args = parser.parse_args()
+
+    # --append requires --manifest
+    if args.append and args.manifest is None:
+        print("ERROR: --append requires --manifest", file=sys.stderr)
+        sys.exit(1)
 
     # --manifest implies --dry-run
     if args.manifest is not None:
@@ -1035,7 +1061,7 @@ def main():
         manifest_path = args.manifest
         if not os.path.isabs(manifest_path):
             manifest_path = os.path.join(REPO_ROOT, manifest_path)
-        write_manifest(manifest_items, manifest_path)
+        write_manifest(manifest_items, manifest_path, append=args.append)
     else:
         print_summary(results)
     log(f"\nCompleted in {elapsed:.0f}s ({errors} errors)")
