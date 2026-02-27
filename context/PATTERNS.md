@@ -4,7 +4,7 @@ How Marvin's notes actually work. Learned through review sessions with Claude Co
 
 This is a living document — when understanding changes, update the relevant section. Never append contradictory entries; rewrite the old understanding instead.
 
-*Last updated: 2026-02-23*
+*Last updated: 2026-02-27*
 
 ## Projects as destinations
 
@@ -14,6 +14,7 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 - **project:film-planner** — film, TV, show recommendations to watch. Marvin has a separate app (marvinbarretto.github.io/film-planner) for tracking these. Examples: "Dopesic", "The Offer".
 - **project:spoons** — pub-related data, Wetherspoons-specific notes. Also gamification ideas (badges, leaderboards, collecting).
 - **project:openclaw** — notes about improving Jimbo or this system. Includes prompts like "interview me about this plan", notes about model orchestration, links to Obsidian/productivity tool approaches.
+- **project:birdsong-box** — hardware/IoT project: a device that plays birdsong triggered by light. Repo cloned locally.
 
 ## Travel notes
 
@@ -46,6 +47,13 @@ Marvin's notes often serve a hidden purpose — feeding into a specific project.
 - Some single-name notes (e.g. "Paul Rosolie", "James Baldwin", "Scott Adams") are not passive bookmarks — they're active mini research tasks: "spend 10-20 mins learning about this person/topic."
 - Distinguish from media notes: "Dopesic" = watch this show (type: media). "Paul Rosolie" = research this person (type: task, tag: to-research).
 - If the name is a public figure or topic rather than a specific piece of media, lean towards type: task with a `to-research` tag.
+
+## Curiosity questions
+
+- Notes that are just a question Marvin wants to rabbit-hole into: "Bamboo cheaper than steel?", "Why is X like Y?", "How does Z work?"
+- These aren't tasks or projects — they're 5-10 minute research scratches for when he's in the mood.
+- Classify as `type: reference`, tag with `curiosity` plus subject tags.
+- Jimbo can surface these during free time: "You've got 15 minutes free — want to look into why we don't import bamboo as a building material?"
 
 ## Compound notes
 
@@ -147,3 +155,34 @@ Running git on the VPS as root against the workspace requires two things:
 - Bare numbers like "12", "1520", "108" with no context are almost always unrecoverable.
 - If old (> 1 month), archive as stale. Don't send to needs-context — manual review won't help either.
 - Exception: numbers that look like prices ("45 yen"), dates ("17 v 22" = match score), or phone numbers.
+
+## Gemini confidence calibration (from 2026-02-27 triage session)
+
+- Gemini 9/10 on **type** is usually right (bookmark, media, reference) — but often wrong on **project tags** (guessed project:spoons for a LocalShout URL).
+- Gemini 9/10 on **action** (direct vs archive) is reliable. High-confidence archives are safe to auto-apply.
+- Gemini misclassifies terse personal shorthand as `journal` when it's actually an `idea` (e.g. "little bird song thing" = hardware project, not diary entry).
+- Gemini can't distinguish "instructions for Jimbo" from regular notes — prompts like "any questions for me?" get classified as tasks. These belong in HEARTBEAT.md or context files, not the vault.
+- Confidence 3-4 on bare URLs is honest and correct — without fetched content, Gemini can't classify. URL fetching resolves most of these.
+
+## Auto-archive rules (proposed, from 2026-02-27 session)
+
+Safe to auto-archive without manual review:
+- Tasks older than 3 years → stale
+- Completed checklists → completed
+- Shopping/packing lists older than 1 month → completed
+- Bare numbers with no context older than 1 month → stale
+- Duplicate content (hash body text) → duplicate
+- Gemini suggests archive at confidence 8+ → trust it
+
+## Auto-accept rules (proposed, from 2026-02-27 session)
+
+Safe to auto-accept (skip manual review):
+- Bookmarks with URLs where Gemini confidence 9+ → direct
+- Media items at confidence 8+ → direct
+- Gemini archive suggestions at confidence 8+ → archive
+
+Still needs human eyes:
+- Ideas (Gemini confuses with journal/task)
+- Project tag assignment (often wrong)
+- Curiosity questions (new pattern, not yet in classifier prompt)
+- Notes that are really Jimbo instructions

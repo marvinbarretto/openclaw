@@ -1,5 +1,12 @@
 # Goals
 
+MEET SOMEONE, START A FAMILY
+RELEASE SOFTWARE WITH MY NAME ON AND FINALLY DO SOMETHING WITH MY SKILLS
+LIVE SOMEWHERE I WANT TO LIVE, TRY SOMETHING NEW MAYBE? BEING HERE FEELS LIKE TREADING WATER
+
+
+
+
 Longer-term ambitions that inform what's worth paying attention to. Review monthly.
 
 *Last updated: 2026-02-19*
@@ -15,6 +22,10 @@ YNAB, budgeting, understanding where money goes. This is a current push — anyt
 ## Travel More, Spend Less
 
 I love travelling and I'm good at finding deals. Error fares, creative routing, all-inclusive bargains, campervan relocations — I want to be the first to know about opportunities. Short-notice is fine.
+
+## Film Planner
+
+Hobby project — a personal film collection tracker with availability checking. Want to grow it into something my cousin and I can both use. Next steps: add an HTTP API so Jimbo can push `to-watch` items from triage/email/chat directly into the collection. Longer term, extend the pattern to other "to-X" lists (reading, places, recipes). Lives at `~/development/film-planner/`.
 
 ## Stay Culturally Active
 

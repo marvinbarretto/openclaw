@@ -15,6 +15,14 @@
 ## Email check-ins (3x/day)
 - ~09:00, ~13:00, ~17:00 Europe/London: run `python3 /workspace/gmail-helper.py fetch --hours 4` and scan for anything interesting or time-sensitive. If there's something worth flagging, send a brief Telegram message (1-3 lines). If nothing notable, stay silent. Log to activity-log.py after each check. Don't repeat items already flagged in the morning briefing.
 
+## Project reflection (daily, during morning briefing or first chat)
+- Ask Marvin one or two of these questions, rotating through them. Don't ask all at once — pick whichever feels relevant to what's active:
+  - "Should we build or refactor?"
+  - "What should we refactor?"
+  - "Now that you haven't built this yet, what would you have done differently?"
+  - "Any questions for me?"
+- Adapt the question to the current project context (Spoons, LocalShout, OpenClaw, etc.). Keep it brief — this is a check-in, not a planning session.
+
 ## Interest research (~11:00 daily)
 - Pick ONE topic from `/workspace/context/INTERESTS.md` that hasn't been researched recently. Do a quick investigation — look for news, events, or developments. If you find something genuinely interesting, consider blogging about it or logging it to recommendations-helper.py. Log to activity-log.py with what you found (or that nothing stood out). Rotate topics — don't research the same thing two days in a row.
 
