@@ -68,6 +68,7 @@ notes/            Brain dumps
 - `workspace/activity-log.py` — SQLite activity log for everything Jimbo does. Logs task type, description, outcome, satisfaction scores. Stdlib only.
 - `workspace/recommendations-helper.py` — SQLite CRUD for persistent recommendations store. Jimbo logs finds from email/vault, tracks scores, urgency, expiry. Stdlib only, no OAuth.
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
+- `workspace/tasks-helper.py` — Google Tasks API client for sandbox. Sweeps active tasks from "My Tasks" list, ingests into vault as markdown, classifies via Gemini Flash. Runs daily at 05:00 UTC via cron.
 - `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
 - `scripts/sift-classify.py` — **LEGACY** Sift pipeline. Replaced by gmail-helper.py (ADR-022).
 - `scripts/sift-cron.sh` — **LEGACY** Automated pipeline. No longer needed — gmail-helper.py runs in sandbox.
@@ -185,8 +186,21 @@ To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists
 
 ### Scheduling
 
-Email fetch runs on a VPS root crontab, daily at 06:00 UTC, with failure alerting (ADR-030):
+VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
 ```
+# 05:00 — Google Tasks sweep (vault intake)
+0 5 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+  docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
+              -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET \
+              -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN \
+              -e GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY \
+              -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
+              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
+  $(docker ps -q --filter name=openclaw-sbx) \
+  sh -c 'python3 /workspace/tasks-helper.py pipeline || \
+         python3 /workspace/alert.py "05:00 tasks sweep FAILED"' \
+  >> /var/log/tasks-sweep.log 2>&1
+
 # 06:00 — email fetch with failure alert
 0 6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
   docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
@@ -234,7 +248,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram alerts for pipeline failures (ADR-030)
 - `OPENROUTER_API_KEY` — OpenRouter balance/usage checks from sandbox (ADR-031)
 
-The morning briefing (OpenClaw cron, 07:00 London) reads the digest written by this job.
+Daily sequence: tasks sweep (05:00) → email fetch (06:00) → digest check (06:15) → Jimbo's morning briefing (07:00, OpenClaw cron) → briefing check (07:30). Tasks left in Google Tasks overnight get vaulted and classified before the briefing.
 
 No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 
