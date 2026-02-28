@@ -2,7 +2,7 @@
 # Push all locally-maintained workspace files to VPS.
 #
 # This pushes:
-#   workspace/SOUL.md, HEARTBEAT.md  →  /workspace/         (brain files)
+#   workspace/SOUL.md, HEARTBEAT.md, TROUBLESHOOTING.md → /workspace/ (brain files)
 #   workspace/*.py                   →  /workspace/         (helpers: cost-tracker, activity-log, etc.)
 #   workspace/workers/               →  /workspace/workers/  (orchestrator worker scripts)
 #   workspace/tasks/                 →  /workspace/tasks/    (task registry configs)
@@ -33,7 +33,7 @@ if [[ "${1:-}" == "--dry-run" ]]; then
 fi
 
 # --- Brain files (SOUL.md, HEARTBEAT.md) ---
-BRAIN_FILES=(SOUL.md HEARTBEAT.md)
+BRAIN_FILES=(SOUL.md HEARTBEAT.md TROUBLESHOOTING.md)
 BRAIN_FOUND=0
 
 echo "Brain files:"
