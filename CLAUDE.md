@@ -48,7 +48,7 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-031) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback
+decisions/        ADRs (001-032) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation
 docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
@@ -104,6 +104,7 @@ notes/            Brain dumps
 - `decisions/029-orchestrator-conductor-pattern.md` — ADR for multi-model orchestrator-conductor pattern
 - `decisions/030-failure-alerting.md` — ADR for Telegram failure alerting and positive heartbeat
 - `decisions/031-cost-visibility-model-fallback.md` — ADR for cost visibility, credit alerts, model identification
+- `decisions/032-heartbeat-rationalisation.md` — ADR for slimming heartbeat from ~20 to ~6 contextual tasks, moving scripts to cron
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
@@ -213,29 +214,13 @@ VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
          python3 /workspace/alert.py "06:00 email fetch FAILED"' \
   >> /var/log/gmail-fetch.log 2>&1
 
-# 06:15 — verify digest is fresh (positive heartbeat)
-15 6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/alert-check.py digest \
-  >> /var/log/alert-check.log 2>&1
-
-# 07:30 — verify briefing ran (positive heartbeat)
-30 7 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/alert-check.py briefing \
-  >> /var/log/alert-check.log 2>&1
-
-# Every 6 hours — check OpenRouter credit balance (ADR-031)
-0 */6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+# Hourly — combined Telegram status (digest + briefing + credits)
+0 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
   docker exec -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
               -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
               -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
   $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/alert-check.py credits \
+  python3 /workspace/alert-check.py status \
   >> /var/log/alert-check.log 2>&1
 ```
 
@@ -322,7 +307,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 029).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 032).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias. **Never use per-file `scp` loops** — use rsync to batch into a single SSH connection (VPS rate-limits after ~5 connections).
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
