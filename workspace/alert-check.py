@@ -11,6 +11,7 @@ Usage:
     python3 alert-check.py digest     # check email-digest.json is fresh (<25h)
     python3 alert-check.py briefing   # check experiment-tracker.db has today's run
     python3 alert-check.py credits    # check OpenRouter credit balance
+    python3 alert-check.py status     # combined status (all checks in one message)
 """
 
 import datetime
@@ -164,14 +165,40 @@ def check_credits():
     return True, f"OpenRouter balance OK: ${remaining:.2f} remaining"
 
 
+def check_status():
+    """Run all checks and return a combined one-line summary."""
+    checks = [
+        ("digest", check_digest),
+        ("briefing", check_briefing),
+        ("credits", check_credits),
+    ]
+
+    parts = []
+    any_bad = False
+    for name, fn in checks:
+        try:
+            ok, summary = fn()
+        except Exception as e:
+            ok, summary = False, f"{name} error: {e}"
+        icon = "\u2705" if ok else "\u274c"
+        parts.append(f"{icon} {summary}")
+        if not ok:
+            any_bad = True
+
+    return not any_bad, " | ".join(parts)
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("digest", "briefing", "credits"):
-        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits}\n")
+    commands = ("digest", "briefing", "credits", "status")
+    if len(sys.argv) < 2 or sys.argv[1] not in commands:
+        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits|status}\n")
         sys.exit(1)
 
     command = sys.argv[1]
 
-    if command == "digest":
+    if command == "status":
+        ok, summary = check_status()
+    elif command == "digest":
         ok, summary = check_digest()
     elif command == "briefing":
         ok, summary = check_briefing()
