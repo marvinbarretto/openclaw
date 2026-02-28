@@ -1,5 +1,6 @@
 # Vault (personal notes — never commit)
 data/vault/
+data/triage*
 
 # Google Takeout exports (personal data)
 data/export/
@@ -16,6 +17,9 @@ data/recommendations.db
 # Cost + activity tracking DBs (live on VPS, never commit)
 workspace/cost-tracker.db
 workspace/activity-log.db
+
+# Generated status export (rebuilt by export-status.py)
+workspace/jimbo-status.json
 
 # Email digest data (contains email content — never commit)
 data/email-digest.json

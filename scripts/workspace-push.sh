@@ -116,6 +116,11 @@ if [ "$TOTAL" -eq 0 ]; then
     exit 1
 fi
 
+# --- Regenerate jimbo-status.json ---
+echo ""
+echo "Regenerating jimbo-status.json..."
+python3 "$REPO_ROOT/scripts/export-status.py"
+
 echo ""
 echo "Pushing to VPS..."
 
@@ -130,6 +135,10 @@ done
 for f in "${HELPER_FILES[@]}"; do
     FLAT_FILES+=("$f")
 done
+# Include generated status JSON
+if [ -f "$WORKSPACE_DIR/jimbo-status.json" ]; then
+    FLAT_FILES+=("jimbo-status.json")
+fi
 
 if [ ${#FLAT_FILES[@]} -gt 0 ]; then
     # Build rsync --include/--exclude to push only our files (not Jimbo's)
