@@ -27,6 +27,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -432,6 +433,8 @@ def cmd_score(args):
     log(f"Processing {len(to_score)} tasks in {len(batches)} batches...")
 
     for batch_idx, batch in enumerate(batches):
+        if batch_idx > 0:
+            time.sleep(1)
         log(f"\nBatch {batch_idx + 1}/{len(batches)} ({len(batch)} tasks)")
 
         user_prompt = build_batch_prompt(batch, context)
