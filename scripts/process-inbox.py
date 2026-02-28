@@ -629,6 +629,10 @@ def process_file(filepath, api_key, system_prompt, dry_run=False, provider='anth
     If return_extra=True, returns (destination, classification, fm, body, url_info)
     for manifest building.
     """
+    if not os.path.isfile(filepath):
+        log(f"  Skipping {os.path.basename(filepath)} — file not found (already moved?)")
+        return None
+
     with open(filepath) as f:
         content = f.read()
 
