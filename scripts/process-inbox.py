@@ -190,6 +190,8 @@ def build_frontmatter(fm):
     key_order = [
         'id', 'source', 'source_id', 'source_list', 'type', 'status',
         'tags', 'created', 'updated', 'processed', 'title', 'stale_reason',
+        'priority', 'priority_reason', 'actionability', 'scored',
+        'suggested_status',
     ]
     written = set()
     for key in key_order:

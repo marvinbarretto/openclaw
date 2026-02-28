@@ -22,7 +22,7 @@ Draw from `/workspace/context/PRIORITIES.md` recurring items: exercise, Spanish 
 
 ## Vault surfacing (conditional)
 
-**Tasks:** During interactions where planning or priorities come up, search the vault for matching tasks: `grep -rli 'project_name\|project-tag' /workspace/vault/notes/`. Surface 2-3 actionable vault tasks that align with current context. Don't overwhelm — pick the most actionable ones.
+**Tasks:** During interactions where planning or priorities come up, surface vault tasks using priority scores. Read frontmatter from `/workspace/vault/notes/` and filter for `type: task`, `status: active`, `priority >= 7`. Sort by `priority` descending, prefer `actionability: clear`. Surface 2-3 of the highest-priority tasks. If `suggested_status: stale` appears, mention it as a candidate for dismissal. Fallback: if no `priority` field exists yet (scoring hasn't run), use `grep -rli 'project_name\|project-tag' /workspace/vault/notes/` as before.
 
 **Recipes:** When meals or cooking come up, search the vault: `grep -rli 'type: recipe' /workspace/vault/notes/`. Suggest from Marvin's own saved recipes before suggesting generic ones.
 

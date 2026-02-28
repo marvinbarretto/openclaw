@@ -30,6 +30,7 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── alert.py — Telegram alert sender (stdlib only, Bot API)
   │     ├── alert-check.py — Pipeline health checker with positive heartbeat (digest, briefing, credits)
   │     ├── openrouter-usage.py — OpenRouter balance/usage checker (stdlib only)
+  │     ├── prioritise-tasks.py — Gemini Flash batch scorer for vault tasks (priority, actionability)
   │     ├── workers/ — orchestrator workers (email_triage.py, newsletter_reader.py — call Flash/Haiku APIs directly)
   │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
   │     └── tests/ — worker test suite
@@ -111,6 +112,7 @@ notes/            Brain dumps
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (checks freshness), `briefing` (checks experiment-tracker.db), `credits` (checks OpenRouter balance). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
+- `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
 - `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku)
 - `workspace/workers/email_triage.py` — Flash-powered email triage worker. Reads digest, scores/triages emails, outputs shortlist.
 - `workspace/workers/newsletter_reader.py` — Haiku-powered newsletter deep-reader. Extracts gems, links, events from shortlisted emails.
@@ -189,6 +191,13 @@ To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists
 
 VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
 ```
+# 04:30 — vault task scoring (Gemini Flash)
+30 4 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+  docker exec -e GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY \
+  $(docker ps -q --filter name=openclaw-sbx) \
+  python3 /workspace/prioritise-tasks.py \
+  >> /var/log/task-scoring.log 2>&1
+
 # 05:00 — Google Tasks sweep (vault intake)
 0 5 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
   docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
@@ -233,7 +242,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram alerts for pipeline failures (ADR-030)
 - `OPENROUTER_API_KEY` — OpenRouter balance/usage checks from sandbox (ADR-031)
 
-Daily sequence: tasks sweep (05:00) → email fetch (06:00) → digest check (06:15) → Jimbo's morning briefing (07:00, OpenClaw cron) → briefing check (07:30). Tasks left in Google Tasks overnight get vaulted and classified before the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → email fetch (06:00) → digest check (06:15) → Jimbo's morning briefing (07:00, OpenClaw cron) → briefing check (07:30). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 

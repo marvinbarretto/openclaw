@@ -37,8 +37,10 @@ Read Marvin's context to understand what matters today:
 
 ### 3. Vault snapshot
 - Count vault notes: `ls /workspace/vault/notes/ | wc -l`
-- Search for tasks matching today's focus from PRIORITIES.md: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags/project
-- If there are actionable vault tasks for today's project, weave 2-3 into the day plan (already covered above)
+- Read frontmatter from vault notes to find priority-scored tasks: filter for `type: task`, `status: active`, sort by `priority` field descending
+- Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji prefix
+- If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
+- Fallback: if no `priority` field exists (scoring hasn't run yet), search for tasks matching today's focus from PRIORITIES.md: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags/project
 - If the vault directory doesn't exist or is empty, skip silently
 
 ### 4. Anything time-sensitive from email

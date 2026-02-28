@@ -18,7 +18,7 @@ Read ALL of these before making any suggestions:
 5. `/workspace/context/GOALS.md` — longer-term ambitions
 6. `/workspace/context/INTERESTS.md` — event scouting, hobbies, communities
 7. `/workspace/context/TASTE.md` — judgment on what's worth surfacing
-8. **Vault tasks for active projects:** identify active projects from PRIORITIES.md, then search the vault: `grep -rli 'project_name' /workspace/vault/notes/`. Read the top matches to find specific, actionable tasks to suggest.
+8. **Vault tasks for active projects:** read frontmatter from `/workspace/vault/notes/`, filter for `type: task`, `status: active`, `priority >= 7`, `actionability: clear`. Sort by `priority` descending, pick the 2-3 highest. These are pre-scored by `prioritise-tasks.py` — no need to grep. Fallback: if no `priority` field exists, identify active projects from PRIORITIES.md and search the vault: `grep -rli 'project_name' /workspace/vault/notes/`.
 
 ## How to identify free gaps
 
@@ -32,7 +32,7 @@ Read ALL of these before making any suggestions:
 
 1. **Time-sensitive items from email** — events, deadlines, expiring deals, ticket sales
 2. **Overdue items from PRIORITIES.md** — stuff that's been sitting there for days
-3. **Specific vault tasks for active projects** — search `/workspace/vault/notes/` for tasks tagged with today's focus project. Suggest concrete vault items (e.g. "review auth flow notes" not just "work on LocalShout"). Limit to 2-3 vault tasks per day.
+3. **Specific vault tasks for active projects** — use priority-scored tasks from `/workspace/vault/notes/` (filter `priority >= 7`, `actionability: clear`, sort by `priority` descending). Suggest concrete vault items (e.g. "review auth flow notes" not just "work on LocalShout"). Limit to 2-3 vault tasks per day. Fallback to grep if no priority field.
 4. **Active project work blocks** — Spoons, LocalShout, Jimbo/OpenClaw dev time
 5. **Goal-aligned activities from GOALS.md** — YNAB, travel research, long-term items
 6. **Interest-based suggestions** — gigs, matches, meetups spotted in email or calendar

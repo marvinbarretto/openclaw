@@ -58,6 +58,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Vault browsing (Obsidian) | WORKING | Point Obsidian at `data/vault/`, frontmatter compatible |
 | Classification patterns | WORKING | `context/PATTERNS.md` — learned from review sessions, improves classification |
 | Mobile review queue | NOT STARTED | ADR-024 — needs personal website (Vercel/Cloudflare TBD) |
+| Task prioritisation | WORKING | `prioritise-tasks.py` — Gemini Flash batch-scores active tasks against PRIORITIES.md + GOALS.md. Writes `priority`, `actionability`, `scored` into frontmatter. Cron at 04:30 UTC. |
 | Daily ingest from Tasks API | NOT STARTED | ADR-023 Phase C — `tasks-helper.py` on VPS |
 | Jimbo vault skill | NOT STARTED | ADR-023 Phase C — vault queries + triage via Telegram |
 | Tasks read-write scope | READY | `google-auth.py` updated with `tasks.readonly`. Upgrade to `tasks` for mark-complete. |
