@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -141,19 +142,24 @@ def main():
     parser.add_argument("--output", default=None, help="Output path (default: stdout)")
     args = parser.parse_args()
 
-    with open(args.digest) as f:
-        digest = json.load(f)
+    try:
+        with open(args.digest) as f:
+            digest = json.load(f)
 
-    worker = EmailTriageWorker()
-    result = worker.run(digest)
+        worker = EmailTriageWorker()
+        result = worker.run(digest)
 
-    output_json = json.dumps(result, indent=2)
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(output_json)
-        sys.stderr.write(f"Wrote shortlist to {args.output}\n")
-    else:
-        print(output_json)
+        output_json = json.dumps(result, indent=2)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output_json)
+            sys.stderr.write(f"Wrote shortlist to {args.output}\n")
+        else:
+            print(output_json)
+    except Exception as e:
+        subprocess.run([sys.executable, "/workspace/alert.py",
+                        f"email_triage worker failed: {e}"])
+        raise
 
 
 if __name__ == "__main__":

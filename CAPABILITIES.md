@@ -109,6 +109,17 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Native MCP support | BLOCKED | Not available in OpenClaw v2026.2.12. PR #21530 pending. Revisit on upgrade. (ADR-017) |
 | Community MCP plugins | REJECTED | Violates ADR-008 (no community plugins, supply chain risk) |
 
+## Alerting & Monitoring
+
+| Capability | Status | Notes |
+|---|---|---|
+| Telegram failure alerts | WORKING | `alert.py` sends via Bot API. Workers catch exceptions. Cron wrappers alert on exit code. (ADR-030) |
+| Digest freshness check | WORKING | `alert-check.py digest` — verifies email-digest.json < 25h old. Cron at 06:15. |
+| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db for today's runs. Cron at 07:30. |
+| Positive heartbeat | WORKING | Both checks send a confirmation message when all is well. Silence = broken checker. |
+| Docker/host-level alerts | NOT COVERED | Future work — needs alerting outside sandbox |
+| OpenClaw service crash | NOT COVERED | systemd can email on failure but not Telegram natively |
+
 ## Security Boundaries
 
 | Boundary | Status | Notes |
@@ -128,5 +139,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-25*
-*Orchestrator-conductor pipeline (ADR-029): 2026-02-25*
+*Last updated: 2026-02-28*
+*Failure alerting (ADR-030): 2026-02-28*

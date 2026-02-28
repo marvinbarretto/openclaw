@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -160,30 +161,35 @@ def main():
     parser.add_argument("--output", default=None, help="Output path (default: stdout)")
     args = parser.parse_args()
 
-    with open(args.shortlist) as f:
-        shortlist_raw = json.load(f)
+    try:
+        with open(args.shortlist) as f:
+            shortlist_raw = json.load(f)
 
-    with open(args.digest) as f:
-        digest = json.load(f)
+        with open(args.digest) as f:
+            digest = json.load(f)
 
-    # Build email lookup from digest
-    email_lookup = {item["gmail_id"]: item for item in digest.get("items", []) if "gmail_id" in item}
+        # Build email lookup from digest
+        email_lookup = {item["gmail_id"]: item for item in digest.get("items", []) if "gmail_id" in item}
 
-    shortlist_data = {
-        "shortlist": shortlist_raw.get("shortlist", shortlist_raw),
-        "emails": email_lookup,
-    }
+        shortlist_data = {
+            "shortlist": shortlist_raw.get("shortlist", shortlist_raw),
+            "emails": email_lookup,
+        }
 
-    worker = NewsletterReaderWorker()
-    result = worker.run(shortlist_data)
+        worker = NewsletterReaderWorker()
+        result = worker.run(shortlist_data)
 
-    output_json = json.dumps(result, indent=2)
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(output_json)
-        sys.stderr.write(f"Wrote gems to {args.output}\n")
-    else:
-        print(output_json)
+        output_json = json.dumps(result, indent=2)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output_json)
+            sys.stderr.write(f"Wrote gems to {args.output}\n")
+        else:
+            print(output_json)
+    except Exception as e:
+        subprocess.run([sys.executable, "/workspace/alert.py",
+                        f"newsletter_reader worker failed: {e}"])
+        raise
 
 
 if __name__ == "__main__":
