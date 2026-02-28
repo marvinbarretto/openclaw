@@ -18,7 +18,7 @@ OpenRouter stays — it's useful for model variety, free models, and easy switch
 ## Decision
 
 ### 1. Reduce heartbeat frequency
-Change openclaw.json `agents.defaults.heartbeat.every` from `"30m"` to `"2h"`. Cuts heartbeats from 36/day to 9/day — immediate ~75% reduction.
+Change openclaw.json `agents.defaults.heartbeat.every` from `"30m"` to `"1h"`. Cuts heartbeats from 36/day to 18/day — immediate ~50% reduction.
 
 ### 2. OpenRouter usage checker
 New script `workspace/openrouter-usage.py` — stdlib Python, calls OpenRouter `/api/v1/auth/key`:
@@ -53,7 +53,7 @@ Set credit limit on OpenRouter API key via dashboard (e.g. $5/month). Prevents r
 - Marvin sees spend before it becomes a problem
 - Credit exhaustion is caught proactively (6-hourly checks + every heartbeat)
 - Model identification removes guesswork about which model is responding
-- Heartbeat frequency reduction immediately saves ~$3/day at Haiku rates
+- Heartbeat frequency reduction (30m → 1h) immediately saves ~$2/day at Haiku rates
 
 **Harder:**
 - One more env var to manage (OPENROUTER_API_KEY in sandbox docker.env)
@@ -71,7 +71,7 @@ Set credit limit on OpenRouter API key via dashboard (e.g. $5/month). Prevents r
 - `skills/daily-briefing/SKILL.md` — balance in briefing
 
 **VPS manual changes:**
-- openclaw.json: heartbeat `"30m"` → `"2h"`
+- openclaw.json: heartbeat `"30m"` → `"1h"`
 - openclaw.json docker.env: add `OPENROUTER_API_KEY`
 - openrouter.ai: set per-key credit limit
 - Crontab: add 6-hourly `alert-check.py credits`
