@@ -8,6 +8,7 @@
 #   workspace/tasks/                 →  /workspace/tasks/    (task registry configs)
 #   workspace/tests/                 →  /workspace/tests/    (worker test suite)
 #   context/*.md                     →  /workspace/context/  (interests, priorities, taste, goals)
+#   data/vault/notes/                →  /workspace/vault/notes/ (classified vault notes)
 #
 # Files Jimbo writes himself (IDENTITY.md, USER.md, MEMORY.md, JIMBO_DIARY.md)
 # are NOT tracked here and won't be overwritten.
@@ -21,6 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$REPO_ROOT/workspace"
 CONTEXT_DIR="$REPO_ROOT/context"
+VAULT_NOTES_DIR="$REPO_ROOT/data/vault/notes"
 REMOTE_BASE="jimbo:/home/openclaw/.openclaw/workspace"
 
 DRY_RUN=""
@@ -93,7 +95,21 @@ else
     echo "  (none found)"
 fi
 
-TOTAL=$((BRAIN_FOUND + ${#HELPER_FILES[@]} + WORKER_DIR_COUNT + CONTEXT_COUNT))
+# --- Vault notes ---
+VAULT_COUNT=0
+if [ -d "$VAULT_NOTES_DIR" ]; then
+    VAULT_COUNT=$(find "$VAULT_NOTES_DIR" -name "*.md" -type f | wc -l | tr -d ' ')
+fi
+
+echo ""
+echo "Vault notes:"
+if [ "$VAULT_COUNT" -gt 0 ]; then
+    echo "  notes/ ($VAULT_COUNT files)"
+else
+    echo "  (not found or empty — skipping)"
+fi
+
+TOTAL=$((BRAIN_FOUND + ${#HELPER_FILES[@]} + WORKER_DIR_COUNT + CONTEXT_COUNT + VAULT_COUNT))
 if [ "$TOTAL" -eq 0 ]; then
     echo ""
     echo "ERROR: Nothing to push."
@@ -143,6 +159,13 @@ if [ "$CONTEXT_COUNT" -gt 0 ]; then
     echo ""
     echo "Pushing context/ ..."
     rsync -avz --delete $DRY_RUN "$CONTEXT_DIR/" "$REMOTE_BASE/context/"
+fi
+
+# Push vault notes (rsync with --delete so removed/archived notes get cleaned up)
+if [ "$VAULT_COUNT" -gt 0 ]; then
+    echo ""
+    echo "Pushing vault/notes/ ($VAULT_COUNT files)..."
+    rsync -avz --delete $DRY_RUN "$VAULT_NOTES_DIR/" "$REMOTE_BASE/vault/notes/"
 fi
 
 echo ""

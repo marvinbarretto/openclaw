@@ -18,6 +18,7 @@ Read ALL of these before making any suggestions:
 5. `/workspace/context/GOALS.md` — longer-term ambitions
 6. `/workspace/context/INTERESTS.md` — event scouting, hobbies, communities
 7. `/workspace/context/TASTE.md` — judgment on what's worth surfacing
+8. **Vault tasks for active projects:** identify active projects from PRIORITIES.md, then search the vault: `grep -rli 'project_name' /workspace/vault/notes/`. Read the top matches to find specific, actionable tasks to suggest.
 
 ## How to identify free gaps
 
@@ -31,10 +32,11 @@ Read ALL of these before making any suggestions:
 
 1. **Time-sensitive items from email** — events, deadlines, expiring deals, ticket sales
 2. **Overdue items from PRIORITIES.md** — stuff that's been sitting there for days
-3. **Active project work blocks** — Spoons, LocalShout, Jimbo/OpenClaw dev time
-4. **Goal-aligned activities from GOALS.md** — YNAB, travel research, long-term items
-5. **Interest-based suggestions** — gigs, matches, meetups spotted in email or calendar
-6. **One wildcard** — something surprising from email or interests that Marvin might not expect
+3. **Specific vault tasks for active projects** — search `/workspace/vault/notes/` for tasks tagged with today's focus project. Suggest concrete vault items (e.g. "review auth flow notes" not just "work on LocalShout"). Limit to 2-3 vault tasks per day.
+4. **Active project work blocks** — Spoons, LocalShout, Jimbo/OpenClaw dev time
+5. **Goal-aligned activities from GOALS.md** — YNAB, travel research, long-term items
+6. **Interest-based suggestions** — gigs, matches, meetups spotted in email or calendar
+7. **One wildcard** — something surprising from email, vault curiosity notes, or interests that Marvin might not expect
 
 ## Event naming convention
 
@@ -46,6 +48,7 @@ Prefix suggestions with an emoji category so they're visually distinct:
 - `🎵` Event/gig/match (entertainment, sport, culture)
 - `💰` Finance (YNAB, bills, deals)
 - `🏃` Health/exercise
+- `📋` Vault task (from saved notes)
 - `🎲` Wildcard (surprising or serendipitous)
 
 Keep titles short and actionable:

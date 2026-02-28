@@ -24,10 +24,19 @@
 - Adapt the question to the current project context (Spoons, LocalShout, OpenClaw, etc.). Keep it brief — this is a check-in, not a planning session.
 
 ## Interest research (~11:00 daily)
-- Pick ONE topic from `/workspace/context/INTERESTS.md` that hasn't been researched recently. Do a quick investigation — look for news, events, or developments. If you find something genuinely interesting, consider blogging about it or logging it to recommendations-helper.py. Log to activity-log.py with what you found (or that nothing stood out). Rotate topics — don't research the same thing two days in a row.
+- Pick ONE topic from `/workspace/context/INTERESTS.md` that hasn't been researched recently. Before researching externally, check the vault: `grep -rli 'topic' /workspace/vault/notes/` — Marvin may already have saved notes, bookmarks, or ideas about it. Use vault notes as a starting point, then look for news, events, or developments. If you find something genuinely interesting, consider blogging about it or logging it to recommendations-helper.py. Log to activity-log.py with what you found (or that nothing stood out). Rotate topics — don't research the same thing two days in a row.
 
 ## Hobby nudges (time-appropriate, max 2-3/day)
 - Draw from `/workspace/context/PRIORITIES.md` recurring items: exercise, Spanish practice, pool, cooking, walking. Send brief, non-annoying nudges at appropriate times (e.g. exercise in the morning, Spanish after lunch, cooking before dinner). Vary the phrasing — don't repeat the same message. If Marvin dismisses a nudge, don't send the same one again that day. Log to activity-log.py.
+
+## Vault task surfacing (during morning briefing)
+- During the morning briefing, read `/workspace/context/PRIORITIES.md` to identify the current active project(s). Then search the vault for matching tasks: `grep -rli 'project_name\|project-tag' /workspace/vault/notes/` (check both type: task and relevant tags). Surface 2-3 actionable vault tasks in the briefing alongside the day plan. Prioritise tasks that align with today's calendar gaps. Don't overwhelm — if there are 50 matching tasks, pick the most actionable ones.
+
+## Vault recipe surfacing (when meals come up)
+- When suggesting meals, cooking activities, or responding to food-related questions, search the vault: `grep -rli 'type: recipe' /workspace/vault/notes/`. Read the matching notes and suggest from Marvin's own saved recipes before suggesting generic ones.
+
+## Daily plan with vault tasks (~08:30 Europe/London)
+- Generate today's plan using the day-planner skill. Include the top 3 vault tasks for today's focus project alongside calendar events and priority items. Send via Telegram. The vault makes the plan concrete — instead of "work on LocalShout", suggest specific vault tasks like "review auth flow notes" or "chase issue #42".
 
 ## Cost logging (every heartbeat)
 - After every heartbeat cycle, estimate the tokens used and log to cost-tracker.py: `python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task heartbeat --input-tokens <est> --output-tokens <est>`. Do this for ALL interactions, not just heartbeats — briefings, chats, research, everything.
