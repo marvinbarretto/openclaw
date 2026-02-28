@@ -71,7 +71,14 @@ Same — the token needs wider scopes. Marvin must re-auth.
 
 ## Script failures
 
-**"Permission denied":**
+**"Permission denied" when writing files:**
+Workspace files are pushed from Marvin's laptop via rsync, which preserves his UID (501). The sandbox runs as root but the workspace directory may not be writable. This is a known issue — tell Marvin to run this from his laptop:
+```bash
+ssh jimbo "chmod -R a+rw /home/openclaw/.openclaw/workspace/"
+```
+You cannot fix this yourself from inside the sandbox.
+
+**"Permission denied" when running scripts:**
 ```bash
 chmod +x /workspace/script-name.py
 ```

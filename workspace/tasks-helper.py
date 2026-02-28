@@ -2,9 +2,12 @@
 """
 Google Tasks API client for Jimbo's sandbox.
 
-Fetches new tasks from Google Tasks, ingests them into the vault as markdown,
-and optionally classifies them using Gemini Flash. Designed to run daily on VPS
-cron before the morning briefing.
+Fetches tasks from the default "My Tasks" list in Google Tasks, ingests them
+into the vault as markdown, and optionally classifies them using Gemini Flash.
+Designed to run daily at 05:00 UTC on VPS cron — sweeps anything left on the
+list overnight into the vault. Other task lists are ignored. Google Tasks
+becomes a daily scratchpad: jot things during the day, anything still there
+in the morning gets vaulted and classified.
 
 Python 3.11 stdlib only. Reads credentials from environment variables
 (same OAuth credentials as gmail-helper.py / calendar-helper.py).
@@ -16,8 +19,8 @@ Environment variables:
     GOOGLE_AI_API_KEY              — Google AI API key (for classify command)
 
 Usage:
-    python3 tasks-helper.py fetch                          # dump new tasks since last run
-    python3 tasks-helper.py fetch --all                    # dump all open tasks
+    python3 tasks-helper.py fetch                          # dump new tasks since last run (My Tasks only)
+    python3 tasks-helper.py fetch --all                    # dump all tasks from My Tasks list
     python3 tasks-helper.py ingest                         # convert fetched tasks to vault markdown
     python3 tasks-helper.py ingest --dry-run               # preview without writing
     python3 tasks-helper.py classify                       # classify inbox items via Gemini Flash
@@ -191,7 +194,7 @@ def fetch_all_tasks(access_token, tasklist_id, updated_min=None):
     page_token = None
 
     while True:
-        path = f"lists/{urllib.parse.quote(tasklist_id)}/tasks?maxResults=100&showCompleted=true&showHidden=true"
+        path = f"lists/{urllib.parse.quote(tasklist_id)}/tasks?maxResults=100&showCompleted=false&showHidden=false"
         if updated_min:
             path += f"&updatedMin={urllib.parse.quote(updated_min)}"
         if page_token:
@@ -434,10 +437,11 @@ def cmd_fetch(access_token, args):
         else:
             log("No previous fetch found — fetching all open tasks")
 
-    log("Fetching task lists...")
-    lists_result = tasks_request(access_token, "users/@me/lists")
-    task_lists = lists_result.get("items", [])
-    log(f"Found {len(task_lists)} list(s)")
+    # Only fetch from the default "My Tasks" list — other lists are ignored.
+    # Google Tasks API uses the magic ID "@default" for the primary list.
+    # This keeps Google Tasks as a daily scratchpad: anything left overnight
+    # gets swept into the vault each morning.
+    log("Fetching from My Tasks (default list only)...")
 
     output = {
         "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -446,21 +450,15 @@ def cmd_fetch(access_token, args):
         "lists": [],
     }
 
-    total_tasks = 0
-    for tl in task_lists:
-        list_id = tl["id"]
-        list_title = tl.get("title", "(untitled)")
-        log(f"  {list_title}...", )
+    tasks = fetch_all_tasks(access_token, "@default", updated_min=updated_min)
+    log(f"  My Tasks: {len(tasks)} tasks")
+    total_tasks = len(tasks)
 
-        tasks = fetch_all_tasks(access_token, list_id, updated_min=updated_min)
-        log(f"  {list_title}: {len(tasks)} tasks")
-        total_tasks += len(tasks)
-
-        output["lists"].append({
-            "id": list_id,
-            "title": list_title,
-            "tasks": tasks,
-        })
+    output["lists"].append({
+        "id": "@default",
+        "title": "My Tasks",
+        "tasks": tasks,
+    })
 
     output["total_tasks"] = total_tasks
 
