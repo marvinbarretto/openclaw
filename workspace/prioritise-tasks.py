@@ -41,7 +41,7 @@ CONTEXT_DIR = os.path.join(_script_dir, "context")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-BATCH_SIZE = 10
+BATCH_SIZE = 5
 
 # ---------------------------------------------------------------------------
 # Scoring prompt
@@ -78,20 +78,18 @@ Score each task on how relevant and actionable it is RIGHT NOW.
 
 ## Response format
 
-Return ONLY valid JSON — an array of objects, one per task:
+IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY task.
+Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{
-    "id": "note_abc123",
-    "priority": 7,
-    "priority_reason": "Aligns with Build & Ship Products goal, active LocalShout project",
-    "actionability": "clear",
-    "suggested_status": null
-  }}
+  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null}},
+  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null}},
+  {{"id": "note_ghi789", "priority": 1, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale"}}
 ]
 ```
 
 `suggested_status` should be `"stale"` or `null`. Nothing else.
+The array MUST contain exactly one entry per task in the input. Do not skip any.
 """
 
 # ---------------------------------------------------------------------------
