@@ -119,30 +119,26 @@ fi
 echo ""
 echo "Pushing to VPS..."
 
-# Push brain files individually (don't clobber Jimbo's files)
+# Push brain files + helper scripts in a single rsync (avoids SSH rate-limiting
+# that killed individual scp calls — see ADR history / CLAUDE.md)
+FLAT_FILES=()
 for f in "${BRAIN_FILES[@]}"; do
     if [ -f "$WORKSPACE_DIR/$f" ]; then
-        if [[ -n "$DRY_RUN" ]]; then
-            echo "  Would push: $f → /workspace/$f"
-        else
-            scp "$WORKSPACE_DIR/$f" "$REMOTE_BASE/$f"
-            echo "  Pushed: $f"
-        fi
+        FLAT_FILES+=("$f")
     fi
 done
+for f in "${HELPER_FILES[@]}"; do
+    FLAT_FILES+=("$f")
+done
 
-# Push helper scripts individually (same approach as brain files)
-if [ ${#HELPER_FILES[@]} -gt 0 ]; then
-    echo ""
-    echo "Pushing helper scripts..."
-    for f in "${HELPER_FILES[@]}"; do
-        if [[ -n "$DRY_RUN" ]]; then
-            echo "  Would push: $f → /workspace/$f"
-        else
-            scp "$WORKSPACE_DIR/$f" "$REMOTE_BASE/$f"
-            echo "  Pushed: $f"
-        fi
+if [ ${#FLAT_FILES[@]} -gt 0 ]; then
+    # Build rsync --include/--exclude to push only our files (not Jimbo's)
+    INCLUDE_ARGS=()
+    for f in "${FLAT_FILES[@]}"; do
+        INCLUDE_ARGS+=(--include "$f")
     done
+    echo "Pushing ${#FLAT_FILES[@]} workspace files..."
+    rsync -avz "${INCLUDE_ARGS[@]}" --exclude '*' $DRY_RUN "$WORKSPACE_DIR/" "$REMOTE_BASE/"
 fi
 
 # Push worker directories (rsync with --delete so removed files get cleaned up)

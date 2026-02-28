@@ -41,6 +41,8 @@ Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist 
 
 SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configured (`ControlMaster auto`) for `workspace-push.sh` reliability when running multiple rsync commands over the same connection.
 
+**SSH rate-limiting (learned the hard way):** The VPS drops SSH connections after ~5 rapid connections. Individual `scp` calls per file will fail mid-push. Always use `rsync` to batch files into a single SSH connection. The `workspace-push.sh` script was rewritten to use rsync for everything (brain files, helpers, directories, vault notes) — never go back to per-file `scp`.
+
 ## Repo Structure
 
 ```
@@ -295,7 +297,7 @@ The `context/` directory contains Marvin's personal context — pushed to VPS so
 
 - **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 029).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
-- **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias.
+- **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias. **Never use per-file `scp` loops** — use rsync to batch into a single SSH connection (VPS rate-limits after ~5 connections).
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
 - **No secrets in repo:** All credentials in `/opt/openclaw.env` on VPS. Use `${VAR_NAME}` interpolation in openclaw.json.
 
