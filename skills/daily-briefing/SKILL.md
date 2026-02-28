@@ -107,6 +107,12 @@ Heartbeat: All clear — digest is fresh, tokens valid.
 - If over alert threshold: flag it clearly
 - If no budget set, skip this section
 
+### 11. OpenRouter balance
+- Run `python3 /workspace/openrouter-usage.py balance`
+- If balance is below $5 or daily burn rate exceeds $1: include in the briefing (e.g. "OpenRouter: $3.20 remaining")
+- If balance is below $1: flag prominently and suggest `./scripts/model-swap.sh daily` or `free`
+- If the script fails or env var is missing, skip silently
+
 ## After the briefing
 
 Log the briefing to both trackers:

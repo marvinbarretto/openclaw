@@ -29,6 +29,7 @@ GOOGLE_AI_API_KEY=<api-key>        # added 2026-02-20
 GOOGLE_CALENDAR_CLIENT_ID=<id>     # added by calendar-setup.sh
 GOOGLE_CALENDAR_CLIENT_SECRET=<secret>
 GOOGLE_CALENDAR_REFRESH_TOKEN=<token>
+OPENROUTER_API_KEY=<api-key>       # also passed to sandbox for balance checks (ADR-031)
 ```
 
 ## Config file: `/home/openclaw/.openclaw/openclaw.json`
@@ -170,6 +171,7 @@ These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaul
 | `GOOGLE_CALENDAR_REFRESH_TOKEN` | `${GOOGLE_CALENDAR_REFRESH_TOKEN}` | Google Calendar OAuth refresh token. Interpolated from `/opt/openclaw.env`. |
 | `TELEGRAM_BOT_TOKEN` | `${TELEGRAM_BOT_TOKEN}` | Telegram Bot API token. Used by `alert.py` for failure alerts. Interpolated from `/opt/openclaw.env`. |
 | `TELEGRAM_CHAT_ID` | `${TELEGRAM_CHAT_ID}` | Telegram chat ID for alerts. Used by `alert.py`. Interpolated from `/opt/openclaw.env`. |
+| `OPENROUTER_API_KEY` | `${OPENROUTER_API_KEY}` | OpenRouter API key for balance/usage checks. Used by `openrouter-usage.py` and `alert-check.py credits`. Interpolated from `/opt/openclaw.env`. |
 
 **Key insight (ADR-016):** The original "uid mismatch causes fchown errors" diagnosis was misleading. The fchown warnings were always harmless. The real blocker was tools crashing when trying to write to the read-only root filesystem at `$HOME=/root/`. Setting `HOME=/workspace` fixes everything.
 

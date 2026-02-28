@@ -28,7 +28,8 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── recommendations-helper.py — SQLite CRUD for persistent recommendations store
   │     ├── experiment-tracker.py — SQLite run logging for worker experiments
   │     ├── alert.py — Telegram alert sender (stdlib only, Bot API)
-  │     ├── alert-check.py — Pipeline health checker with positive heartbeat
+  │     ├── alert-check.py — Pipeline health checker with positive heartbeat (digest, briefing, credits)
+  │     ├── openrouter-usage.py — OpenRouter balance/usage checker (stdlib only)
   │     ├── workers/ — orchestrator workers (email_triage.py, newsletter_reader.py — call Flash/Haiku APIs directly)
   │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
   │     └── tests/ — worker test suite
@@ -47,7 +48,7 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-030) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern
+decisions/        ADRs (001-031) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback
 docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
@@ -101,11 +102,13 @@ notes/            Brain dumps
 - `decisions/028-active-heartbeat-cost-tracking.md` — ADR for active heartbeat, cost tracking, activity logging, and dashboard
 - `decisions/029-orchestrator-conductor-pattern.md` — ADR for multi-model orchestrator-conductor pattern
 - `decisions/030-failure-alerting.md` — ADR for Telegram failure alerting and positive heartbeat
+- `decisions/031-cost-visibility-model-fallback.md` — ADR for cost visibility, credit alerts, model identification
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
-- `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (checks freshness), `briefing` (checks experiment-tracker.db). Positive heartbeat on success. Stdlib only. (ADR-030)
+- `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (checks freshness), `briefing` (checks experiment-tracker.db), `credits` (checks OpenRouter balance). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
+- `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
 - `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku)
 - `workspace/workers/email_triage.py` — Flash-powered email triage worker. Reads digest, scores/triages emails, outputs shortlist.
 - `workspace/workers/newsletter_reader.py` — Haiku-powered newsletter deep-reader. Extracts gems, links, events from shortlisted emails.
@@ -211,6 +214,15 @@ Email fetch runs on a VPS root crontab, daily at 06:00 UTC, with failure alertin
   $(docker ps -q --filter name=openclaw-sbx) \
   python3 /workspace/alert-check.py briefing \
   >> /var/log/alert-check.log 2>&1
+
+# Every 6 hours — check OpenRouter credit balance (ADR-031)
+0 */6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+  docker exec -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+              -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
+              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
+  $(docker ps -q --filter name=openclaw-sbx) \
+  python3 /workspace/alert-check.py credits \
+  >> /var/log/alert-check.log 2>&1
 ```
 
 ### Sandbox API keys
@@ -220,6 +232,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `GOOGLE_AI_API_KEY` — Google AI (Gemini Flash) for email triage worker
 - `ANTHROPIC_API_KEY` — Anthropic (Claude Haiku) for newsletter reader worker
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram alerts for pipeline failures (ADR-030)
+- `OPENROUTER_API_KEY` — OpenRouter balance/usage checks from sandbox (ADR-031)
 
 The morning briefing (OpenClaw cron, 07:00 London) reads the digest written by this job.
 

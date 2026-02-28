@@ -117,6 +117,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Digest freshness check | WORKING | `alert-check.py digest` — verifies email-digest.json < 25h old. Cron at 06:15. |
 | Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db for today's runs. Cron at 07:30. |
 | Positive heartbeat | WORKING | Both checks send a confirmation message when all is well. Silence = broken checker. |
+| OpenRouter credit alerts | WORKING | `alert-check.py credits` — checks balance via API, alerts if below $1. Cron every 6h. (ADR-031) |
+| OpenRouter usage checker | WORKING | `openrouter-usage.py` — balance + usage queries. Available to Jimbo in heartbeat + briefing. (ADR-031) |
+| Model identification | WORKING | SOUL.md instructs Jimbo to tag first message with [Flash]/[Haiku]/etc. (ADR-031) |
 | Docker/host-level alerts | NOT COVERED | Future work — needs alerting outside sandbox |
 | OpenClaw service crash | NOT COVERED | systemd can email on failure but not Telegram natively |
 
@@ -141,3 +144,4 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 *Last updated: 2026-02-28*
 *Failure alerting (ADR-030): 2026-02-28*
+*Cost visibility + model identification (ADR-031): 2026-02-28*

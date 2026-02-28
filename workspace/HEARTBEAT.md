@@ -38,6 +38,9 @@
 ## Daily plan with vault tasks (~08:30 Europe/London)
 - Generate today's plan using the day-planner skill. Include the top 3 vault tasks for today's focus project alongside calendar events and priority items. Send via Telegram. The vault makes the plan concrete — instead of "work on LocalShout", suggest specific vault tasks like "review auth flow notes" or "chase issue #42".
 
+## OpenRouter balance check (every heartbeat)
+- Run `python3 /workspace/openrouter-usage.py balance`. If below $2, warn Marvin in the next message. If below $0.50, send an alert via `python3 /workspace/alert.py "OpenRouter balance critically low: $X.XX remaining"`. If the script fails (e.g. env var not set), skip silently.
+
 ## Cost logging (every heartbeat)
 - After every heartbeat cycle, estimate the tokens used and log to cost-tracker.py: `python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task heartbeat --input-tokens <est> --output-tokens <est>`. Do this for ALL interactions, not just heartbeats — briefings, chats, research, everything.
 

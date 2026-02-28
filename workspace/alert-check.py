@@ -10,6 +10,7 @@ Python 3.11 stdlib only. No pip dependencies.
 Usage:
     python3 alert-check.py digest     # check email-digest.json is fresh (<25h)
     python3 alert-check.py briefing   # check experiment-tracker.db has today's run
+    python3 alert-check.py credits    # check OpenRouter credit balance
 """
 
 import datetime
@@ -18,6 +19,8 @@ import os
 import sqlite3
 import subprocess
 import sys
+import urllib.request
+import urllib.error
 
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +32,7 @@ TRACKER_DB_PATH = os.environ.get(
 )
 
 MAX_DIGEST_AGE_HOURS = 25
+CREDIT_ALERT_THRESHOLD = 1.0  # dollars
 
 
 def send_alert(message):
@@ -119,9 +123,50 @@ def check_briefing():
         return False, f"experiment-tracker.db query failed: {e}"
 
 
+def check_credits():
+    """Check OpenRouter credit balance. Returns (ok, summary)."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        return False, "OPENROUTER_API_KEY not set"
+
+    url = "https://openrouter.ai/api/v1/auth/key"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
+        return False, f"OpenRouter API request failed: {e}"
+
+    info = data.get("data", data)
+    limit = info.get("limit")
+    usage = info.get("usage")
+
+    if limit is None or usage is None:
+        return False, f"unexpected OpenRouter response: {json.dumps(data)}"
+
+    remaining = limit - usage
+
+    if remaining < CREDIT_ALERT_THRESHOLD:
+        return False, (
+            f"OpenRouter balance LOW: ${remaining:.2f} remaining "
+            f"(${usage:.2f} used of ${limit:.2f} limit). "
+            f"Consider: ./scripts/model-swap.sh daily"
+        )
+
+    return True, f"OpenRouter balance OK: ${remaining:.2f} remaining"
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("digest", "briefing"):
-        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing}\n")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("digest", "briefing", "credits"):
+        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits}\n")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -130,6 +175,8 @@ def main():
         ok, summary = check_digest()
     elif command == "briefing":
         ok, summary = check_briefing()
+    elif command == "credits":
+        ok, summary = check_credits()
 
     timestamp = now_utc().strftime("%H:%M")
 
