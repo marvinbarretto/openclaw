@@ -34,9 +34,10 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── workers/ — orchestrator workers (email_triage.py, newsletter_reader.py — call Flash/Haiku APIs directly)
   │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
   │     └── tests/ — worker test suite
-  ├── notes-triage-api (Hono/Node, port 3100, systemd)
-  │     └── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
-  └── Caddy (auto TLS, routes /api/triage/* → notes-triage-api)
+  ├── jimbo-api (Hono/Node, port 3100, systemd, formerly notes-triage-api)
+  │     ├── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
+  │     └── data/context.db — SQLite context store (ADR-033)
+  └── Caddy (auto TLS, routes /api/triage/* + /api/context/* → jimbo-api)
 ```
 
 Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, then the orchestrator pipeline (Flash triage + Haiku deep-read) processes the digest before Jimbo synthesises the briefing.
@@ -49,7 +50,7 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-032) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation
+decisions/        ADRs (001-033) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API
 docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
@@ -106,9 +107,11 @@ notes/            Brain dumps
 - `decisions/030-failure-alerting.md` — ADR for Telegram failure alerting and positive heartbeat
 - `decisions/031-cost-visibility-model-fallback.md` — ADR for cost visibility, credit alerts, model identification
 - `decisions/032-heartbeat-rationalisation.md` — ADR for slimming heartbeat from ~20 to ~6 contextual tasks, moving scripts to cron
+- `decisions/033-context-api.md` — ADR for context API, web editor, SQLite-backed context store
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
+- `workspace/context-helper.py` — Context API client for sandbox. Fetches context (priorities, interests, goals) from jimbo-api, formats as readable text. Replaces file reads in skills. Stdlib only. (ADR-033)
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (checks freshness), `briefing` (checks experiment-tracker.db), `credits` (checks OpenRouter balance). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
@@ -241,6 +244,8 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `ANTHROPIC_API_KEY` — Anthropic (Claude Haiku) for newsletter reader worker
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram alerts for pipeline failures (ADR-030)
 - `OPENROUTER_API_KEY` — OpenRouter balance/usage checks from sandbox (ADR-031)
+- `JIMBO_API_URL` — jimbo-api base URL for context-helper.py (ADR-033)
+- `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
 
 Daily sequence: task scoring (04:30) → tasks sweep (05:00) → email fetch (06:00) → digest check (06:15) → Jimbo's morning briefing (07:00, OpenClaw cron) → briefing check (07:30). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
@@ -273,7 +278,7 @@ data/vault/
 ```
 
 ### Triage UI stack
-- **notes-triage-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/notes-triage-api (private)
+- **jimbo-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/notes-triage-api (private)
 - **site** — React triage UI at `/app/jimbo/notes-triage`. Deployed to Cloudflare Workers.
 - **Caddy** routes `/api/triage/*` to the API, everything else to OpenClaw.
 - See `notes/triage-deploy.md` for full deployment and operations guide.
@@ -287,7 +292,7 @@ data/vault/
 
 ## Context Files
 
-The `context/` directory contains Marvin's personal context — pushed to VPS so Jimbo can read them. These are NOT hard rules or blocklists. They teach taste and judgment that evolves over time.
+The `context/` directory contains Marvin's personal context files — pushed to VPS as a backup. The **primary source** for context data (Priorities, Interests, Goals) is now the context API (ADR-033), edited via the web UI at `/app/jimbo/context`. Jimbo reads context via `context-helper.py` which calls the API. Files are NOT hard rules or blocklists — they teach taste and judgment that evolves over time.
 
 - `INTERESTS.md` — topics, hobbies, communities (changes slowly)
 - `PRIORITIES.md` — active projects, this week's focus (changes weekly)

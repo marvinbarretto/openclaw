@@ -14,11 +14,13 @@ Read ALL of these before making any suggestions:
 1. Today's calendar: `python3 /workspace/calendar-helper.py list-events --days 1`
 2. This week's calendar (for broader context): `python3 /workspace/calendar-helper.py list-events --days 7`
 3. `/workspace/email-digest.json` — time-sensitive items from email
-4. `/workspace/context/PRIORITIES.md` — active tasks and projects
-5. `/workspace/context/GOALS.md` — longer-term ambitions
-6. `/workspace/context/INTERESTS.md` — event scouting, hobbies, communities
+4. Run `python3 /workspace/context-helper.py priorities` — active tasks and projects
+5. Run `python3 /workspace/context-helper.py goals` — longer-term ambitions
+6. Run `python3 /workspace/context-helper.py interests` — event scouting, hobbies, communities
 7. `/workspace/context/TASTE.md` — judgment on what's worth surfacing
-8. **Vault tasks for active projects:** read frontmatter from `/workspace/vault/notes/`, filter for `type: task`, `status: active`, `priority >= 7`, `actionability: clear`. Sort by `priority` descending, pick the 2-3 highest. These are pre-scored by `prioritise-tasks.py` — no need to grep. Fallback: if no `priority` field exists, identify active projects from PRIORITIES.md and search the vault: `grep -rli 'project_name' /workspace/vault/notes/`.
+8. **Vault tasks for active projects:** read frontmatter from `/workspace/vault/notes/`, filter for `type: task`, `status: active`, `priority >= 7`, `actionability: clear`. Sort by `priority` descending, pick the 2-3 highest. These are pre-scored by `prioritise-tasks.py` — no need to grep. Fallback: if no `priority` field exists, identify active projects from priorities and search the vault: `grep -rli 'project_name' /workspace/vault/notes/`.
+
+Note: Context files (Priorities, Interests, Goals) are now served from the context API via context-helper.py. TASTE.md is still a local file.
 
 ## How to identify free gaps
 

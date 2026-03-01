@@ -159,10 +159,11 @@ for d in "${WORKER_DIRS[@]}"; do
     fi
 done
 
-# Push context directory (rsync with --delete so removed files get cleaned up)
+# Push context directory (backup only — Jimbo now reads context via API/context-helper.py,
+# but we keep pushing files as a fallback in case the API is unavailable)
 if [ "$CONTEXT_COUNT" -gt 0 ]; then
     echo ""
-    echo "Pushing context/ ..."
+    echo "Pushing context/ (backup — primary source is now context API)..."
     rsync -avz --delete $DRY_RUN "$CONTEXT_DIR/" "$REMOTE_BASE/context/"
 fi
 

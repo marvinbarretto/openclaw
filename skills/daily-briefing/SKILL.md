@@ -13,9 +13,11 @@ When the user says good morning, asks for a briefing, or it's a scheduled mornin
 1. Run `python3 /workspace/recommendations-helper.py expire` to clean up expired time-sensitive items.
 
 Read Marvin's context to understand what matters today:
-1. `/workspace/context/PRIORITIES.md` — what's active this week
-2. `/workspace/context/GOALS.md` — longer-term ambitions
+1. Run `python3 /workspace/context-helper.py priorities` — what's active this week
+2. Run `python3 /workspace/context-helper.py goals` — longer-term ambitions
 3. `/workspace/context/TASTE.md` — how he likes information presented (concise, scannable, timely)
+
+Note: Priorities and Goals are now served from the context API via context-helper.py. TASTE.md is still a local file.
 
 ## What to include
 
@@ -67,9 +69,9 @@ Read Marvin's context to understand what matters today:
 - Only mention 1-2 things, not the whole list
 
 ### 8. Context freshness
-- Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
-- If PRIORITIES is more than 10 days old, nudge: "Your priorities file is [N] days old — worth a quick review?"
-- If GOALS is more than 45 days old, nudge: "Your goals file hasn't been updated in [N] days"
+- The context API returns `updated_at` timestamps for each file. Check these via the context-helper output.
+- If PRIORITIES hasn't been updated in more than 10 days, nudge: "Your priorities are [N] days old — worth a quick review? You can edit them at /app/jimbo/context"
+- If GOALS is more than 45 days old, nudge similarly
 - If INTERESTS is more than 90 days old, mention it too
 - Only mention stale files, skip this section if everything is fresh
 - Keep it to one line per stale file — this is a nudge, not a nag

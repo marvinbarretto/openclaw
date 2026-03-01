@@ -10,6 +10,16 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Morning briefing | WORKING | OpenClaw cron at 07:00 London. Digest fetched by VPS cron at 06:00 UTC. |
 | Email digest summary | WORKING | Via `sift-digest` skill |
 
+## Context
+
+| Capability | Status | Notes |
+|---|---|---|
+| Context API (read/write) | WORKING | jimbo-api serves context data via `/api/context/*`. SQLite-backed. (ADR-033) |
+| Context editor UI | WORKING | `/app/jimbo/context` on personal site. CRUD for Priorities, Interests, Goals. |
+| Context helper script | WORKING | `context-helper.py` in sandbox. Fetches from API, formats for Jimbo's context window. |
+| Telegram notification on edit | WORKING | jimbo-api sends Telegram notification when context is updated. Debounced. |
+| File fallback | BACKUP | `workspace-push.sh` still pushes context/ as backup. Files in `/workspace/context/`. |
+
 ## Code & Files
 
 | Capability | Status | Notes |
@@ -143,6 +153,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-02-28*
+*Last updated: 2026-03-01*
+*Context API + editor (ADR-033): 2026-03-01*
 *Failure alerting (ADR-030): 2026-02-28*
 *Cost visibility + model identification (ADR-031): 2026-02-28*
