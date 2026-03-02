@@ -12,15 +12,17 @@ When the user says good morning, asks for a briefing, or it's a scheduled mornin
 
 ## Before you start
 
-Run these commands FIRST, before composing any output:
+Run these commands in the SANDBOX, before composing any output. Use the sandbox/execute tool (NOT the read tool — files are inside the Docker container, not on the host filesystem).
 
 1. `python3 /workspace/recommendations-helper.py expire`
 2. `python3 /workspace/calendar-helper.py list-events --days 1`
-3. Read `/workspace/email-digest.json`
-4. Read `/workspace/context/PRIORITIES.md`
-5. Read `/workspace/context/GOALS.md`
-6. Read `/workspace/context/TASTE.md`
-7. Search vault for top priority tasks: `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20` then read frontmatter of matches
+3. `cat /workspace/email-digest.json | python3 -c "import sys,json; d=json.load(sys.stdin); items=list(d['items']); print(f'Date: {d[\"date\"]}'); print(f'Total: {len(items)}'); [print(f'  {i[\"sender\"][\"name\"] if isinstance(i[\"sender\"],dict) else i[\"sender\"]}: {i[\"subject\"]}') for i in items[:15]]"`
+4. `cat /workspace/context/PRIORITIES.md`
+5. `cat /workspace/context/GOALS.md`
+6. `cat /workspace/context/TASTE.md`
+7. `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20 | xargs -I{} head -25 {}`
+
+IMPORTANT: All file access must go through sandbox commands (cat, grep, python3). Do NOT use the read/file tool — those paths don't exist on the host.
 
 Do ALL of these before writing a single word of output. If a command fails, note it and move on — don't skip the rest.
 
