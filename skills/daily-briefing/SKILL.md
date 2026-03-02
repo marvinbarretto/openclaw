@@ -79,7 +79,8 @@ Do ALL of these before writing a single word of output. If a command fails, note
 - Only mention 1-2 things that haven't already been covered in the day plan
 
 ### 8. Context freshness
-- The context-helper.py output from steps 4-6 includes `updated_at` dates for each context file
+- The context-helper.py output from steps 4-6 includes a `Last updated:` line at the bottom with the date
+- Use THAT date (from the API), NOT the file modification time of the backup markdown files
 - If PRIORITIES hasn't been updated in more than 10 days, nudge: "Your priorities are [N] days old — worth a quick review via the site?"
 - If GOALS hasn't been updated in more than 45 days, nudge similarly
 - Only mention stale files, skip if fresh

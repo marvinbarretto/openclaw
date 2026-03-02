@@ -64,6 +64,11 @@ def format_file(data):
 
         lines.append("")
 
+    # Include updated_at so skills can check freshness
+    updated_at = data.get("updated_at")
+    if updated_at:
+        lines.append(f"_Last updated: {updated_at}_")
+
     return "\n".join(lines).strip()
 
 
