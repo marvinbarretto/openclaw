@@ -12,6 +12,13 @@ When the user says good morning, asks for a briefing, or it's a scheduled mornin
 
 ## Before you start
 
+**Memory check (if available):** Before running any commands, use `memory_search` to look up:
+- Yesterday's briefing — what was highlighted, what Marvin reacted to
+- Recent surprise game results — what worked, what didn't
+- Any feedback patterns (e.g. "stop mentioning X", "I liked when you Y")
+
+This makes today's briefing build on yesterday's instead of starting from scratch.
+
 Run these commands in the SANDBOX, before composing any output. Use the sandbox/execute tool (NOT the read tool — files are inside the Docker container, not on the host filesystem).
 
 1. `python3 /workspace/recommendations-helper.py expire`

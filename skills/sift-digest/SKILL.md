@@ -27,23 +27,34 @@ If any context files are missing, proceed without them but mention it.
 
 ## Worker pipeline
 
-You are the **conductor**. You don't read all 200 emails yourself — you delegate to worker scripts and then synthesise the results.
+You are the **conductor**. You don't read all 200 emails yourself — you delegate to sub-agents and then synthesise the results.
 
-### Step 1: Email triage (cheap model)
+### Step 1: Email triage (sub-agent)
 
+Spawn a sub-agent using the `email-triage-worker` skill. Give it:
+- The email digest (read `/workspace/email-digest.json`)
+- Marvin's context files (the ones you read in "Before you start")
+
+The sub-agent will write its output to `/workspace/.worker-shortlist.json`. Once it completes, read that file to see what made the cut.
+
+**If sub-agent spawn fails**, fall back to the Python worker:
 ```bash
 python3 /workspace/workers/email_triage.py --digest /workspace/email-digest.json --output /workspace/.worker-shortlist.json
 ```
 
-This calls Gemini Flash to classify and rank emails. It returns a shortlist of worth-reading items with categories and reasons. Read `/workspace/.worker-shortlist.json` to see what made the cut.
+### Step 2: Newsletter deep read (sub-agent)
 
-### Step 2: Newsletter deep read (capable model)
+Spawn a sub-agent using the `newsletter-reader-worker` skill. Give it:
+- The shortlist from Step 1 (`/workspace/.worker-shortlist.json`)
+- The full digest (`/workspace/email-digest.json`)
+- Marvin's context files
 
+The sub-agent will write its output to `/workspace/.worker-gems.json`. Once it completes, read that file.
+
+**If sub-agent spawn fails**, fall back to the Python worker:
 ```bash
 python3 /workspace/workers/newsletter_reader.py --shortlist /workspace/.worker-shortlist.json --digest /workspace/email-digest.json --output /workspace/.worker-gems.json
 ```
-
-This calls Claude Haiku to deep-read the shortlisted emails. It returns extracted gems (specific articles, links, events, prices) plus items it read and found nothing in. Read `/workspace/.worker-gems.json`.
 
 ### Step 3: Review worker output (your job as conductor)
 
@@ -187,9 +198,9 @@ One line on how the workers performed: "Triage was solid today, reader missed a 
 
 ## Fallback (explicit failure reporting)
 
-If a worker script fails, do NOT silently degrade. Report exactly what broke:
+If a sub-agent or worker script fails, do NOT silently degrade. Report exactly what broke:
 
-1. **Name the failure:** "email_triage.py failed with: [error message]" or "newsletter_reader.py returned malformed JSON"
+1. **Name the failure:** "email-triage-worker sub-agent failed" or "newsletter_reader.py returned malformed JSON"
 2. **Name the impact:** "No shortlist available — I'm reading the raw digest directly" or "Gems extraction failed — newsletter highlights will be shallow today"
 3. **Fall back to raw digest:** Read `/workspace/email-digest.json` directly and present using the format above, but with this header:
 

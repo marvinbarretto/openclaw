@@ -53,7 +53,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
 | Deep newsletter reading | WORKING | Two-pass pipeline: Flash triages → Haiku deep-reads → Jimbo synthesises. Experiment tracked. (ADR-029) |
 | Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
-| Orchestrator pipeline | WORKING | `email_triage.py` (Flash) + `newsletter_reader.py` (Haiku). Workers call APIs directly from sandbox. (ADR-029) |
+| Orchestrator pipeline | WORKING | Sub-agent skills (email-triage-worker, newsletter-reader-worker) as primary. Python workers as fallback. (ADR-029, ADR-039) |
 | LLM email classification | REPLACED | By orchestrator workers — Flash triage + Haiku deep-read (ADR-029) |
 | Old Sift pipeline (laptop) | RETIRED | mbsync + Ollama + sift-push.sh removed. launchd job unloaded. |
 
@@ -110,15 +110,27 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Model | Status | Notes |
 |---|---|---|
 | `stepfun/step-3.5-flash:free` | RETIRED | Can't follow curation instructions (ADR-005) |
-| `google/gemini-2.5-flash` | WORKING | Worker model for email triage. Also available as conductor fallback. |
-| `anthropic/claude-haiku-4.5` | ACTIVE | Conductor model + newsletter deep-reader. Switched from Flash (ADR-036). |
+| `google/gemini-2.5-flash` | ACTIVE | Default model outside briefing window (07:30-06:45 UTC). Cron auto-switches. |
+| `anthropic/claude-haiku-4.5` | ACTIVE | Briefing window model (06:45-07:30 UTC). Cron auto-switches. (ADR-036) |
+| Automated model switching | WORKING | `model-swap-local.sh` on VPS. Cron: Haiku at 06:45, Flash at 07:30 UTC. (ADR-039) |
 | Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. (ADR-029) |
+
+## Native Features (v2026.3.1)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Native cron | WORKING | Morning briefing at 07:00 London. Managed via `openclaw cron`. (ADR-039) |
+| Sub-agents | WORKING | `maxConcurrent: 8`. Used by sift-digest for email triage + newsletter reading. (ADR-039) |
+| Memory (memory-core) | WORKING | FTS5 + vector search. Auto-loaded. Wired into SOUL.md, daily-briefing, HEARTBEAT.md. (ADR-039) |
+| Health endpoint | WORKING | `openclaw health` — shows channel status, agents, sessions. TCP probe from sandbox via alert-check.py. (ADR-039) |
+| Secrets management | AVAILABLE | `openclaw secrets audit/configure/reload`. 1 plaintext key found. Not yet migrated. (ADR-039) |
+| Plugins | WORKING | 5/38 loaded: device-pair, memory-core, phone-control, talk-voice, telegram. |
 
 ## MCP Servers
 
 | Server | Status | Notes |
 |---|---|---|
-| Native MCP support | BLOCKED | Not available in OpenClaw v2026.2.12. PR #21530 pending. Revisit on upgrade. (ADR-017) |
+| Native MCP support | BLOCKED | Still not available in v2026.3.1. No CLI command, no config key. (ADR-017) |
 | Community MCP plugins | REJECTED | Violates ADR-008 (no community plugins, supply chain risk) |
 
 ## Alerting & Monitoring
@@ -130,12 +142,15 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db. Time-aware: pending before 08:00 UTC, alert after. Hourly at :30. |
 | Positive heartbeat | WORKING | All checks send combined status hourly. Silence = broken checker. |
 | OpenRouter usage report | WORKING | `alert-check.py credits` — reports usage (not balance, as OpenRouter API returns stale limits). Hourly at :30. (ADR-031) |
+| Gateway health check | WORKING | `alert-check.py openclaw` — TCP probe to gateway port from sandbox. Included in hourly status. (ADR-039) |
+| Current model report | WORKING | `alert-check.py model` — reads openclaw.json, reports active model. Included in hourly status. (ADR-039) |
+| Daily accountability | WORKING | `accountability-check.py` — checks 6 dimensions at 20:00 UTC, sends Telegram summary. (ADR-039) |
 | Settings API | WORKING | jimbo-api serves `/api/settings/*`. Key-value store for config (e.g. email fetch interval). |
 | Settings UI | WORKING | `/app/jimbo/settings` on personal site. Configurable email fetch interval. |
 | OpenRouter usage checker | WORKING | `openrouter-usage.py` — balance + usage queries. Available to Jimbo in heartbeat + briefing. (ADR-031) |
 | Model identification | WORKING | SOUL.md instructs Jimbo to tag first message with [Flash]/[Haiku]/etc. (ADR-031) |
-| Docker/host-level alerts | NOT COVERED | Future work — needs alerting outside sandbox |
-| OpenClaw service crash | NOT COVERED | systemd can email on failure but not Telegram natively |
+| Docker/host-level alerts | COVERED | Gateway TCP probe from sandbox detects service crash. (ADR-039) |
+| OpenClaw service crash | COVERED | `alert-check.py openclaw` detects gateway down. Hourly at :30. (ADR-039) |
 
 ## Security Boundaries
 
@@ -157,6 +172,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 ---
 
 *Last updated: 2026-03-02*
+*OpenClaw v2026.3.1 upgrade + native features (ADR-039): 2026-03-02*
 *Tasks triage session (ADR-038): 2026-03-02*
 *Vault task prioritisation (ADR-034): 2026-03-02*
 *VPS vault source of truth (ADR-035): 2026-03-02*

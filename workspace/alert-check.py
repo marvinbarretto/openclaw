@@ -8,9 +8,11 @@ on failure, and a positive heartbeat message when all is well.
 Python 3.11 stdlib only. No pip dependencies.
 
 Usage:
+    python3 alert-check.py openclaw   # check gateway is responding
     python3 alert-check.py digest     # check email-digest.json is fresh (<25h)
     python3 alert-check.py briefing   # check experiment-tracker.db has today's run
     python3 alert-check.py credits    # check OpenRouter credit balance
+    python3 alert-check.py model      # check current VPS model from openclaw.json
     python3 alert-check.py status     # combined status (all checks in one message)
 """
 
@@ -173,6 +175,24 @@ def check_credits():
     return True, f"OpenRouter: ${usage:.2f} used"
 
 
+def check_openclaw():
+    """Check OpenClaw gateway is responding. Returns (ok, summary)."""
+    # The gateway listens on port 18789. From inside the sandbox we can't
+    # run `openclaw health`, but we can check the port is accepting connections.
+    # Docker sandbox can reach the host via host.docker.internal or the host IP.
+    import socket
+
+    host = os.environ.get("OPENCLAW_GATEWAY_HOST", "172.17.0.1")  # default Docker bridge
+    port = int(os.environ.get("OPENCLAW_GATEWAY_PORT", "18789"))
+
+    try:
+        sock = socket.create_connection((host, port), timeout=5)
+        sock.close()
+        return True, "gateway: up"
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False, "gateway: DOWN (port not responding)"
+
+
 def check_model():
     """Check the current OpenClaw model from openclaw.json. Returns (ok, summary)."""
     config_path = os.environ.get(
@@ -222,6 +242,7 @@ def check_model():
 def check_status():
     """Run all checks and return a combined one-line summary."""
     checks = [
+        ("openclaw", check_openclaw),
         ("digest", check_digest),
         ("briefing", check_briefing),
         ("credits", check_credits),
@@ -238,6 +259,10 @@ def check_status():
 
         if name in ("credits", "model"):
             icon = "\u2139\ufe0f" if ok else "\u274c"
+        elif name == "openclaw":
+            icon = "\U0001f99e" if ok else "\u274c"  # 🦞 for gateway
+            if not ok:
+                any_bad = True
         elif name == "briefing" and ok and "pending" in summary:
             icon = "\u23f3"
         else:
@@ -251,9 +276,9 @@ def check_status():
 
 
 def main():
-    commands = ("digest", "briefing", "credits", "model", "status")
+    commands = ("openclaw", "digest", "briefing", "credits", "model", "status")
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
-        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits|model|status}\n")
+        sys.stderr.write("Usage: python3 alert-check.py {openclaw|digest|briefing|credits|model|status}\n")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -268,6 +293,8 @@ def main():
         ok, summary = check_credits()
     elif command == "model":
         ok, summary = check_model()
+    elif command == "openclaw":
+        ok, summary = check_openclaw()
 
     timestamp = now_utc().strftime("%H:%M")
 

@@ -22,6 +22,10 @@ Check the Jimbo Suggestions calendar for today's events. Briefly note what was p
 
 The daily accountability report runs at 20:00 UTC via cron (`accountability-check.py`). It checks whether you actually did things today: briefing, gems, surprise game, vault tasks, activity count, and cost. If you know something failed earlier, log it explicitly to the activity log now — the accountability report reads from there. Don't wait for the report to catch your failures.
 
+**Memory:** At end of day, use `memory_search` to check what you did today, then save a brief summary of today's key events, Marvin's reactions, and any patterns you noticed. This is what tomorrow's briefing will draw from.
+
+**Blog nudge:** If anything interesting happened today — a good gem from the digest, a surprise game win, an insight from vault triage, a pattern you noticed — draft a short blog post about it. Use the `blog-publisher` skill. You have opinions and a voice; use them. Aim for at least 2-3 posts per week. A post can be 3 paragraphs — it doesn't have to be an essay.
+
 ## Email check-ins (3x/day)
 
 ~09:00, ~13:00, ~17:00 Europe/London: run `python3 /workspace/gmail-helper.py fetch --hours 4` and scan for anything interesting or time-sensitive. If something is worth flagging, send a brief Telegram message (1-3 lines). If nothing notable, stay silent. Log to activity-log.py after each check. Don't repeat items already flagged in the morning briefing.

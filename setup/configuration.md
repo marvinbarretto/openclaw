@@ -1,9 +1,10 @@
 # Configuration
 
-## Current state (2026-02-20)
+## Current state (2026-03-02)
 
+- **OpenClaw version:** v2026.3.1 (upgraded from v2026.2.12)
 - **AI Providers:** Google AI (daily), OpenRouter (free/coding), Anthropic (premium)
-- **Model:** `google/gemini-2.5-flash` (direct Google AI, ~$0.78/month) — upgraded from free tier (ADR-015)
+- **Model:** `anthropic/claude-haiku-4.5` (conductor, ADR-036), auto-switches via cron (Haiku 06:45, Flash 07:30 UTC)
 - **Telegram:** Connected, paired, working (`@fourfold_openclaw_bot` / "Jimbo")
 - **Dashboard:** `https://167.99.206.214`
 - **Gateway token:** `94e12e952cbf5342c1ebcdf4a6faa76812ba0f21fd04ea793d6ff2f41233afe9`
@@ -201,13 +202,96 @@ The GitHub skill lets Jimbo read repos via `gh` CLI inside the Docker sandbox.
 
 **Before switching to free model:** Disable GitHub skill by removing `GH_TOKEN` from sandbox env. See ADR-006.
 
-## MCP Servers (ADR-017 — Rejected)
+## OpenClaw v2026.3.1 Native Features
 
-Native MCP support is **not available** in OpenClaw v2026.2.12. The `mcpServers` config key is rejected as unrecognised. Community adapter plugins exist but violate ADR-008 (no community plugins).
+Upgraded 2026-03-02. These features were not available in v2026.2.12.
 
-**Revisit when:** OpenClaw merges PR #21530 (native MCP client support) and we upgrade.
+### Native cron (`openclaw cron`)
 
-See `decisions/017-mcp-server-integration.md` for full investigation and lessons learned.
+Gateway-managed scheduled jobs. Persistent, retry-aware, integrated with sessions.
+
+```bash
+# Key commands (run as openclaw user with env vars)
+openclaw cron list                    # list all jobs
+openclaw cron add                     # add a new job (interactive)
+openclaw cron run <job-id>            # trigger manually for debugging
+openclaw cron runs                    # show run history
+openclaw cron status                  # scheduler status
+openclaw cron disable <job-id>        # pause a job
+```
+
+**Current jobs:** Morning briefing (07:00 Europe/London, daily). ID: `24798750-40b4-4fc6-9640-6a1d8b81e6d1`.
+
+**When to use native cron vs VPS crontab:**
+- **Native cron:** Tasks that need an LLM session (briefings, conversations, anything that calls skills)
+- **VPS crontab:** Pure scripts that don't need OpenClaw (email fetch, task scoring, model swap, accountability report, status checks)
+
+### Health endpoint (`openclaw health`)
+
+Shows channel status, agent sessions, heartbeat interval. Use for monitoring.
+
+```bash
+openclaw health    # shows Telegram status, active agents, session store
+```
+
+Output includes: channel health (Telegram OK/down + latency), agent list, heartbeat interval, recent sessions.
+
+### Memory system (`openclaw memory`, plugin: `memory-core`)
+
+File-backed memory with FTS5 keyword search. Auto-loaded on upgrade.
+
+```bash
+openclaw memory status                # index stats, provider, store path
+openclaw memory index --force         # full reindex
+openclaw memory search --query "..."  # search indexed memory
+```
+
+**Architecture:**
+- Store: `~/.openclaw/memory/main.sqlite`
+- Embedding: `gemini-embedding-001` (auto-detected)
+- Sources: memory files in `~/.openclaw/workspace`
+- Tools exposed to Jimbo: `memory_search`, `memory_get`
+- Vector search (sqlite-vec) + FTS5 keyword search
+
+**Current state (2026-03-02):** Loaded but empty (0 files indexed). Needs memory files in `~/.openclaw/workspace` to be useful.
+
+### Secrets management (`openclaw secrets`)
+
+Runtime secret resolution with audit trail.
+
+```bash
+openclaw secrets audit                # find plaintext secrets, unresolved refs, drift
+openclaw secrets configure            # interactive setup (provider mapping + preflight)
+openclaw secrets reload               # re-resolve refs and swap runtime snapshot
+openclaw secrets apply                # apply a previously generated plan
+```
+
+**Current state (2026-03-02):** Audit shows 1 plaintext key (Google AI apiKey in openclaw.json). Other keys use `${ENV_VAR}` interpolation which is fine. Low priority to migrate — existing approach works.
+
+### Plugins (`openclaw plugins`)
+
+Stock plugin management. 38 available, 5 loaded.
+
+```bash
+openclaw plugins list                 # all plugins with status
+openclaw plugins enable <id>          # enable a plugin
+openclaw plugins disable <id>         # disable a plugin
+openclaw plugins info <id>            # show details
+openclaw plugins doctor               # report load issues
+```
+
+**Loaded plugins (2026-03-02):** device-pair, memory-core, phone-control, talk-voice, telegram.
+
+**Interesting disabled plugins:**
+- `llm-task` — Generic JSON-only LLM tool for structured tasks (potential sub-agent alternative)
+- `lobster` — Typed workflow tool with resumable approvals
+- `diffs` — Read-only diff viewer for agents
+
+## MCP Servers (ADR-017 — Status TBD after upgrade)
+
+Still blocked in v2026.3.1. No `mcp` CLI command, no `mcpServers` config key. The `llm-task` and `lobster` stock plugins may provide similar functionality natively.
+
+See `decisions/017-mcp-server-integration.md` for original investigation.
 
 ## Notes
 
