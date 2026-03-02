@@ -32,8 +32,7 @@ TRACKER_DB_PATH = os.environ.get(
     os.path.join(_script_dir, "experiment-tracker.db"),
 )
 
-MAX_DIGEST_AGE_HOURS = 25
-CREDIT_ALERT_THRESHOLD = 1.0  # dollars
+BRIEFING_GRACE_HOUR = 8  # UTC hour after which missing briefing is an error
 
 
 def send_alert(message):
@@ -46,7 +45,7 @@ def now_utc():
 
 
 def check_digest():
-    """Check email-digest.json exists and is fresh. Returns (ok, summary)."""
+    """Check email-digest.json exists and report volume. Returns (ok, summary)."""
     if not os.path.exists(DIGEST_PATH):
         return False, "email-digest.json not found"
 
@@ -67,20 +66,23 @@ def check_digest():
     except ValueError:
         return False, f"email-digest.json has invalid generated_at: {generated_at}"
 
-    age = now_utc() - gen_time
-    age_hours = age.total_seconds() / 3600
-
-    if age_hours > MAX_DIGEST_AGE_HOURS:
-        return False, f"email-digest.json is {age_hours:.1f}h old (threshold: {MAX_DIGEST_AGE_HOURS}h)"
-
     email_count = len(digest.get("items", []))
-    gen_short = gen_time.strftime("%H:%M")
-    return True, f"digest fresh ({gen_short} UTC, {email_count} emails, {age_hours:.1f}h ago)"
+    previous_count = digest.get("previous_count")
+
+    if previous_count is not None:
+        new_count = max(0, email_count - previous_count)
+        return True, f"digest: {email_count} emails today ({new_count} new)"
+    else:
+        return True, f"digest: {email_count} emails today"
 
 
 def check_briefing():
     """Check experiment-tracker.db has a run with today's date. Returns (ok, summary)."""
+    current_hour = now_utc().hour
+
     if not os.path.exists(TRACKER_DB_PATH):
+        if current_hour < BRIEFING_GRACE_HOUR:
+            return True, "briefing pending"
         return False, "experiment-tracker.db not found"
 
     try:
@@ -99,9 +101,10 @@ def check_briefing():
 
         if row["count"] == 0:
             db.close()
-            return False, f"no experiment runs found for {today}"
+            if current_hour < BRIEFING_GRACE_HOUR:
+                return True, "briefing pending"
+            return False, f"briefing missing for {today}"
 
-        # Get summary of today's runs
         runs = db.execute(
             """SELECT task_id, COUNT(*) as count,
                       SUM(output_tokens) as total_output_tokens
@@ -116,7 +119,7 @@ def check_briefing():
         for r in runs:
             parts.append(f"{r['task_id']}: {r['count']} run(s)")
 
-        summary = f"briefing pipeline ran today ({', '.join(parts)})"
+        summary = f"briefing ran ({', '.join(parts)})"
         return True, summary
 
     except sqlite3.Error as e:
@@ -125,7 +128,7 @@ def check_briefing():
 
 
 def check_credits():
-    """Check OpenRouter credit balance. Returns (ok, summary)."""
+    """Check OpenRouter credit usage. Returns (ok, summary)."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         return False, "OPENROUTER_API_KEY not set"
@@ -147,22 +150,12 @@ def check_credits():
         return False, f"OpenRouter API request failed: {e}"
 
     info = data.get("data", data)
-    limit = info.get("limit")
     usage = info.get("usage")
 
-    if limit is None or usage is None:
+    if usage is None:
         return False, f"unexpected OpenRouter response: {json.dumps(data)}"
 
-    remaining = limit - usage
-
-    if remaining < CREDIT_ALERT_THRESHOLD:
-        return False, (
-            f"OpenRouter balance LOW: ${remaining:.2f} remaining "
-            f"(${usage:.2f} used of ${limit:.2f} limit). "
-            f"Consider: ./scripts/model-swap.sh daily"
-        )
-
-    return True, f"OpenRouter balance OK: ${remaining:.2f} remaining"
+    return True, f"OpenRouter: ${usage:.2f} used"
 
 
 def check_status():
@@ -180,10 +173,17 @@ def check_status():
             ok, summary = fn()
         except Exception as e:
             ok, summary = False, f"{name} error: {e}"
-        icon = "\u2705" if ok else "\u274c"
+
+        if name == "credits":
+            icon = "\u2139\ufe0f" if ok else "\u274c"
+        elif name == "briefing" and ok and "pending" in summary:
+            icon = "\u23f3"
+        else:
+            icon = "\u2705" if ok else "\u274c"
+            if not ok:
+                any_bad = True
+
         parts.append(f"{icon} {summary}")
-        if not ok:
-            any_bad = True
 
     return not any_bad, " | ".join(parts)
 
