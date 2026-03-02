@@ -70,7 +70,7 @@ notes/            Brain dumps
 - `workspace/activity-log.py` — SQLite activity log for everything Jimbo does. Logs task type, description, outcome, satisfaction scores. Stdlib only.
 - `workspace/recommendations-helper.py` — SQLite CRUD for persistent recommendations store. Jimbo logs finds from email/vault, tracks scores, urgency, expiry. Stdlib only, no OAuth.
 - `workspace/gmail-helper.py` — Gmail API client for sandbox. Fetches email, applies blacklist, writes email-digest.json directly. No LLM classification.
-- `workspace/tasks-helper.py` — Google Tasks API client for sandbox. Sweeps active tasks from "My Tasks" list, ingests into vault as markdown, classifies via Gemini Flash. Runs daily at 05:00 UTC via cron.
+- `workspace/tasks-helper.py` — Google Tasks API client for sandbox. Sweeps active tasks from "My Tasks" list, ingests into vault as markdown, classifies via Gemini Flash. Writes `tasks-triage-pending.json` for items routed to needs-context. Runs daily at 05:00 UTC via cron.
 - `scripts/google-auth.py` — One-time OAuth flow for Calendar + Gmail + Tasks scopes (replaces calendar-auth.py)
 - `scripts/sift-classify.py` — **LEGACY** Sift pipeline. Replaced by gmail-helper.py (ADR-022).
 - `scripts/sift-cron.sh` — **LEGACY** Automated pipeline. No longer needed — gmail-helper.py runs in sandbox.
@@ -82,7 +82,8 @@ notes/            Brain dumps
 - `context/*.md` — Marvin's interests, priorities, taste, goals, preferences
 - `scripts/model-swap.sh` — SSH helper to switch LLM model on VPS
 - `skills/sift-digest/SKILL.md` — Teaches Jimbo to present email digests
-- `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings
+- `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings (includes tasks triage announcement, section 3.5)
+- `skills/tasks-triage/SKILL.md` — Interactive Telegram triage session for ambiguous vault tasks (ADR-038)
 - `sandbox/Dockerfile` — Custom sandbox image definition
 - `setup/configuration.md` — VPS config state, API keys, **provider setup cheatsheet** (how to add new LLM providers/models to openclaw.json)
 - `CAPABILITIES.md` — Quick-reference matrix of what Jimbo can/can't do, token expiry dates, current VPS model
@@ -111,6 +112,7 @@ notes/            Brain dumps
 - `decisions/034-vault-task-prioritisation.md` — ADR for Gemini Flash batch-scoring vault tasks against priorities/goals
 - `decisions/035-vps-vault-source-of-truth.md` — ADR for removing vault sync from laptop, VPS owns vault data
 - `decisions/036-haiku-conductor-model.md` — ADR for switching conductor from Flash to Haiku 4.5
+- `decisions/038-tasks-triage-session.md` — ADR for interactive tasks triage via Telegram (briefing announcement + triage skill)
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
@@ -326,7 +328,7 @@ The `context/` directory contains Marvin's personal context files — pushed to 
 
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 032).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 038).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias. **Never use per-file `scp` loops** — use rsync to batch into a single SSH connection (VPS rate-limits after ~5 connections).
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.

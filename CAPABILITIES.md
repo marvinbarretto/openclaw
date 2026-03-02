@@ -69,8 +69,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Classification patterns | WORKING | `context/PATTERNS.md` — learned from review sessions, improves classification |
 | Mobile review queue | NOT STARTED | ADR-024 — needs personal website (Vercel/Cloudflare TBD) |
 | Task prioritisation | WORKING | `prioritise-tasks.py` — Gemini Flash batch-scores active tasks against PRIORITIES.md + GOALS.md. Writes `priority`, `actionability`, `scored` into frontmatter. Cron at 04:30 UTC. |
-| Daily ingest from Tasks API | NOT STARTED | ADR-023 Phase C — `tasks-helper.py` on VPS |
-| Jimbo vault skill | NOT STARTED | ADR-023 Phase C — vault queries + triage via Telegram |
+| Daily ingest from Tasks API | WORKING | `tasks-helper.py` runs at 05:00 UTC via cron. Sweeps My Tasks → vault inbox → Gemini Flash classification. |
+| Tasks triage session | WORKING | `tasks-triage` skill — interactive Telegram session for ambiguous items. Announced in morning briefing. Calendar invite via `calendar-helper.py`. (ADR-038) |
+| Triage pending output | WORKING | `tasks-triage-pending.json` written after classification with needs-context items for Jimbo to announce. |
 | Tasks read-write scope | READY | `google-auth.py` updated with `tasks.readonly`. Upgrade to `tasks` for mark-complete. |
 
 ## Recommendations
@@ -156,6 +157,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 ---
 
 *Last updated: 2026-03-02*
+*Tasks triage session (ADR-038): 2026-03-02*
 *Vault task prioritisation (ADR-034): 2026-03-02*
 *VPS vault source of truth (ADR-035): 2026-03-02*
 *Haiku conductor model (ADR-036): 2026-03-02*
