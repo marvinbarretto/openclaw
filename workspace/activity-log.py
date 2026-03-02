@@ -31,6 +31,7 @@ DB_PATH = os.path.join(_script_dir, "activity-log.db")
 VALID_TASK_TYPES = (
     "email-check", "research", "nudge", "blog", "briefing",
     "chat", "own-project", "heartbeat", "digest", "day-planner",
+    "tasks-triage",
 )
 
 SCHEMA = """

@@ -52,6 +52,7 @@ VAULT_INBOX = os.path.join(_script_dir, "vault", "inbox")
 VAULT_NOTES = os.path.join(_script_dir, "vault", "notes")
 VAULT_ARCHIVE = os.path.join(_script_dir, "vault", "archive")
 VAULT_NEEDS_CONTEXT = os.path.join(_script_dir, "vault", "needs-context")
+TRIAGE_PENDING = os.path.join(_script_dir, "tasks-triage-pending.json")
 
 TASKS_API = "https://tasks.googleapis.com/tasks/v1"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -425,6 +426,35 @@ def _format_fm_line(key, val):
 
 
 # ---------------------------------------------------------------------------
+# Triage pending file
+# ---------------------------------------------------------------------------
+
+def _write_triage_pending(triage_items, total_classified, stats):
+    """Write tasks-triage-pending.json for items that landed in needs-context."""
+    if not triage_items:
+        # No ambiguous items this run — remove stale file if it exists
+        if os.path.exists(TRIAGE_PENDING):
+            os.remove(TRIAGE_PENDING)
+        return
+
+    today = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+    pending = {
+        "sweep_date": today,
+        "total_classified": total_classified,
+        "classified_ok": stats["notes"] + stats["archived"],
+        "needs_triage": len(triage_items),
+        "items": triage_items,
+    }
+
+    try:
+        with open(TRIAGE_PENDING, "w") as f:
+            json.dump(pending, f, indent=2)
+        log(f"Wrote {TRIAGE_PENDING} with {len(triage_items)} items for triage")
+    except OSError as e:
+        log(f"WARNING: Could not write triage pending file: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -562,6 +592,7 @@ def cmd_classify(args):
         os.makedirs(VAULT_NEEDS_CONTEXT, exist_ok=True)
 
     stats = {"notes": 0, "archived": 0, "needs_context": 0, "failed": 0, "queued": 0}
+    triage_items = []  # track items routed to needs-context this run
 
     for i, fname in enumerate(files):
         filepath = os.path.join(VAULT_INBOX, fname)
@@ -590,6 +621,16 @@ def cmd_classify(args):
         elif status == "needs-context":
             dest_dir = VAULT_NEEDS_CONTEXT
             stats["needs_context"] += 1
+            # Track for triage pending file
+            fm_parsed, _ = parse_frontmatter(content)
+            raw_title = fm_parsed.get("title", fname) if fm_parsed else fname
+            triage_items.append({
+                "filename": fname,
+                "raw_title": raw_title,
+                "suggested_type": result.get("type", "unknown"),
+                "suggested_tags": result.get("tags", []),
+                "confidence": confidence,
+            })
         elif confidence >= threshold:
             dest_dir = VAULT_NOTES
             stats["notes"] += 1
@@ -628,6 +669,9 @@ def cmd_classify(args):
 
     if args.dry_run:
         log("(Dry run — no files moved)")
+    else:
+        # Write triage pending file for items that need Marvin's input
+        _write_triage_pending(triage_items, len(files), stats)
 
     print(json.dumps({"status": "ok", **stats}))
 

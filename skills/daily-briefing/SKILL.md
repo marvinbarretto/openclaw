@@ -22,6 +22,7 @@ Run these commands in the SANDBOX, before composing any output. Use the sandbox/
 6. `python3 /workspace/context-helper.py interests`
 7. `cat /workspace/context/TASTE.md`
 8. `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20 | xargs -I{} head -25 {}`
+9. `cat /workspace/tasks-triage-pending.json 2>/dev/null || echo '{"needs_triage": 0}'`
 
 IMPORTANT: All file access must go through sandbox commands (cat, grep, python3). Do NOT use the read/file tool — those paths don't exist on the host.
 
@@ -54,6 +55,24 @@ Do ALL of these before writing a single word of output. If a command fails, note
 - If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
 - Fallback if no priority field: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags
 - If vault is empty, say so briefly
+
+### 3.5 Tasks triage announcement
+
+Run in the sandbox:
+```bash
+cat /workspace/tasks-triage-pending.json 2>/dev/null || echo '{"needs_triage": 0}'
+```
+
+- If the file exists and `needs_triage > 0`:
+  - Announce: "I picked up **{total_classified} tasks** overnight. **{needs_triage} need your input** — cryptic notes I couldn't confidently classify."
+  - Ask: "When's good for a 15-min triage session? I'll send a calendar invite."
+  - Wait for Marvin's reply with a time
+  - Create the invite:
+    ```bash
+    python3 /workspace/calendar-helper.py create-event --summary "Jimbo: Tasks Triage" --start <ISO_TIME> --end <ISO_TIME+15min> --description "Triage ambiguous vault tasks from today's sweep"
+    ```
+  - Confirm: "Booked — I'll walk you through them at [time]."
+- If the file is missing or `needs_triage` is 0: skip this section silently
 
 ### *4. Email highlights (NOT just subject lines)
 - Read `/workspace/email-digest.json` (key: `items`, each has `sender`, `subject`, `body_snippet`)
