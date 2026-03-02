@@ -7,7 +7,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Capability | Status | Notes |
 |---|---|---|
 | Telegram chat | WORKING | Via `@fourfold_openclaw_bot` |
-| Morning briefing | WORKING | OpenClaw cron at 07:00 London. Digest fetched by VPS cron at 06:00 UTC. |
+| Morning briefing | WORKING | OpenClaw cron at 07:00 London. Digest fetched hourly (interval-aware via settings API). |
 | Email digest summary | WORKING | Via `sift-digest` skill |
 
 ## Context
@@ -48,7 +48,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. No laptop dependency. (ADR-022) |
+| Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. Hourly via `email-fetch-cron.py` (interval configurable from settings UI). No laptop dependency. (ADR-022) |
 | Read email digest | WORKING | JSON written directly in sandbox by gmail-helper.py |
 | Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
 | Deep newsletter reading | WORKING | Two-pass pipeline: Flash triages → Haiku deep-reads → Jimbo synthesises. Experiment tracked. (ADR-029) |
@@ -99,7 +99,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Self-publish blog posts | WORKING | Write `.md` in `blog-src/src/content/posts/`, commit + push → Cloudflare auto-builds (ADR-027) |
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
-| Automated daily pipeline | WORKING | VPS root cron at 06:00 UTC → gmail-helper.py fetch. No laptop dependency. |
+| Automated hourly pipeline | WORKING | VPS root cron hourly → email-fetch-cron.py (interval-aware). No laptop dependency. |
 | Heartbeat / self-monitoring | WORKING | HEARTBEAT.md with monitoring + active daytime tasks (ADR-028) |
 | Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
 | Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
@@ -125,10 +125,12 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Capability | Status | Notes |
 |---|---|---|
 | Telegram failure alerts | WORKING | `alert.py` sends via Bot API. Workers catch exceptions. Cron wrappers alert on exit code. (ADR-030) |
-| Digest freshness check | WORKING | `alert-check.py digest` — verifies email-digest.json < 25h old. Cron at 06:15. |
-| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db for today's runs. Cron at 07:30. |
-| Positive heartbeat | WORKING | Both checks send a confirmation message when all is well. Silence = broken checker. |
-| OpenRouter credit alerts | WORKING | `alert-check.py credits` — checks balance via API, alerts if below $1. Cron every 6h. (ADR-031) |
+| Digest volume check | WORKING | `alert-check.py digest` — reports email count and new emails since last fetch. Hourly at :30. |
+| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db. Time-aware: pending before 08:00 UTC, alert after. Hourly at :30. |
+| Positive heartbeat | WORKING | All checks send combined status hourly. Silence = broken checker. |
+| OpenRouter usage report | WORKING | `alert-check.py credits` — reports usage (not balance, as OpenRouter API returns stale limits). Hourly at :30. (ADR-031) |
+| Settings API | WORKING | jimbo-api serves `/api/settings/*`. Key-value store for config (e.g. email fetch interval). |
+| Settings UI | WORKING | `/app/jimbo/settings` on personal site. Configurable email fetch interval. |
 | OpenRouter usage checker | WORKING | `openrouter-usage.py` — balance + usage queries. Available to Jimbo in heartbeat + briefing. (ADR-031) |
 | Model identification | WORKING | SOUL.md instructs Jimbo to tag first message with [Flash]/[Haiku]/etc. (ADR-031) |
 | Docker/host-level alerts | NOT COVERED | Future work — needs alerting outside sandbox |

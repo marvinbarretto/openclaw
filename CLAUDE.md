@@ -116,7 +116,8 @@ notes/            Brain dumps
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
 - `workspace/context-helper.py` — Context API client for sandbox. Fetches context (priorities, interests, goals) from jimbo-api, formats as readable text. Replaces file reads in skills. Stdlib only. (ADR-033)
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
-- `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (checks freshness), `briefing` (checks experiment-tracker.db), `credits` (checks OpenRouter balance). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
+- `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (reports email volume), `briefing` (checks experiment-tracker.db, time-aware), `credits` (reports OpenRouter usage), `status` (combined). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
+- `workspace/email-fetch-cron.py` — Interval-aware email fetch wrapper. Reads `email_fetch_interval_hours` from settings API, checks digest age, runs gmail-helper.py if stale. Injects `previous_count` for delta tracking. Stdlib only.
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
 - `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
 - `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku)
@@ -217,20 +218,21 @@ VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
          python3 /workspace/alert.py "05:00 tasks sweep FAILED"' \
   >> /var/log/tasks-sweep.log 2>&1
 
-# 06:00 — email fetch with failure alert
-0 6 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+# Hourly — email fetch (interval-aware, reads setting from API)
+0 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
   docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
               -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET \
               -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN \
+              -e JIMBO_API_URL=$JIMBO_API_URL \
+              -e JIMBO_API_KEY=$JIMBO_API_KEY \
               -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
               -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
   $(docker ps -q --filter name=openclaw-sbx) \
-  sh -c 'python3 /workspace/gmail-helper.py fetch --hours 24 || \
-         python3 /workspace/alert.py "06:00 email fetch FAILED"' \
-  >> /var/log/gmail-fetch.log 2>&1
+  python3 /workspace/email-fetch-cron.py \
+  >> /var/log/email-fetch.log 2>&1
 
-# Hourly — combined Telegram status (digest + briefing + credits)
-0 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
+# Hourly (offset) — combined Telegram status (digest + briefing + credits)
+30 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
   docker exec -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
               -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
               -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
@@ -250,7 +252,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `JIMBO_API_URL` — jimbo-api base URL for context-helper.py (ADR-033)
 - `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → email fetch (06:00) → digest check (06:15) → Jimbo's morning briefing (07:00, OpenClaw cron) → briefing check (07:30). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → status check (hourly at :30). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 
