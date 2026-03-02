@@ -50,7 +50,7 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 
 ```
 context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
-decisions/        ADRs (001-033) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API
+decisions/        ADRs (001-036) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API, vault task prioritisation, VPS vault source of truth, Haiku conductor model
 docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
@@ -108,6 +108,9 @@ notes/            Brain dumps
 - `decisions/031-cost-visibility-model-fallback.md` — ADR for cost visibility, credit alerts, model identification
 - `decisions/032-heartbeat-rationalisation.md` — ADR for slimming heartbeat from ~20 to ~6 contextual tasks, moving scripts to cron
 - `decisions/033-context-api.md` — ADR for context API, web editor, SQLite-backed context store
+- `decisions/034-vault-task-prioritisation.md` — ADR for Gemini Flash batch-scoring vault tasks against priorities/goals
+- `decisions/035-vps-vault-source-of-truth.md` — ADR for removing vault sync from laptop, VPS owns vault data
+- `decisions/036-haiku-conductor-model.md` — ADR for switching conductor from Flash to Haiku 4.5
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.

@@ -110,7 +110,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | `stepfun/step-3.5-flash:free` | RETIRED | Can't follow curation instructions (ADR-005) |
 | `google/gemini-2.5-flash` | WORKING | Worker model for email triage. Also available as conductor fallback. |
-| `anthropic/claude-haiku-4.5` | ACTIVE | Conductor model + newsletter deep-reader. Switched from Flash 2026-02-25. |
+| `anthropic/claude-haiku-4.5` | ACTIVE | Conductor model + newsletter deep-reader. Switched from Flash (ADR-036). |
 | Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. (ADR-029) |
 
 ## MCP Servers
@@ -153,7 +153,8 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-03-01*
+*Last updated: 2026-03-02*
+*Vault task prioritisation (ADR-034): 2026-03-02*
+*VPS vault source of truth (ADR-035): 2026-03-02*
+*Haiku conductor model (ADR-036): 2026-03-02*
 *Context API + editor (ADR-033): 2026-03-01*
-*Failure alerting (ADR-030): 2026-02-28*
-*Cost visibility + model identification (ADR-031): 2026-02-28*
