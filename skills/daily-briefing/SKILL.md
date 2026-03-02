@@ -17,12 +17,15 @@ Run these commands in the SANDBOX, before composing any output. Use the sandbox/
 1. `python3 /workspace/recommendations-helper.py expire`
 2. `python3 /workspace/calendar-helper.py list-events --days 1`
 3. `cat /workspace/email-digest.json | python3 -c "import sys,json; d=json.load(sys.stdin); items=list(d['items']); print(f'Date: {d[\"date\"]}'); print(f'Total: {len(items)}'); [print(f'  {i[\"sender\"][\"name\"] if isinstance(i[\"sender\"],dict) else i[\"sender\"]}: {i[\"subject\"]}') for i in items[:15]]"`
-4. `cat /workspace/context/PRIORITIES.md`
-5. `cat /workspace/context/GOALS.md`
-6. `cat /workspace/context/TASTE.md`
-7. `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20 | xargs -I{} head -25 {}`
+4. `python3 /workspace/context-helper.py priorities`
+5. `python3 /workspace/context-helper.py goals`
+6. `python3 /workspace/context-helper.py interests`
+7. `cat /workspace/context/TASTE.md`
+8. `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20 | xargs -I{} head -25 {}`
 
 IMPORTANT: All file access must go through sandbox commands (cat, grep, python3). Do NOT use the read/file tool — those paths don't exist on the host.
+
+Note: Context files (Priorities, Interests, Goals) are served from the context API via context-helper.py. TASTE.md is still a local file. If context-helper.py fails, fall back to `cat /workspace/context/PRIORITIES.md` etc.
 
 Do ALL of these before writing a single word of output. If a command fails, note it and move on — don't skip the rest.
 
@@ -57,6 +60,7 @@ Do ALL of these before writing a single word of output. If a command fails, note
 - If fresh (< 24h): scan for time-sensitive items FIRST (overdue payments, expiring deals, event deadlines, personal replies)
 - Then pick 2-3 genuinely interesting items based on PRIORITIES.md, GOALS.md, and INTERESTS.md
 - **Explain WHY each matters** — "Buenos Aires flight dropped to £632 — you were tracking this" is good. Just listing a subject line is lazy.
+- **You know Marvin.** You have his interests, priorities, goals, and taste. Don't hedge with "if that's your thing" or "if you're interested" — you already know what he's interested in. Be confident. Say "you'll want to read this" not "if politics is your thing".
 - Filter out promotional junk that survived the blacklist — if it's a loyalty scheme, promo, or newsletter with no real content, skip it
 - If stale: "Your email digest is from [date] — might be outdated"
 - If missing: "No email digest today"
@@ -75,9 +79,9 @@ Do ALL of these before writing a single word of output. If a command fails, note
 - Only mention 1-2 things that haven't already been covered in the day plan
 
 ### 8. Context freshness
-- Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
-- If PRIORITIES is more than 10 days old, nudge: "Your priorities are [N] days old — worth a quick review?"
-- If GOALS is more than 45 days old, nudge similarly
+- The context-helper.py output from steps 4-6 includes `updated_at` dates for each context file
+- If PRIORITIES hasn't been updated in more than 10 days, nudge: "Your priorities are [N] days old — worth a quick review via the site?"
+- If GOALS hasn't been updated in more than 45 days, nudge similarly
 - Only mention stale files, skip if fresh
 
 ### 9. Heartbeat tasks
