@@ -8,73 +8,75 @@ user-invokable: true
 
 When the user says good morning, asks for a briefing, or it's a scheduled morning session, give a concise daily overview.
 
+**IMPORTANT: This skill has REQUIRED sections. Do not skip sections 1-4. A briefing without a day plan is not a briefing — it's a notification. Read SOUL.md's "Morning Briefing Minimum Bar" section.**
+
 ## Before you start
 
-1. Run `python3 /workspace/recommendations-helper.py expire` to clean up expired time-sensitive items.
+Run these commands FIRST, before composing any output:
 
-Read Marvin's context to understand what matters today:
-1. Run `python3 /workspace/context-helper.py priorities` — what's active this week
-2. Run `python3 /workspace/context-helper.py goals` — longer-term ambitions
-3. `/workspace/context/TASTE.md` — how he likes information presented (concise, scannable, timely)
+1. `python3 /workspace/recommendations-helper.py expire`
+2. `python3 /workspace/calendar-helper.py list-events --days 1`
+3. Read `/workspace/email-digest.json`
+4. Read `/workspace/context/PRIORITIES.md`
+5. Read `/workspace/context/GOALS.md`
+6. Read `/workspace/context/TASTE.md`
+7. Search vault for top priority tasks: `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20` then read frontmatter of matches
 
-Note: Priorities and Goals are now served from the context API via context-helper.py. TASTE.md is still a local file.
+Do ALL of these before writing a single word of output. If a command fails, note it and move on — don't skip the rest.
 
-## What to include
+## What to include (REQUIRED sections marked with *)
 
-### 1. Date and greeting
+### *1. Date and greeting
 - Today's date and day of the week
 - Brief, friendly greeting (match the tone in SOUL.md)
 
-### 2. Today's schedule + day plan proposal
-- Run `python3 /workspace/calendar-helper.py list-events --days 1` in the sandbox
-- If it works: show today's **fixed** events (non-suggestion calendar items) in chronological order. Flag anything in the next 2 hours. Suppress routine recurring meetings — just mention the count.
-- If it fails or the script doesn't exist: skip this section silently (calendar may not be set up yet)
-- **Then propose a day plan.** Read the day-planner skill (`skills/day-planner/SKILL.md`) for the full logic. In short:
+### *2. Today's schedule + day plan proposal
+- Show today's **fixed** events from the calendar command in chronological order
+- Flag anything in the next 2 hours
+- If the calendar command failed: say "Calendar unavailable" and move on (do NOT skip the day plan)
+- **Then propose a day plan:**
   - Identify free gaps (30+ minutes) between fixed events
   - Cross-reference with email digest, PRIORITIES, GOALS, INTERESTS, **and vault tasks**
-  - Search `/workspace/vault/notes/` for tasks matching today's active project(s) from PRIORITIES.md
-  - Suggest 3-5 activities for those gaps with emoji prefixes — include 📋 vault tasks where specific saved items are more actionable than generic project work
-  - End with "Anything you'd swap or skip?" to invite negotiation
-- This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response. See the day-planner skill for the negotiation flow and event creation rules.
+  - Suggest 3-5 activities for those gaps with emoji prefixes (see day-planner skill)
+  - Include at least 1 vault task (📋) from the priority-scored results
+  - End with **"Anything you'd swap or skip?"** to invite negotiation
+- This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response.
 
-### 3. Vault snapshot
-- Count vault notes: `ls /workspace/vault/notes/ | wc -l`
-- Read frontmatter from vault notes to find priority-scored tasks: filter for `type: task`, `status: active`, sort by `priority` field descending
-- Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji prefix
+### *3. Vault tasks
+- From the vault search in step 7 above, read the frontmatter of matched files
+- Filter for `type: task`, `status: active`, sort by `priority` descending
+- Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji
 - If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
-- Fallback: if no `priority` field exists (scoring hasn't run yet), search for tasks matching today's focus from PRIORITIES.md: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags/project
-- If the vault directory doesn't exist or is empty, skip silently
+- Fallback if no priority field: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags
+- If vault is empty, say so briefly
 
-### 4. Anything time-sensitive from email
-- Read `/workspace/email-digest.json`
-- If fresh (< 24h): scan for events, tickets, deadlines, personal replies needing action. Call these out first — even before the stats.
+### *4. Email highlights (NOT just subject lines)
+- Read `/workspace/email-digest.json` (key: `items`, each has `sender`, `subject`, `body_snippet`)
+- If fresh (< 24h): scan for time-sensitive items FIRST (overdue payments, expiring deals, event deadlines, personal replies)
+- Then pick 2-3 genuinely interesting items based on PRIORITIES.md, GOALS.md, and INTERESTS.md
+- **Explain WHY each matters** — "Buenos Aires flight dropped to £632 — you were tracking this" is good. Just listing a subject line is lazy.
+- Filter out promotional junk that survived the blacklist — if it's a loyalty scheme, promo, or newsletter with no real content, skip it
 - If stale: "Your email digest is from [date] — might be outdated"
 - If missing: "No email digest today"
 
 ### 5. Recommendation follow-ups
 - Run `python3 /workspace/recommendations-helper.py list --urgency time-sensitive --status surfaced --days 7`
 - If any results: "Reminder: [title] expires [date] — still unread"
-- Run `python3 /workspace/recommendations-helper.py stats`
-- If unread count > 10: briefly mention "You have N unread recommendations piling up"
-- Keep to 1-2 lines, don't overwhelm the briefing
+- Keep to 1-2 lines
 
 ### 6. Email quick stats
-- Total emails, reading time, how many queued vs skipped
-- Mention any standout emails: "There's a good Product Hunt issue and an Anjuna event worth looking at"
-- Keep to 2-3 lines. Say "ask me about email for the full rundown" for details.
+- Total emails, brief summary
+- Say "ask me about email for the full rundown" for details
 
 ### 7. Priority reminders
 - Check PRIORITIES.md for anything due or active
-- "You mentioned chasing Daniel about the DisplayLink fix" or "YNAB setup is on your list"
-- Only mention 1-2 things, not the whole list
+- Only mention 1-2 things that haven't already been covered in the day plan
 
 ### 8. Context freshness
-- The context API returns `updated_at` timestamps for each file. Check these via the context-helper output.
-- If PRIORITIES hasn't been updated in more than 10 days, nudge: "Your priorities are [N] days old — worth a quick review? You can edit them at /app/jimbo/context"
+- Check modification dates of `/workspace/context/PRIORITIES.md` and `/workspace/context/GOALS.md`
+- If PRIORITIES is more than 10 days old, nudge: "Your priorities are [N] days old — worth a quick review?"
 - If GOALS is more than 45 days old, nudge similarly
-- If INTERESTS is more than 90 days old, mention it too
-- Only mention stale files, skip this section if everything is fresh
-- Keep it to one line per stale file — this is a nudge, not a nag
+- Only mention stale files, skip if fresh
 
 ### 9. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
