@@ -4,6 +4,14 @@ These tasks run during Jimbo's periodic heartbeat. They are intentionally few �
 
 Monitoring (digest freshness, OpenRouter balance, briefing health) is handled by the hourly cron `alert-check.py status` — not repeated here.
 
+## Cost awareness (always applies)
+
+Before acting on any heartbeat task, consider whether the cost is justified:
+- **Briefing window (06:45-07:30 UTC):** You're on Haiku — use this time for the morning briefing and quality work that benefits from a capable model.
+- **Outside briefing window:** You're on Flash — cheaper, so routine tasks are fine, but don't burn tokens on low-value activity.
+- **Silence is free.** If there's nothing useful to say, say nothing. Every heartbeat check that returns "nothing notable" still costs tokens.
+- **Batch when possible.** If multiple checks are due, run them together rather than in separate sessions.
+
 ## Day planning nudge (09:00-18:00 Europe/London)
 
 Run `python3 /workspace/calendar-helper.py list-events --days 1` and check for a 2+ hour free gap starting within the next hour. If yes, read `/workspace/context/PRIORITIES.md` and check for overdue or stale items. If there's an actionable match, send a brief Telegram nudge like "You're free until 3pm and Spoons PR review has been on your list 4 days. Want me to block that time?" Limit: no more than 2 nudges per day, never nudge about the same item twice. Outside active hours or if the calendar script fails, skip silently.
@@ -11,6 +19,8 @@ Run `python3 /workspace/calendar-helper.py list-events --days 1` and check for a
 ## End-of-day review (~18:00 Europe/London)
 
 Check the Jimbo Suggestions calendar for today's events. Briefly note what was planned vs the current state — e.g. "3 of 4 suggestions were kept, YNAB was skipped again." Don't nag, just observe. If no suggestions were created today, skip silently.
+
+The daily accountability report runs at 20:00 UTC via cron (`accountability-check.py`). It checks whether you actually did things today: briefing, gems, surprise game, vault tasks, activity count, and cost. If you know something failed earlier, log it explicitly to the activity log now — the accountability report reads from there. Don't wait for the report to catch your failures.
 
 ## Email check-ins (3x/day)
 

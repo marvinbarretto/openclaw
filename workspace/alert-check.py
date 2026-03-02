@@ -17,6 +17,7 @@ Usage:
 import datetime
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -172,12 +173,59 @@ def check_credits():
     return True, f"OpenRouter: ${usage:.2f} used"
 
 
+def check_model():
+    """Check the current OpenClaw model from openclaw.json. Returns (ok, summary)."""
+    config_path = os.environ.get(
+        "OPENCLAW_CONFIG",
+        "/home/openclaw/.openclaw/openclaw.json",
+    )
+
+    if not os.path.exists(config_path):
+        return False, "openclaw.json not found"
+
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        return False, f"openclaw.json unreadable: {e}"
+
+    model = None
+    # Try common config paths for the primary model
+    for path in [
+        lambda c: c.get("model", {}).get("primary"),
+        lambda c: c.get("models", {}).get("primary"),
+        lambda c: c.get("llm", {}).get("primary"),
+    ]:
+        try:
+            model = path(config)
+            if model:
+                break
+        except (KeyError, TypeError, AttributeError):
+            continue
+
+    if not model:
+        # Fallback: grep for "primary" key at any depth
+        config_str = json.dumps(config)
+        match = re.search(r'"primary"\s*:\s*"([^"]+)"', config_str)
+        if match:
+            model = match.group(1)
+
+    if not model:
+        return False, "could not determine current model"
+
+    # Extract short name (last segment after /)
+    short_name = model.split("/")[-1] if "/" in model else model
+
+    return True, f"model: {short_name}"
+
+
 def check_status():
     """Run all checks and return a combined one-line summary."""
     checks = [
         ("digest", check_digest),
         ("briefing", check_briefing),
         ("credits", check_credits),
+        ("model", check_model),
     ]
 
     parts = []
@@ -188,7 +236,7 @@ def check_status():
         except Exception as e:
             ok, summary = False, f"{name} error: {e}"
 
-        if name == "credits":
+        if name in ("credits", "model"):
             icon = "\u2139\ufe0f" if ok else "\u274c"
         elif name == "briefing" and ok and "pending" in summary:
             icon = "\u23f3"
@@ -203,9 +251,9 @@ def check_status():
 
 
 def main():
-    commands = ("digest", "briefing", "credits", "status")
+    commands = ("digest", "briefing", "credits", "model", "status")
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
-        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits|status}\n")
+        sys.stderr.write("Usage: python3 alert-check.py {digest|briefing|credits|model|status}\n")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -218,6 +266,8 @@ def main():
         ok, summary = check_briefing()
     elif command == "credits":
         ok, summary = check_credits()
+    elif command == "model":
+        ok, summary = check_model()
 
     timestamp = now_utc().strftime("%H:%M")
 

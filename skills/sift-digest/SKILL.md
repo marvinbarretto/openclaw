@@ -32,18 +32,18 @@ You are the **conductor**. You don't read all 200 emails yourself — you delega
 ### Step 1: Email triage (cheap model)
 
 ```bash
-python3 /workspace/workers/email_triage.py --digest /workspace/email-digest.json --output /tmp/shortlist.json
+python3 /workspace/workers/email_triage.py --digest /workspace/email-digest.json --output /workspace/.worker-shortlist.json
 ```
 
-This calls Gemini Flash to classify and rank emails. It returns a shortlist of worth-reading items with categories and reasons. Read `/tmp/shortlist.json` to see what made the cut.
+This calls Gemini Flash to classify and rank emails. It returns a shortlist of worth-reading items with categories and reasons. Read `/workspace/.worker-shortlist.json` to see what made the cut.
 
 ### Step 2: Newsletter deep read (capable model)
 
 ```bash
-python3 /workspace/workers/newsletter_reader.py --shortlist /tmp/shortlist.json --digest /workspace/email-digest.json --output /tmp/gems.json
+python3 /workspace/workers/newsletter_reader.py --shortlist /workspace/.worker-shortlist.json --digest /workspace/email-digest.json --output /workspace/.worker-gems.json
 ```
 
-This calls Claude Haiku to deep-read the shortlisted emails. It returns extracted gems (specific articles, links, events, prices) plus items it read and found nothing in. Read `/tmp/gems.json`.
+This calls Claude Haiku to deep-read the shortlisted emails. It returns extracted gems (specific articles, links, events, prices) plus items it read and found nothing in. Read `/workspace/.worker-gems.json`.
 
 ### Step 3: Review worker output (your job as conductor)
 
@@ -75,6 +75,22 @@ The conductor reasoning JSON should include:
   "surprise_attempts": [{"fact": "...", "strategy": "...", "confidence": 0.6}]
 }
 ```
+
+### Step 5: Mandatory cleanup (ALWAYS run this, even in fallback)
+
+Regardless of whether the worker pipeline succeeded or failed, you MUST log a `briefing-synthesis` row to the experiment tracker. The hourly `alert-check.py briefing` checks for this row — without it, Telegram status will report "briefing missing" all day.
+
+```bash
+python3 /workspace/experiment-tracker.py log \
+    --task briefing-synthesis \
+    --model <your-model> \
+    --input-tokens <est> \
+    --output-tokens <est> \
+    --conductor-rating <1-10 overall quality, use 1 if fallback mode> \
+    --conductor-reasoning '<JSON — include "mode": "fallback" if workers failed>'
+```
+
+If you're in fallback mode (workers failed), still log with `conductor-rating 1` and include `"mode": "fallback"` in the reasoning JSON. A low-rated row is infinitely better than no row.
 
 ## The Surprise Game
 
@@ -167,8 +183,19 @@ One line on how the workers performed: "Triage was solid today, reader missed a 
 - If the user asks to drill into a category or sender, filter and show those items
 - Be honest about your judgment — "I think this UnHerd piece is strong" or "this one's borderline" is more useful than listing everything equally
 - When unsure, mention it briefly rather than hiding it
-- If a worker fails (script error, malformed output), fall back to reading the digest directly and mention the failure
+- If a worker fails (script error, malformed output), follow the Fallback section — report explicitly what broke, fall back to raw digest, and always log to experiment-tracker
 
-## Fallback
+## Fallback (explicit failure reporting)
 
-If the worker scripts don't exist or fail, fall back to reading `/workspace/email-digest.json` directly. Mention that you're in fallback mode so Marvin knows the workers need attention.
+If a worker script fails, do NOT silently degrade. Report exactly what broke:
+
+1. **Name the failure:** "email_triage.py failed with: [error message]" or "newsletter_reader.py returned malformed JSON"
+2. **Name the impact:** "No shortlist available — I'm reading the raw digest directly" or "Gems extraction failed — newsletter highlights will be shallow today"
+3. **Fall back to raw digest:** Read `/workspace/email-digest.json` directly and present using the format above, but with this header:
+
+> ⚠️ **Worker pipeline failed.** [Which worker] failed because [reason]. I'm reading the raw digest directly — today's briefing will be less detailed than usual.
+
+4. **Still log to experiment-tracker** (Step 5 above) with `conductor-rating 1` and `"mode": "fallback"` in the reasoning JSON. This ensures alert-check.py sees today's row.
+5. **Still log to activity-log** with outcome noting the failure.
+
+Never hide a failure. A visible failure gets fixed; a silent one persists for weeks.

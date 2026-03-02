@@ -147,12 +147,18 @@ Heartbeat: All clear — digest is fresh, tokens valid.
 
 ## After the briefing
 
-Log the briefing to both trackers:
+Log the briefing to both trackers. This is MANDATORY — the daily accountability check at 20:00 UTC reads these logs to verify the briefing ran and what it covered.
 
 ```bash
 python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task briefing --input-tokens <est> --output-tokens <est>
-python3 /workspace/activity-log.py log --task briefing --description "Morning briefing: <brief summary of key points>" --model <model>
+python3 /workspace/activity-log.py log --task briefing \
+    --description "Morning briefing: <brief summary of key points>" \
+    --outcome "<success|partial|fallback>" \
+    --rationale "Components: calendar=<ok|failed>, email=<ok|stale|missing>, vault=<N tasks surfaced|empty>, surprise=<played|skipped>" \
+    --model <model>
 ```
+
+The `--rationale` field is what the accountability checker uses to verify each component ran. Be specific — "vault=3 tasks surfaced" is better than "vault=ok".
 
 ## Rules
 
