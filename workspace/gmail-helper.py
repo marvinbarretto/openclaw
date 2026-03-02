@@ -39,8 +39,23 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 TOKEN_CACHE = os.path.join(_script_dir, ".gmail-access-token.json")
 OUTPUT_PATH = os.path.join(_script_dir, "email-digest.json")
-MAX_BODY_LENGTH = 5000
-SNIPPET_LENGTH = 200
+def get_setting(key, default):
+    """Read a setting from the settings API, or return default on failure."""
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}/api/settings/{key}"
+    req = urllib.request.Request(url, headers={"X-API-Key": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            return type(default)(data.get("value", default))
+    except Exception:
+        return default
+
+
+MAX_BODY_LENGTH = get_setting("email_body_max_length", 5000)
+SNIPPET_LENGTH = 200  # keep hardcoded, not worth a setting
+MAX_LINKS = get_setting("email_max_links", 20)
 
 # ---------------------------------------------------------------------------
 # Blacklist — rules-based, no LLM. Easy to grow over time.
@@ -357,7 +372,7 @@ def parse_message(raw_msg):
         "subject": subject,
         "body": body_truncated,
         "body_snippet": body_snippet,
-        "links": links[:20],  # cap at 20 links
+        "links": links[:MAX_LINKS],
         "labels": labels,
     }
 

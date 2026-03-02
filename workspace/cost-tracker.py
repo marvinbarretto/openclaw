@@ -22,15 +22,38 @@ import json
 import os
 import sqlite3
 import sys
+import urllib.request
+import urllib.error
 import uuid
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_script_dir, "cost-tracker.db")
 
+
+def get_setting(key, default):
+    """Read a setting from the settings API, or return default on failure."""
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}/api/settings/{key}"
+    req = urllib.request.Request(url, headers={"X-API-Key": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            return type(default)(data.get("value", default))
+    except Exception:
+        return default
+
+
 # Cost rates per 1M tokens (USD)
 COST_RATES = {
-    "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
-    "claude-haiku-4.5": {"input": 0.80, "output": 4.00},
+    "gemini-2.5-flash": {
+        "input": get_setting("cost_rate_gemini_flash_input", 0.15),
+        "output": get_setting("cost_rate_gemini_flash_output", 0.60),
+    },
+    "claude-haiku-4.5": {
+        "input": get_setting("cost_rate_haiku_input", 0.80),
+        "output": get_setting("cost_rate_haiku_output", 4.00),
+    },
     "claude-sonnet-4.6": {"input": 3.00, "output": 15.00},
     "claude-opus-4.6": {"input": 15.00, "output": 75.00},
 }
@@ -252,7 +275,8 @@ def cmd_budget(args):
 
     if args.set is not None:
         budget_id = "budget_" + uuid.uuid4().hex[:8]
-        threshold = args.threshold if args.threshold is not None else 0.8
+        default_threshold = get_setting("budget_alert_threshold", 80) / 100.0
+        threshold = args.threshold if args.threshold is not None else default_threshold
         db.execute(
             "INSERT INTO budgets (id, monthly_limit, alert_threshold, updated) VALUES (?, ?, ?, ?)",
             (budget_id, args.set, threshold, now_iso()),

@@ -32,7 +32,21 @@ TRACKER_DB_PATH = os.environ.get(
     os.path.join(_script_dir, "experiment-tracker.db"),
 )
 
-BRIEFING_GRACE_HOUR = 8  # UTC hour after which missing briefing is an error
+def get_setting(key, default):
+    """Read a setting from the settings API, or return default on failure."""
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}/api/settings/{key}"
+    req = urllib.request.Request(url, headers={"X-API-Key": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            return type(default)(data.get("value", default))
+    except Exception:
+        return default
+
+
+BRIEFING_GRACE_HOUR = get_setting("briefing_grace_hour_utc", 8)
 
 
 def send_alert(message):
