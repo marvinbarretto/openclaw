@@ -339,7 +339,7 @@ def classify_with_gemini(api_key, note_content, note_filename):
         "contents": [{"parts": [{"text": full_prompt}]}],
         "generationConfig": {
             "temperature": 0.1,
-            "maxOutputTokens": 500,
+            "maxOutputTokens": 4096,
         },
     }
 
@@ -355,13 +355,31 @@ def classify_with_gemini(api_key, note_content, note_filename):
         return None
 
     try:
-        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        candidate = result["candidates"][0]
+        content = candidate.get("content", {})
+        parts = content.get("parts")
+        if not parts:
+            # Debug: show what we got instead
+            log(f"  DEBUG: No parts for {note_filename}. Keys: {list(candidate.keys())}. "
+                f"Content keys: {list(content.keys()) if content else 'no content'}. "
+                f"Finish reason: {candidate.get('finishReason', 'unknown')}")
+            return None
+        # Gemini 2.5 models may include thinking parts — find the last text part
+        text = None
+        for part in reversed(parts):
+            if "text" in part:
+                text = part["text"]
+                break
+        if not text:
+            log(f"  WARNING: No text part in Gemini response for {note_filename}")
+            return None
         # Strip markdown code fences if present
         text = re.sub(r'^```(?:json)?\s*', '', text.strip())
         text = re.sub(r'\s*```$', '', text.strip())
         return json.loads(text)
     except (KeyError, IndexError, json.JSONDecodeError) as e:
         log(f"  WARNING: Could not parse Gemini response for {note_filename}: {e}")
+        log(f"  DEBUG: Response structure: {json.dumps(result.get('candidates', [{}])[0], indent=2)[:500]}")
         return None
 
 

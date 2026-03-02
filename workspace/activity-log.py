@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS activities (
     task_type TEXT NOT NULL,
     description TEXT NOT NULL,
     outcome TEXT,
+    rationale TEXT,
     model_used TEXT,
     cost_id TEXT,
     satisfaction INTEGER,
@@ -50,11 +51,21 @@ CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp);
 CREATE INDEX IF NOT EXISTS idx_activities_task_type ON activities(task_type);
 """
 
+MIGRATE = """
+-- Add rationale column if missing (idempotent)
+ALTER TABLE activities ADD COLUMN rationale TEXT;
+"""
+
 
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
+    # Migrate: add rationale column if it doesn't exist
+    try:
+        db.execute("SELECT rationale FROM activities LIMIT 0")
+    except sqlite3.OperationalError:
+        db.execute("ALTER TABLE activities ADD COLUMN rationale TEXT")
     return db
 
 
@@ -78,14 +89,15 @@ def cmd_log(args):
 
     db.execute(
         """INSERT INTO activities
-           (id, timestamp, task_type, description, outcome, model_used, cost_id, satisfaction, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, timestamp, task_type, description, outcome, rationale, model_used, cost_id, satisfaction, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             act_id,
             now_iso(),
             args.task,
             args.description,
             args.outcome,
+            args.rationale,
             args.model,
             args.cost_id,
             None,
@@ -286,6 +298,7 @@ def main():
     log_p.add_argument("--task", required=True, help=f"Task type: {', '.join(VALID_TASK_TYPES)}")
     log_p.add_argument("--description", required=True, help="What happened")
     log_p.add_argument("--outcome", default=None, help="Result or outcome")
+    log_p.add_argument("--rationale", default=None, help="Why this decision was made")
     log_p.add_argument("--model", default=None, help="Model used (if applicable)")
     log_p.add_argument("--cost-id", default=None, help="Link to cost entry (cost_xxxxxxxx)")
     log_p.add_argument("--notes", default=None, help="Additional notes")
