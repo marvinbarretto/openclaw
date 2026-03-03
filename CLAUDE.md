@@ -120,11 +120,11 @@ notes/            Brain dumps
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (reports email volume), `briefing` (checks experiment-tracker.db, time-aware), `credits` (reports OpenRouter usage), `model` (reports current VPS model from openclaw.json), `status` (combined). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/accountability-check.py` — Daily accountability checker. Queries activity-log.db + experiment-tracker.db for today. Checks: briefing ran, gems produced, surprise game played, vault tasks surfaced, activity count, cost. Sends Telegram summary. Runs at 20:00 UTC via cron. Stdlib only.
-- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Haiku/Flash switching around the briefing window.
+- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Sonnet/Kimi switching around the briefing window.
 - `workspace/email-fetch-cron.py` — Interval-aware email fetch wrapper. Reads `email_fetch_interval_hours` from settings API, checks digest age, runs gmail-helper.py if stale. Injects `previous_count` for delta tracking. Stdlib only.
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
 - `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
-- `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku)
+- `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku). Includes LangFuse tracing via `trace_to_langfuse()` (fire-and-forget POST to ingestion API, env vars: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST).
 - `workspace/workers/email_triage.py` — Flash-powered email triage worker. Reads digest, scores/triages emails, outputs shortlist.
 - `workspace/workers/newsletter_reader.py` — Haiku-powered newsletter deep-reader. Extracts gems, links, events from shortlisted emails.
 - `workspace/tasks/*.json` — Task registry configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
@@ -244,11 +244,11 @@ VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
   python3 /workspace/alert-check.py status \
   >> /var/log/alert-check.log 2>&1
 
-# 06:45 — switch to Haiku for morning briefing window
-45 6 * * * /usr/local/bin/model-swap-local.sh haiku >> /var/log/model-swap.log 2>&1
+# 06:45 — switch to Sonnet for morning briefing window
+45 6 * * * /usr/local/bin/model-swap-local.sh sonnet >> /var/log/model-swap.log 2>&1
 
-# 07:30 — switch back to Flash after briefing
-30 7 * * * /usr/local/bin/model-swap-local.sh daily >> /var/log/model-swap.log 2>&1
+# 07:30 — switch to Kimi K2 after briefing
+30 7 * * * /usr/local/bin/model-swap-local.sh kimi >> /var/log/model-swap.log 2>&1
 
 # 20:00 — daily accountability report via Telegram
 0 20 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
@@ -269,8 +269,9 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `OPENROUTER_API_KEY` — OpenRouter balance/usage checks from sandbox (ADR-031)
 - `JIMBO_API_URL` — jimbo-api base URL for context-helper.py (ADR-033)
 - `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
+- `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → model swap to Haiku (06:45) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → model swap back to Flash (07:30) → status check (hourly at :30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → model swap to Sonnet (06:45) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → model swap to Kimi K2 (07:30) → status check (hourly at :30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 
@@ -362,7 +363,7 @@ nano /home/openclaw/.openclaw/openclaw.json  # edit config
 
 Config changes require service restart. Workspace file changes (skills, brain files, digest) take effect on next Jimbo session — no restart needed.
 
-**Switching models:** `./scripts/model-swap.sh {free|cheap|daily|coding|haiku|claude|opus|status}`
+**Switching models:** `./scripts/model-swap.sh {free|cheap|daily|coding|haiku|sonnet|kimi|opus|status}`
 
 **Adding a new LLM provider:** See `setup/configuration.md` for the full cheatsheet — the `openclaw.json` schema is strict and will crash the service if any field is missing (ADR-015).
 
