@@ -15,15 +15,16 @@ case "${1:-}" in
   daily)   MODEL="google/gemini-2.5-flash" ;;
   coding)  MODEL="openrouter/qwen/qwen3-coder-next" ;;
   haiku)   MODEL="openrouter/anthropic/claude-haiku-4.5" ;;
-  claude)  MODEL="anthropic/claude-sonnet-4-5" ;;
-  opus)    MODEL="anthropic/claude-opus-4-5" ;;
+  sonnet)  MODEL="openrouter/anthropic/claude-sonnet-4-6" ;;
+  kimi)    MODEL="openrouter/moonshotai/kimi-k2" ;;
+  opus)    MODEL="openrouter/anthropic/claude-opus-4-6" ;;
   status)
     echo "Current model:"
     grep primary "$CONFIG"
     exit 0
     ;;
   *)
-    echo "Usage: $0 {free|cheap|daily|coding|haiku|claude|opus|status}"
+    echo "Usage: $0 {free|cheap|daily|coding|haiku|sonnet|kimi|opus|status}"
     exit 1
     ;;
 esac
