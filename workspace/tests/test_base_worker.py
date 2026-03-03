@@ -86,5 +86,69 @@ class TestApiClients(unittest.TestCase):
         self.assertEqual(result["input_tokens"], 10)
 
 
+class TestLangfuseTracing(unittest.TestCase):
+    @patch("workers.base_worker.urllib.request.urlopen")
+    def test_trace_to_langfuse_posts_batch(self, mock_urlopen):
+        """LangFuse tracing POSTs a batch with trace-create and generation-create."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'{"successes":[],"errors":[]}'
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-test"
+        os.environ["LANGFUSE_SECRET_KEY"] = "sk-test"
+        os.environ["LANGFUSE_HOST"] = "https://cloud.langfuse.com"
+
+        from workers.base_worker import trace_to_langfuse
+        trace_to_langfuse(
+            trace_name="email-triage",
+            run_id="run_abc123",
+            model="gemini-2.5-flash",
+            prompt="test prompt",
+            response="test response",
+            input_tokens=100,
+            output_tokens=50,
+            duration_ms=1234,
+        )
+
+        # Verify it called urlopen
+        self.assertTrue(mock_urlopen.called)
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn("/api/public/ingestion", req.full_url)
+
+        # Verify auth header is Basic
+        auth = req.get_header("Authorization")
+        self.assertTrue(auth.startswith("Basic "))
+
+        # Verify batch contains trace-create and generation-create
+        body = json.loads(req.data)
+        types = [e["type"] for e in body["batch"]]
+        self.assertIn("trace-create", types)
+        self.assertIn("generation-create", types)
+
+        os.environ.pop("LANGFUSE_PUBLIC_KEY")
+        os.environ.pop("LANGFUSE_SECRET_KEY")
+        os.environ.pop("LANGFUSE_HOST")
+
+    def test_trace_to_langfuse_noop_without_env(self):
+        """LangFuse tracing does nothing if env vars are missing."""
+        os.environ.pop("LANGFUSE_PUBLIC_KEY", None)
+        os.environ.pop("LANGFUSE_SECRET_KEY", None)
+
+        from workers.base_worker import trace_to_langfuse
+        # Should not raise
+        trace_to_langfuse(
+            trace_name="test",
+            run_id="run_123",
+            model="test",
+            prompt="test",
+            response="test",
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=0,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

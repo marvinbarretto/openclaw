@@ -7,6 +7,7 @@ experiment tracker logging, task config loading, retry with fallback.
 Python 3.11 stdlib only. No pip dependencies.
 """
 
+import base64
 import json
 import os
 import subprocess
@@ -117,6 +118,73 @@ def call_model(prompt, model, provider=None, api_key=None, system=None):
         return call_anthropic(prompt, model=model, api_key=api_key, system=system)
     else:
         raise ValueError(f"Unknown model/provider: {model}/{provider}")
+
+
+def trace_to_langfuse(trace_name, run_id, model, prompt, response,
+                      input_tokens, output_tokens, duration_ms,
+                      system=None, metadata=None):
+    """POST trace + generation to LangFuse ingestion API. Fire-and-forget."""
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+    if not public_key or not secret_key:
+        return  # silently disabled
+
+    trace_id = f"{trace_name}/{run_id}"
+    gen_id = f"{trace_id}/gen_{uuid.uuid4().hex[:8]}"
+    now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+
+    batch = {
+        "batch": [
+            {
+                "id": str(uuid.uuid4()),
+                "type": "trace-create",
+                "timestamp": now,
+                "body": {
+                    "id": trace_id,
+                    "timestamp": now,
+                    "name": trace_name,
+                    "metadata": metadata or {},
+                    "tags": ["jimbo-worker"],
+                },
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "type": "generation-create",
+                "timestamp": now,
+                "body": {
+                    "traceId": trace_id,
+                    "id": gen_id,
+                    "name": f"{trace_name}-call",
+                    "startTime": now,
+                    "model": model,
+                    "input": {"system": system, "prompt": prompt} if system else prompt,
+                    "output": response,
+                    "usage": {
+                        "input": input_tokens,
+                        "output": output_tokens,
+                    },
+                    "metadata": {"duration_ms": duration_ms},
+                },
+            },
+        ],
+    }
+
+    credentials = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+    url = f"{host}/api/public/ingestion"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {credentials}",
+    }
+    data = json.dumps(batch).encode()
+    req = urllib.request.Request(url, data=data, headers=headers)
+
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp.read()
+    except Exception as e:
+        sys.stderr.write(f"LangFuse trace failed (non-blocking): {e}\n")
 
 
 class BaseWorker:
