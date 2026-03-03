@@ -150,5 +150,30 @@ class TestLangfuseTracing(unittest.TestCase):
         )
 
 
+class TestCallModelTracing(unittest.TestCase):
+    @patch("workers.base_worker.trace_to_langfuse")
+    @patch("workers.base_worker.urllib.request.urlopen")
+    def test_call_model_traces_to_langfuse(self, mock_urlopen, mock_trace):
+        """call_model() calls trace_to_langfuse after getting a response."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5}
+        }).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        from workers.base_worker import call_model
+        result = call_model("test prompt", model="gemini-2.5-flash", api_key="fake")
+
+        self.assertEqual(result["text"], "ok")
+        mock_trace.assert_called_once()
+        call_args = mock_trace.call_args
+        self.assertEqual(call_args.kwargs["model"], "gemini-2.5-flash")
+        self.assertEqual(call_args.kwargs["prompt"], "test prompt")
+        self.assertEqual(call_args.kwargs["response"], "ok")
+
+
 if __name__ == "__main__":
     unittest.main()

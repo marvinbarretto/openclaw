@@ -112,12 +112,27 @@ def call_anthropic(prompt, model="claude-haiku-4.5", api_key=None, system=None, 
 
 def call_model(prompt, model, provider=None, api_key=None, system=None):
     """Route to the correct API based on model name or provider."""
+    start = time.time()
     if provider == "google" or model.startswith("gemini"):
-        return call_google_ai(prompt, model=model, api_key=api_key, system=system)
+        result = call_google_ai(prompt, model=model, api_key=api_key, system=system)
     elif provider == "anthropic" or model.startswith("claude"):
-        return call_anthropic(prompt, model=model, api_key=api_key, system=system)
+        result = call_anthropic(prompt, model=model, api_key=api_key, system=system)
     else:
         raise ValueError(f"Unknown model/provider: {model}/{provider}")
+
+    duration_ms = int((time.time() - start) * 1000)
+    trace_to_langfuse(
+        trace_name=f"worker/{model}",
+        run_id=f"call_{uuid.uuid4().hex[:8]}",
+        model=model,
+        prompt=prompt,
+        response=result["text"],
+        input_tokens=result["input_tokens"],
+        output_tokens=result["output_tokens"],
+        duration_ms=duration_ms,
+        system=system,
+    )
+    return result
 
 
 def trace_to_langfuse(trace_name, run_id, model, prompt, response,
