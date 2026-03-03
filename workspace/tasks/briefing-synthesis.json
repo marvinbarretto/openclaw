@@ -1,8 +1,8 @@
 {
   "task_id": "briefing-synthesis",
   "description": "Conductor task — Jimbo synthesises worker outputs into the morning briefing",
-  "default_model": "claude-haiku-4.5",
-  "fallback_model": null,
+  "default_model": "claude-sonnet-4-6",
+  "fallback_model": "claude-haiku-4.5",
   "provider": "openclaw",
   "evaluation": {
     "method": "user-rating",
@@ -13,6 +13,6 @@
       "concise_and_scannable"
     ]
   },
-  "budget_ceiling_per_run": 0.10,
-  "notes": "This task is performed by Jimbo himself (conductor), not a worker script. Logged for tracking."
+  "budget_ceiling_per_run": 0.25,
+  "notes": "This task is performed by Jimbo himself (conductor), not a worker script. Logged for tracking. Upgraded from Haiku to Sonnet 4.6 (2026-03-03)."
 }
