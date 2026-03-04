@@ -16,7 +16,7 @@
   },
   "budget_ceiling_per_run": 0.08,
   "batch_size": 15,
-  "context_files": ["INTERESTS.md", "TASTE.md", "PRIORITIES.md", "GOALS.md"],
+  "context_files": ["INTERESTS.md", "TASTE.md", "PRIORITIES.md", "GOALS.md", "EMAIL_EXAMPLES.md"],
   "output_schema": {
     "gems": [
       {

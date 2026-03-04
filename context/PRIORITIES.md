@@ -2,35 +2,32 @@
 
 What matters RIGHT NOW. Review and update weekly.
 
-*Last updated: 2026-02-19*
+*Last updated: 2026-03-04*
 
 ## Active Projects
 
-- **LocalShout** — community platform (Next.js). In development, not yet live. Sentry alerts not important until launch.
-- **Spoons** — pub check-in app (Angular 20, Firebase, Capacitor). Active development.
-- **Pomodoro** — productivity timer. Lower priority.
-- **OpenClaw/Jimbo** — this project. Getting the AI assistant useful.
+- **LocalShout** — community platform (Next.js). Full development focus. Not yet live. Sentry alerts not important until launch.
+- **OpenClaw/Jimbo** — AI assistant. Daily iteration on email/briefing pipeline quality.
 
 ## This Week
 
-- Get Sift email pipeline producing useful daily digests
-- Give Jimbo meaningful feedback so he can improve briefings
-- Sell MacBook M2 on eBay (triggered by eBay email reminder)
-- Chase Synaptics/Daniel about DisplayLink monitor fix — there's an action on me to try some things
-- Continue mbsync backlog processing
+- Iterate on Jimbo's email triage and briefing quality — daily review sessions
+- Get everything off computer todos into properly formatted vault tasks
+- Sell MacBook M2 on eBay — stalling, need to reassess if it's worth it
 
 ## Ongoing
 
 - Get finances in order — YNAB setup, track spending
 - Keep an eye on the job market — not actively looking but want awareness
-- Travel planning — always open to good deals, no specific trips planned right now
-- Event planning — want to know about gigs, meetups, comedy well in advance so I can plan
+- Travel planning — open to good deals, no specific trips planned
+- Event planning — gigs, meetups, comedy well in advance so I can plan
+- Capture new ideas as they come
 
 ## Recurring Nudges
 
 Things to periodically remind me about — not tasks with deadlines, just gentle prompts.
 
-- **Exercise** — 2-3 sessions per week. Am I keeping up?
+- **Gym** — signed up to a new gym, need to start going. Classes?
 - **Pool** — Sundays/Mondays/Tuesdays work best
 - **Spanish** — should be daily, even 10 mins
 - **Walking** — good weather? Suggest a walk (walkingclub.org.uk for routes)
