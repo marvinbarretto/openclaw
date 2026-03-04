@@ -13,10 +13,15 @@ You are running a collaborative triage session for vault tasks that need Marvin'
    - First argument: batch size (default 10)
    - Second argument: source — `pending` (today's sweep, default), `backlog` (older needs-context items), or `all` (both)
 
-2. Read context files for making informed guesses:
-   - `context/PRIORITIES.md` — what matters this week
+2. Read ALL context files — both for making informed guesses and to track what needs updating:
+   - `context/PRIORITIES.md` — what matters this week (note the "Last updated" date)
    - `context/INTERESTS.md` — what Marvin cares about
    - `context/GOALS.md` — longer-term ambitions
+   - `context/TASTE.md` — what "good" looks like
+   - `context/PREFERENCES.md` — how context files combine
+   - `context/PATTERNS.md` — classification patterns from previous sessions
+
+   As you read these, note anything that feels stale or incomplete. The triage conversation will reveal whether these files are accurate.
 
 3. Pull data from VPS depending on source:
 
@@ -93,13 +98,39 @@ Then present each item **one at a time**.
 
 ## After All Items
 
-Summarise:
+### Session summary
+
+Summarise what happened:
 
 > Done — **{N} filed** as notes, **{M} archived**, **{K} skipped**.
 
 Clean up the pending file if we triaged all pending items:
 ```bash
 ssh jimbo 'docker exec $(docker ps -q --filter name=openclaw-sbx) rm -f /workspace/tasks-triage-pending.json'
+```
+
+### Context file updates
+
+During the triage, Marvin's explanations reveal what he actually cares about right now. Review the conversation and check whether any context files need updating.
+
+**PRIORITIES.md** — Did any items reveal a new active focus or a completed/stale priority? Did Marvin say something like "oh I'm not doing that anymore" or "actually that's my main thing right now"? If so, propose specific edits.
+
+**GOALS.md** — Did any items reveal a new ambition or a shifted goal? "That's about wanting to move abroad" might mean GOALS.md needs a new section.
+
+**INTERESTS.md** — Did items reveal interests not currently listed? A "dating" task suggests a life area that INTERESTS.md doesn't cover. A "BuzzFeed work" item might reveal a career interest.
+
+**PATTERNS.md** — Did you see recurring classification patterns across 2+ items that would help future automated classification? (e.g., "bare task titles with no context are usually ideas, not tasks")
+
+For each proposed update:
+1. Show the exact change as a before/after diff
+2. Explain why the triage conversation supports this change
+3. Ask Marvin to approve before writing
+
+**Be bold with proposals.** If Marvin archived 3 items related to a priority that's clearly done, propose removing it from PRIORITIES.md. If a conversation revealed a whole area of life not in the context files, propose adding it. The context files should reflect reality, and triage sessions are where reality surfaces.
+
+After approved edits, push updated context files to VPS:
+```bash
+./scripts/workspace-push.sh
 ```
 
 ## Reference: Type Taxonomy
