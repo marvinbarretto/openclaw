@@ -46,32 +46,50 @@ GET    /api/vault/stats              # summary statistics
 - `title` — rename
 - `tags` — add/remove tags
 
-**Data source:** The vault lives on VPS at `/workspace/vault/notes/` as markdown files with YAML frontmatter. The API reads/writes these files directly — no separate database. This keeps the vault as the single source of truth.
+**Data source:** SQLite database backing the vault. On initial setup, ingest all markdown files from `/workspace/vault/notes/` into the database (frontmatter fields become columns, body stored as text). The database becomes the source of truth — Jimbo reads/writes via API, the scorer updates via API, and the markdown files are kept in sync as a fallback.
 
-**Indexing:** On startup (and periodically), jimbo-api scans the vault directory and builds an in-memory index of frontmatter fields. File reads happen on demand for full content. This avoids needing SQLite for what's essentially a file browser.
+**Why SQLite, not files:** Files were fine for a static vault, but we now need:
+- Fast filtered queries (priority range, actionability, text search)
+- Two sort modes (Marvin's manual sort vs Jimbo's AI-scored sort)
+- Status tracking with timestamps (when was it marked done? velocity metrics)
+- Concurrent read/write from API, scorer, and Jimbo's skills
+- Aggregation queries (stats, velocity, completion rates)
+
+**Schema:** See implementation plan for full schema. Key addition beyond frontmatter fields: `manual_priority` (Marvin's override), `ai_priority` (scorer's assessment), `ai_rationale` (why the scorer ranked it there), `completed_at` (timestamp for velocity tracking), `sort_position` (for manual drag ordering).
 
 ### UI (site repo)
 
 **Page: `/app/jimbo/vault`**
 
 Core views:
-1. **Task list** — sortable table/cards showing title, priority, actionability, type, status. Default: active tasks sorted by priority descending.
-2. **Filters sidebar** — priority range slider, actionability chips, type dropdown, text search.
-3. **Task detail** — click to expand. Shows full note body, all frontmatter, edit controls.
+1. **Task list** — card-based, showing title, priority, actionability, status. Two sort modes toggle.
+2. **Filters bar** — priority range, actionability chips, text search.
+3. **Task detail** — click to expand. Full body, all metadata, edit controls.
 4. **Bulk actions** — multi-select to mark done, archive, or reprioritise.
 
+**Two sort modes (toggle at top):**
+1. **"My Sort"** — Marvin's manual priority ordering. Drag to reorder, or set priority numbers. This is Marvin's view of what matters.
+2. **"Jimbo's Sort"** — AI-scored priority with rationale visible. Each task shows Jimbo's score and a one-line explanation of why. Default view.
+
+Comparing these two views exposes knowledge gaps — where Jimbo and Marvin disagree reveals what context is missing from PRIORITIES.md, GOALS.md, or the scorer prompt.
+
 Key interactions:
-- **Mark done** — one click. Updates frontmatter `status: done`, moves to archive.
-- **Reprioritise** — inline priority number edit or up/down buttons.
-- **Quick archive** — swipe or button for "this is stale, get rid of it."
+- **Mark done** — one click. Timestamps the completion for velocity tracking.
+- **Reprioritise** — inline priority edit. Sets `manual_priority`, doesn't overwrite AI score.
+- **Quick archive** — button for "this is stale, get rid of it."
 - **Search** — instant filter as you type.
 
 Stats bar at top:
-- Total active tasks, breakdown by priority tier, vague count, "scored today" count
+- Total active, completed this week, completion velocity, priority distribution
+- Jimbo can query these stats via API for briefings ("you completed 12 tasks this week")
 
-### Priority Override
+### Dual Priority System
 
-When Marvin manually sets a priority via the UI, the frontmatter gets a `priority_locked: true` flag. The daily `prioritise-tasks.py` scorer skips locked tasks. This prevents the auto-scorer from overwriting human judgment.
+Each task has two priority scores:
+- `ai_priority` — set by `prioritise-tasks.py` (Gemini Flash), with `ai_rationale` explaining why
+- `manual_priority` — set by Marvin in the UI (null until manually set)
+
+The briefing reads `manual_priority` when set, falls back to `ai_priority`. The scorer always updates `ai_priority` but never overwrites `manual_priority`.
 
 ### Mobile-first
 
@@ -100,5 +118,8 @@ The vault UI should work well on mobile (Marvin reviews via phone). Card-based l
 **Resolved questions:**
 - The `/app/jimbo/vault` page shows only tasks (type: task). Other note types get separate pages at different URL endpoints (e.g., `/app/jimbo/vault/bookmarks`, `/app/jimbo/vault/ideas`) — kept very simple, just for visibility.
 - Review queue mode is a nice-to-have for later. Start with browse/filter mode.
-- Completed tasks visible in a "done" tab (not hidden) — useful for seeing what's been cleared.
+- Completed tasks visible in a "done" tab (not hidden) — useful for seeing what's been cleared and tracking velocity.
 - Refresh-on-load is fine. No real-time sync needed.
+- SQLite database, not file-based. DB is source of truth, markdown files kept in sync as fallback.
+- Two sort modes: "My Sort" (Marvin's manual) vs "Jimbo's Sort" (AI-scored with rationale). Comparing them exposes knowledge gaps.
+- Jimbo queries vault status via API — completion velocity, active count, priority distribution. Feeds into briefings.
