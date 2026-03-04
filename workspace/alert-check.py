@@ -129,6 +129,12 @@ def check_briefing():
     try:
         db = sqlite3.connect(TRACKER_DB_PATH)
         db.row_factory = sqlite3.Row
+        # Migrate: add session column if missing (existing DBs pre-ADR-040)
+        try:
+            db.execute("ALTER TABLE runs ADD COLUMN session TEXT")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
     except sqlite3.Error as e:
         return False, f"experiment-tracker.db unreadable: {e}"
 
