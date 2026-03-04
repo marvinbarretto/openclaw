@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (deployed 2026-03-04)
 
 ## Context
 

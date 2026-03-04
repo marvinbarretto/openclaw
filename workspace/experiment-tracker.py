@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS runs (
     user_rating INTEGER,
     user_notes TEXT,
     conductor_reasoning TEXT,
-    config_snapshot TEXT
+    config_snapshot TEXT,
+    session TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_runs_task_id ON runs(task_id);
@@ -119,6 +120,12 @@ def get_db():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
+    # Migrate: add session column if missing (existing DBs pre-ADR-040)
+    try:
+        db.execute("ALTER TABLE runs ADD COLUMN session TEXT")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     return db
 
 
@@ -163,8 +170,9 @@ def cmd_log(args):
            (run_id, task_id, parent_run_id, timestamp, model, config_hash,
             input_tokens, output_tokens, cost_usd, duration_ms,
             input_summary, output_summary, quality_scores,
-            conductor_rating, conductor_reasoning, config_snapshot)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            conductor_rating, conductor_reasoning, config_snapshot,
+            session)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             run_id, args.task, getattr(args, "parent_run", None),
             now_iso(), args.model, c_hash,
@@ -176,6 +184,7 @@ def cmd_log(args):
             getattr(args, "conductor_rating", None),
             getattr(args, "conductor_reasoning", None),
             None,
+            getattr(args, "session", None),
         ),
     )
     db.commit()
@@ -339,6 +348,7 @@ def main():
     log_p.add_argument("--quality", default=None, help="JSON quality scores")
     log_p.add_argument("--conductor-rating", type=int, default=None, help="1-10")
     log_p.add_argument("--conductor-reasoning", default=None, help="JSON reasoning")
+    log_p.add_argument("--session", default=None, choices=["morning", "afternoon"])
 
     # runs
     runs_p = subparsers.add_parser("runs", help="List recent runs for a task")

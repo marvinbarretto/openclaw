@@ -58,7 +58,7 @@ def query_db(db_path, sql, params=()):
 
 
 def check_briefing_ran():
-    """Did a briefing-synthesis run log today?"""
+    """Did morning + afternoon briefing-synthesis runs log today?"""
     rows = query_db(
         TRACKER_DB,
         "SELECT * FROM runs WHERE task_id = 'briefing-synthesis' AND timestamp LIKE ?",
@@ -67,14 +67,41 @@ def check_briefing_ran():
     if not rows:
         return False, "briefing did not run"
 
-    # Check if it was fallback
-    for row in rows:
-        reasoning = row.get("conductor_reasoning", "") or ""
-        if "fallback" in reasoning.lower():
-            return True, f"briefing ran in FALLBACK mode ({len(rows)} run(s))"
+    # Classify by session — rows without session value count as morning
+    morning_rows = [r for r in rows if (r.get("session") or "morning") == "morning"]
+    afternoon_rows = [r for r in rows if r.get("session") == "afternoon"]
 
-    rating = rows[-1].get("conductor_rating")
-    return True, f"briefing ran ({len(rows)} run(s), rating: {rating})"
+    parts = []
+
+    # Morning
+    if morning_rows:
+        reasoning = (morning_rows[-1].get("conductor_reasoning") or "").lower()
+        rating = morning_rows[-1].get("conductor_rating")
+        if "fallback" in reasoning:
+            parts.append("morning FALLBACK")
+        elif rating:
+            parts.append(f"morning ran (rating {rating})")
+        else:
+            parts.append("morning ran")
+    else:
+        parts.append("morning missing")
+
+    # Afternoon — only flag missing after 16:00 UTC
+    current_hour = now_utc().hour
+    if afternoon_rows:
+        reasoning = (afternoon_rows[-1].get("conductor_reasoning") or "").lower()
+        rating = afternoon_rows[-1].get("conductor_rating")
+        if "fallback" in reasoning:
+            parts.append("afternoon FALLBACK")
+        elif rating:
+            parts.append(f"afternoon ran (rating {rating})")
+        else:
+            parts.append("afternoon ran")
+    elif current_hour >= 16:
+        parts.append("afternoon missing")
+
+    any_missing = any("missing" in p for p in parts)
+    return not any_missing, ", ".join(parts)
 
 
 def check_gems_produced():

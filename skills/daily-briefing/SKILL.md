@@ -1,14 +1,26 @@
 ---
 name: daily-briefing
-description: Give a concise morning briefing combining email, tasks, and context
+description: Give a concise morning or afternoon briefing combining email, tasks, and context
 user-invokable: true
 ---
 
 # Daily Briefing
 
-When the user says good morning, asks for a briefing, or it's a scheduled morning session, give a concise daily overview.
+When the user says good morning, asks for a briefing, or it's a scheduled briefing session (morning or afternoon), give a concise daily overview.
 
 **IMPORTANT: This skill has REQUIRED sections. Do not skip sections 1-4. A briefing without a day plan is not a briefing — it's a notification. Read SOUL.md's "Morning Briefing Minimum Bar" section.**
+
+## Session detection
+
+Determine the current UTC hour:
+```bash
+date -u +%H
+```
+
+- **Morning session:** UTC hour < 12
+- **Afternoon session:** UTC hour >= 12
+
+The session type changes which sections are shown and how they're presented. See per-section notes below.
 
 ## Before you start
 
@@ -41,29 +53,39 @@ Do ALL of these before writing a single word of output. If a command fails, note
 
 ### *1. Date and greeting
 - Today's date and day of the week
-- Brief, friendly greeting (match the tone in SOUL.md)
+- **Morning:** Brief, friendly greeting (match the tone in SOUL.md)
+- **Afternoon:** Afternoon tone — "Afternoon check-in" or similar. Keep it light.
 
 ### *2. Today's schedule + day plan proposal
-- Show today's **fixed** events from the calendar command in chronological order
-- Flag anything in the next 2 hours
-- If the calendar command failed: say "Calendar unavailable" and move on (do NOT skip the day plan)
-- **Then propose a day plan:**
-  - Identify free gaps (30+ minutes) between fixed events
-  - Cross-reference with email digest, PRIORITIES, GOALS, INTERESTS, **and vault tasks**
-  - Suggest 3-5 activities for those gaps with emoji prefixes (see day-planner skill)
-  - Include at least 1 vault task (📋) from the priority-scored results
-  - End with **"Anything you'd swap or skip?"** to invite negotiation
-- This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response.
+- **Morning:** Full day plan proposal:
+  - Show today's **fixed** events from the calendar command in chronological order
+  - Flag anything in the next 2 hours
+  - If the calendar command failed: say "Calendar unavailable" and move on (do NOT skip the day plan)
+  - **Then propose a day plan:**
+    - Identify free gaps (30+ minutes) between fixed events
+    - Cross-reference with email digest, PRIORITIES, GOALS, INTERESTS, **and vault tasks**
+    - Suggest 3-5 activities for those gaps with emoji prefixes (see day-planner skill)
+    - Include at least 1 vault task (📋) from the priority-scored results
+    - End with **"Anything you'd swap or skip?"** to invite negotiation
+  - This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response.
+- **Afternoon:** Check-in format:
+  - Show remaining calendar events for today
+  - Reference the morning plan: "You planned X, Y, Z this morning — anything to adjust for the rest of the day?"
+  - Only suggest new activities if significant free time remains
 
 ### *3. Vault tasks
-- From the vault search in step 7 above, read the frontmatter of matched files
-- Filter for `type: task`, `status: active`, sort by `priority` descending
-- Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji
-- If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
-- Fallback if no priority field: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags
-- If vault is empty, say so briefly
+- **Morning:** Full vault task surfacing:
+  - From the vault search in step 7 above, read the frontmatter of matched files
+  - Filter for `type: task`, `status: active`, sort by `priority` descending
+  - Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji
+  - If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
+  - Fallback if no priority field: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags
+  - If vault is empty, say so briefly
+- **Afternoon:** Only mention vault tasks if new tasks were scored since the morning briefing (check `prioritise-tasks.py` last run). Otherwise skip this section.
 
-### 3.5 Tasks triage announcement
+### 3.5 Tasks triage announcement (morning only)
+
+**Skip this section entirely during afternoon sessions.**
 
 Run in the sandbox:
 ```bash
@@ -159,13 +181,13 @@ Log the briefing to both trackers. This is MANDATORY — the daily accountabilit
 ```bash
 python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task briefing --input-tokens <est> --output-tokens <est>
 python3 /workspace/activity-log.py log --task briefing \
-    --description "Morning briefing: <brief summary of key points>" \
+    --description "<Morning|Afternoon> briefing: <brief summary of key points>" \
     --outcome "<success|partial|fallback>" \
-    --rationale "Components: calendar=<ok|failed>, email=<ok|stale|missing>, vault=<N tasks surfaced|empty>, surprise=<played|skipped>" \
+    --rationale "Session: <morning|afternoon>. Components: calendar=<ok|failed>, email=<ok|stale|missing>, vault=<N tasks surfaced|empty|skipped>, surprise=<played|skipped>" \
     --model <model>
 ```
 
-The `--rationale` field is what the accountability checker uses to verify each component ran. Be specific — "vault=3 tasks surfaced" is better than "vault=ok".
+Use "Morning briefing:" or "Afternoon briefing:" in the description. The `--rationale` field is what the accountability checker uses to verify each component ran. Be specific — "vault=3 tasks surfaced" is better than "vault=ok".
 
 ## Rules
 

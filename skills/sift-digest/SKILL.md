@@ -8,6 +8,26 @@ user-invokable: true
 
 When the user asks about email, their inbox, or says "check my email", run the worker pipeline and present the results.
 
+## Session detection
+
+Determine the current UTC hour to decide which briefing session this is:
+```bash
+date -u +%H
+```
+
+- **Morning session:** UTC hour < 12
+- **Afternoon session:** UTC hour >= 12
+
+If afternoon, check the setting first:
+```bash
+python3 /workspace/settings-helper.py get afternoon_briefing_enabled
+```
+If `false`, skip the entire digest — say "Afternoon briefing is disabled in settings" and stop.
+
+Run a fresh email fetch appropriate to the session:
+- **Morning:** `python3 /workspace/gmail-helper.py fetch --hours 13`
+- **Afternoon:** `python3 /workspace/gmail-helper.py fetch --hours 8`
+
 ## Before you start
 
 Read these files to understand what Marvin cares about right now:
@@ -72,9 +92,12 @@ python3 /workspace/experiment-tracker.py log \
     --model <your-model> \
     --input-tokens <est> \
     --output-tokens <est> \
+    --session <morning|afternoon> \
     --conductor-rating <1-10 overall quality> \
     --conductor-reasoning '<JSON with promoted/dropped/surprises/self_critique>'
 ```
+
+Use `--session morning` or `--session afternoon` based on the session detection above.
 
 The conductor reasoning JSON should include:
 ```json
@@ -97,13 +120,16 @@ python3 /workspace/experiment-tracker.py log \
     --model <your-model> \
     --input-tokens <est> \
     --output-tokens <est> \
+    --session <morning|afternoon> \
     --conductor-rating <1-10 overall quality, use 1 if fallback mode> \
     --conductor-reasoning '<JSON — include "mode": "fallback" if workers failed>'
 ```
 
-If you're in fallback mode (workers failed), still log with `conductor-rating 1` and include `"mode": "fallback"` in the reasoning JSON. A low-rated row is infinitely better than no row.
+Always include `--session morning` or `--session afternoon`. If you're in fallback mode (workers failed), still log with `conductor-rating 1` and include `"mode": "fallback"` in the reasoning JSON. A low-rated row is infinitely better than no row.
 
-## The Surprise Game
+## The Surprise Game (afternoon only)
+
+**Skip this section entirely during morning sessions.** The surprise game runs in the afternoon briefing only — mornings focus on triage and planning.
 
 Each briefing, pick the best surprise candidate from the gems (those with `surprise_candidate: true`). If none are good enough, try to make your own connection between items in the digest.
 

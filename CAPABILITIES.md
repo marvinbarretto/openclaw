@@ -8,6 +8,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Telegram chat | WORKING | Via `@fourfold_openclaw_bot` |
 | Morning briefing | WORKING | OpenClaw cron at 07:00 London. Digest fetched hourly (interval-aware via settings API). |
+| Afternoon briefing | WORKING | Heartbeat-triggered at ~15:00 UTC. Same pipeline, lighter format. Controllable via `afternoon_briefing_enabled` setting. (ADR-040) |
 | Email digest summary | WORKING | Via `sift-digest` skill |
 
 ## Context
@@ -110,9 +111,9 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Model | Status | Notes |
 |---|---|---|
 | `stepfun/step-3.5-flash:free` | RETIRED | Can't follow curation instructions (ADR-005) |
-| `google/gemini-2.5-flash` | ACTIVE | Default model outside briefing window (07:30-06:45 UTC). Cron auto-switches. |
-| `anthropic/claude-haiku-4.5` | ACTIVE | Briefing window model (06:45-07:30 UTC). Cron auto-switches. (ADR-036) |
-| Automated model switching | WORKING | `model-swap-local.sh` on VPS. Cron: Haiku at 06:45, Flash at 07:30 UTC. (ADR-039) |
+| `moonshotai/kimi-k2` | ACTIVE | Daily driver outside briefing windows. Cron auto-switches. |
+| `anthropic/claude-sonnet-4.6` | ACTIVE | Briefing window model. Morning: 06:45-07:30, Afternoon: 14:45-15:30 UTC. (ADR-040) |
+| Automated model switching | WORKING | `model-swap-local.sh` on VPS. Cron: Sonnet at 06:45+14:45, Kimi at 07:30+15:30 UTC. (ADR-040) |
 | Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. (ADR-029) |
 
 ## Native Features (v2026.3.1)
@@ -139,7 +140,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 |---|---|---|
 | Telegram failure alerts | WORKING | `alert.py` sends via Bot API. Workers catch exceptions. Cron wrappers alert on exit code. (ADR-030) |
 | Digest volume check | WORKING | `alert-check.py digest` — reports email count and new emails since last fetch. Hourly at :30. |
-| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db. Time-aware: pending before 08:00 UTC, alert after. Hourly at :30. |
+| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db with `session` column. Reports morning + afternoon separately. Time-aware grace windows: morning before 08:00, afternoon before 16:00. (ADR-040) |
 | Positive heartbeat | WORKING | All checks send combined status hourly. Silence = broken checker. |
 | OpenRouter usage report | WORKING | `alert-check.py credits` — reports usage (not balance, as OpenRouter API returns stale limits). Hourly at :30. (ADR-031) |
 | Gateway health check | WORKING | `alert-check.py openclaw` — TCP probe to gateway port from sandbox. Included in hourly status. (ADR-039) |
@@ -171,7 +172,8 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-03-02*
+*Last updated: 2026-03-04*
+*Twice-daily briefing (ADR-040): 2026-03-04*
 *OpenClaw v2026.3.1 upgrade + native features (ADR-039): 2026-03-02*
 *Tasks triage session (ADR-038): 2026-03-02*
 *Vault task prioritisation (ADR-034): 2026-03-02*

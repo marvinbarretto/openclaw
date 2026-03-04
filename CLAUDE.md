@@ -113,6 +113,7 @@ notes/            Brain dumps
 - `decisions/035-vps-vault-source-of-truth.md` — ADR for removing vault sync from laptop, VPS owns vault data
 - `decisions/036-haiku-conductor-model.md` — ADR for switching conductor from Flash to Haiku 4.5
 - `decisions/038-tasks-triage-session.md` — ADR for interactive tasks triage via Telegram (briefing announcement + triage skill)
+- `decisions/040-twice-daily-briefing.md` — ADR for splitting briefing into morning (07:00) + afternoon (15:00) sessions, session-aware experiment tracking, controllable via settings
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
@@ -120,7 +121,7 @@ notes/            Brain dumps
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (reports email volume), `briefing` (checks experiment-tracker.db, time-aware), `credits` (reports OpenRouter usage), `model` (reports current VPS model from openclaw.json), `status` (combined). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/accountability-check.py` — Daily accountability checker. Queries activity-log.db + experiment-tracker.db for today. Checks: briefing ran, gems produced, surprise game played, vault tasks surfaced, activity count, cost. Sends Telegram summary. Runs at 20:00 UTC via cron. Stdlib only.
-- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Sonnet/Kimi switching around the briefing window.
+- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Sonnet/Kimi switching around both briefing windows (morning 06:45-07:30, afternoon 14:45-15:30).
 - `workspace/email-fetch-cron.py` — Interval-aware email fetch wrapper. Reads `email_fetch_interval_hours` from settings API, checks digest age, runs gmail-helper.py if stale. Injects `previous_count` for delta tracking. Stdlib only.
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
 - `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
@@ -247,8 +248,14 @@ VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
 # 06:45 — switch to Sonnet for morning briefing window
 45 6 * * * /usr/local/bin/model-swap-local.sh sonnet >> /var/log/model-swap.log 2>&1
 
-# 07:30 — switch to Kimi K2 after briefing
+# 07:30 — switch to Kimi K2 after morning briefing
 30 7 * * * /usr/local/bin/model-swap-local.sh kimi >> /var/log/model-swap.log 2>&1
+
+# 14:45 — switch to Sonnet for afternoon briefing (ADR-040)
+45 14 * * * /usr/local/bin/model-swap-local.sh sonnet >> /var/log/model-swap.log 2>&1
+
+# 15:30 — switch back to Kimi K2 after afternoon briefing
+30 15 * * * /usr/local/bin/model-swap-local.sh kimi >> /var/log/model-swap.log 2>&1
 
 # 20:00 — daily accountability report via Telegram
 0 20 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
@@ -271,7 +278,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → model swap to Sonnet (06:45) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → model swap to Kimi K2 (07:30) → status check (hourly at :30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → model swap to Sonnet (06:45) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → model swap to Kimi K2 (07:30) → model swap to Sonnet (14:45) → afternoon briefing (~15:00, heartbeat-triggered, ADR-040) → model swap to Kimi K2 (15:30) → status check (hourly at :30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
 

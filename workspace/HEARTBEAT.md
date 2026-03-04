@@ -7,8 +7,9 @@ Monitoring (digest freshness, OpenRouter balance, briefing health) is handled by
 ## Cost awareness (always applies)
 
 Before acting on any heartbeat task, consider whether the cost is justified:
-- **Briefing window (06:45-07:30 UTC):** You're on Haiku — use this time for the morning briefing and quality work that benefits from a capable model.
-- **Outside briefing window:** You're on Flash — cheaper, so routine tasks are fine, but don't burn tokens on low-value activity.
+- **Morning briefing window (06:45-07:30 UTC):** You're on Sonnet — morning briefing time.
+- **Afternoon briefing window (14:45-15:30 UTC):** You're on Sonnet — afternoon briefing time.
+- **Outside briefing windows:** You're on Kimi K2 — cheaper daily driver.
 - **Silence is free.** If there's nothing useful to say, say nothing. Every heartbeat check that returns "nothing notable" still costs tokens.
 - **Batch when possible.** If multiple checks are due, run them together rather than in separate sessions.
 
@@ -25,6 +26,19 @@ The daily accountability report runs at 20:00 UTC via cron (`accountability-chec
 **Memory:** At end of day, use `memory_search` to check what you did today, then save a brief summary of today's key events, Marvin's reactions, and any patterns you noticed. This is what tomorrow's briefing will draw from.
 
 **Blog nudge:** If anything interesting happened today — a good gem from the digest, a surprise game win, an insight from vault triage, a pattern you noticed — draft a short blog post about it. Use the `blog-publisher` skill. You have opinions and a voice; use them. Aim for at least 2-3 posts per week. A post can be 3 paragraphs — it doesn't have to be an essay.
+
+## Afternoon briefing (~15:00 UTC)
+
+At the first heartbeat after 14:45 UTC (when you're on Sonnet), run the full briefing pipeline:
+1. Invoke sift-digest (it will detect afternoon session and fetch --hours 8)
+2. Then invoke daily-briefing (it will detect afternoon session and show check-in format)
+
+This mirrors the morning briefing but covers daytime emails. Check the `afternoon_briefing_enabled` setting first — skip if disabled:
+```bash
+python3 /workspace/settings-helper.py get afternoon_briefing_enabled
+```
+
+If disabled, skip silently. If enabled, run the pipeline. The surprise game only runs in the afternoon session.
 
 ## Email check-ins (3x/day)
 

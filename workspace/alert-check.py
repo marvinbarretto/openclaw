@@ -50,6 +50,8 @@ def get_setting(key, default):
 
 
 BRIEFING_GRACE_HOUR = get_setting("briefing_grace_hour_utc", 8)
+AFTERNOON_GRACE_HOUR = get_setting("afternoon_briefing_grace_hour_utc", 16)
+AFTERNOON_ENABLED = get_setting("afternoon_briefing_enabled", "true").lower() == "true"
 
 
 def send_alert(message):
@@ -116,12 +118,12 @@ def check_digest():
 
 
 def check_briefing():
-    """Check experiment-tracker.db has a run with today's date. Returns (ok, summary)."""
+    """Check experiment-tracker.db for morning + afternoon briefing runs. Returns (ok, summary)."""
     current_hour = now_utc().hour
 
     if not os.path.exists(TRACKER_DB_PATH):
         if current_hour < BRIEFING_GRACE_HOUR:
-            return True, "briefing pending"
+            return True, "morning: pending"
         return False, "experiment-tracker.db not found"
 
     try:
@@ -133,33 +135,40 @@ def check_briefing():
     today = now_utc().strftime("%Y-%m-%d")
 
     try:
-        row = db.execute(
-            "SELECT COUNT(*) as count FROM runs WHERE timestamp LIKE ?",
-            (f"{today}%",),
-        ).fetchone()
-
-        if row["count"] == 0:
-            db.close()
-            if current_hour < BRIEFING_GRACE_HOUR:
-                return True, "briefing pending"
-            return False, f"briefing missing for {today}"
-
-        runs = db.execute(
-            """SELECT task_id, COUNT(*) as count,
-                      SUM(output_tokens) as total_output_tokens
-               FROM runs WHERE timestamp LIKE ?
-               GROUP BY task_id""",
+        rows = db.execute(
+            "SELECT session, conductor_rating FROM runs WHERE task_id = 'briefing-synthesis' AND timestamp LIKE ?",
             (f"{today}%",),
         ).fetchall()
-
         db.close()
 
-        parts = []
-        for r in runs:
-            parts.append(f"{r['task_id']}: {r['count']} run(s)")
+        # Classify rows by session — rows without session value count as morning
+        morning_rows = [r for r in rows if (r["session"] or "morning") == "morning"]
+        afternoon_rows = [r for r in rows if r["session"] == "afternoon"]
 
-        summary = f"briefing ran ({', '.join(parts)})"
-        return True, summary
+        parts = []
+
+        # Morning status
+        if morning_rows:
+            rating = morning_rows[-1]["conductor_rating"]
+            parts.append(f"morning: ran (rating {rating})" if rating else "morning: ran")
+        elif current_hour < BRIEFING_GRACE_HOUR:
+            parts.append("morning: pending")
+        else:
+            parts.append("morning: missing")
+
+        # Afternoon status (only if enabled)
+        if AFTERNOON_ENABLED:
+            if afternoon_rows:
+                rating = afternoon_rows[-1]["conductor_rating"]
+                parts.append(f"afternoon: ran (rating {rating})" if rating else "afternoon: ran")
+            elif current_hour < AFTERNOON_GRACE_HOUR:
+                parts.append("afternoon: pending")
+            else:
+                parts.append("afternoon: missing")
+
+        any_missing = "missing" in " ".join(parts)
+        summary = f"briefing: {' | '.join(parts)}"
+        return not any_missing, summary
 
     except sqlite3.Error as e:
         db.close()

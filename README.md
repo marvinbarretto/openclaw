@@ -1,143 +1,208 @@
-# OpenClaw
+# OpenClaw (Jimbo)
 
-Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw), self-hosted on a VPS with Telegram as the primary messaging channel.
+Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw), self-hosted on a DigitalOcean VPS. Accessible via Telegram (`@fourfold_openclaw_bot`).
 
-## Current Status (2026-02-23)
+## Architecture
 
-- **VPS:** DigitalOcean $12/mo, London, IP `167.99.206.214` — RUNNING
-- **OpenClaw:** v2026.2.12, dashboard at `https://167.99.206.214`
-- **Telegram:** Connected via `@fourfold_openclaw_bot` ("Jimbo") — WORKING
-- **AI Provider:** Google AI direct (`google/gemini-2.5-flash`) — ~$0.78/month (ADR-015)
-- **Sandbox:** Custom Docker image with Python 3.11, Node 18, git — WORKING
-- **Local models:** Ollama — `qwen2.5-coder:14b` + `qwen2.5:7b` — TESTED
-- **Jimbo's GitHub:** https://github.com/marvinbarretto-labs — separate account for agent work
-- **Jimbo's workspace:** `jimbo-workspace` repo — Jimbo can autonomously write, commit, and push
-- **Blog:** Astro-built, auto-deployed via Cloudflare Pages at `jimbo.pages.dev` (ADR-027)
-- **Email pipeline:** Gmail API in sandbox → email-digest.json → Jimbo reads with judgment (ADR-022)
-- **Custom skills:** sift-digest, daily-briefing, blog-publisher, rss-feed, calendar, day-planner, web-style-guide
-- **Context system:** `context/` files (interests, priorities, taste, goals, patterns) — feeds Jimbo's judgment
-- **Notes vault:** ~13k notes from Google Tasks/Keep, LLM-classified into structured vault (ADR-023)
-- **Recommendations:** SQLite-backed store for email/vault finds with scores and expiry (ADR-025)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Marvin's Laptop (MacBook Air)                                  │
+│                                                                 │
+│  openclaw/  ─── this repo (config, scripts, skills, decisions)  │
+│  site/      ─── personal site (Astro/Cloudflare Workers)        │
+│                  └── /app/jimbo/  dashboard, triage UI,         │
+│                      context editor, settings                   │
+│  jimbo/notes-triage-api/  ─── jimbo-api source (Hono/Node)     │
+│                                                                 │
+│  Deploy:  workspace-push.sh ──rsync──►  VPS                    │
+│           skills-push.sh   ──rsync──►  VPS                     │
+└─────────────────────────────────────────────────────────────────┘
+                          │ ssh jimbo
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  VPS (DigitalOcean $12/mo, London, 167.99.206.214)              │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  OpenClaw v2026.3.1 (systemd: openclaw)                   │  │
+│  │  ├── Telegram provider (@fourfold_openclaw_bot)           │  │
+│  │  ├── Heartbeat (hourly, 07:00-01:00)                      │  │
+│  │  ├── Native cron (morning briefing 07:00 London)          │  │
+│  │  ├── Sub-agents (email-triage-worker, newsletter-reader)  │  │
+│  │  └── Memory (FTS5 + vector search)                        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                          │ docker exec                          │
+│  ┌───────────────────────▼───────────────────────────────────┐  │
+│  │  Docker Sandbox (openclaw-sbx)                            │  │
+│  │  /workspace/                                              │  │
+│  │  ├── SOUL.md, HEARTBEAT.md     ← brain files             │  │
+│  │  ├── gmail-helper.py           ← Gmail API (read-only)   │  │
+│  │  ├── calendar-helper.py        ← Calendar API             │  │
+│  │  ├── context-helper.py         ← reads from jimbo-api     │  │
+│  │  ├── settings-helper.py        ← reads from jimbo-api     │  │
+│  │  ├── alert.py / alert-check.py ← Telegram alerts          │  │
+│  │  ├── experiment-tracker.py     ← SQLite run logging       │  │
+│  │  ├── cost-tracker.py           ← SQLite cost logging      │  │
+│  │  ├── activity-log.py           ← SQLite activity logging  │  │
+│  │  ├── prioritise-tasks.py       ← Gemini Flash task scorer │  │
+│  │  ├── workers/                  ← orchestrator workers     │  │
+│  │  │   ├── email_triage.py       (Gemini Flash)             │  │
+│  │  │   └── newsletter_reader.py  (Claude Haiku)             │  │
+│  │  ├── vault/                    ← notes vault (13k notes)  │  │
+│  │  ├── context/                  ← backup context files     │  │
+│  │  └── blog-src/                 ← Astro blog               │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  jimbo-api (systemd: notes-triage-api, port 3100)         │  │
+│  │  ├── /api/triage/*    ← notes triage                      │  │
+│  │  ├── /api/context/*   ← priorities, interests, goals      │  │
+│  │  ├── /api/settings/*  ← key-value config store            │  │
+│  │  └── data/context.db  ← SQLite backing store              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Caddy (auto TLS) ── routes /api/* → jimbo-api                  │
+│  Cron (root crontab) ── email fetch, task scoring, model swap   │
+└─────────────────────────────────────────────────────────────────┘
+                          │
+          ┌───────────────┼───────────────────┐
+          ▼               ▼                   ▼
+   ┌────────────┐  ┌────────────┐  ┌───────────────────┐
+   │  Telegram   │  │  Gmail API │  │  Cloudflare Pages  │
+   │  Bot API    │  │  (readonly)│  │  (jimbo.pages.dev) │
+   └────────────┘  └────────────┘  └───────────────────┘
+```
 
-## Stack
+## Daily Schedule
 
-- **Runtime:** OpenClaw 2026.2.12 on Ubuntu 24.04 (DigitalOcean 1-Click)
-- **Messaging:** Telegram Bot API
-- **LLM (cloud):** Google AI direct (Gemini 2.5 Flash, daily), OpenRouter (free/coding), Anthropic (premium)
-- **LLM (local):** Ollama on MacBook Air 24GB (Qwen 2.5 Coder 14B)
-- **Blog:** Astro 4.x → Cloudflare Pages (`jimbo.pages.dev`)
-- **Hosting:** DigitalOcean $12/mo (2GB RAM, 1 vCPU, 50GB, LON1)
-- **DNS/Proxy:** Caddy (built into 1-Click image, auto TLS)
+```
+UTC   What                              Model
+────  ──────────────────────────────    ──────────────────
+04:30 Vault task scoring (cron)         Gemini Flash (direct)
+05:00 Google Tasks sweep (cron)         Gemini Flash (direct)
+06:45 Model swap → Sonnet
+07:00 Morning briefing (OpenClaw cron)  Sonnet (via OpenRouter)
+07:30 Model swap → Kimi K2
+  :00 Email fetch (hourly, cron)        —
+  :30 Status check (hourly, cron)       —
+14:45 Model swap → Sonnet
+15:00 Afternoon briefing (heartbeat)    Sonnet (via OpenRouter)
+15:30 Model swap → Kimi K2
+20:00 Accountability report (cron)      —
+```
+
+## Repo Structure
+
+```
+context/       Marvin's personal context (interests, priorities, taste, goals)
+decisions/     ADRs (001-041)
+docs/
+  plans/       Implementation plans
+  reviews/     Review session notes
+  reference/   Operational reference docs (VPS ops, orchestrator details)
+scripts/       Deploy scripts, ingestion pipelines, model-swap
+skills/        Custom OpenClaw skills (SKILL.md files)
+workspace/     Jimbo's brain files + workers + helpers (deployed to VPS)
+sandbox/       Docker image definition
+setup/         VPS configuration docs
+security/      Hardening checklist
+hosting/       VPS comparison notes
+data/          Email digest, vault, exports (all gitignored)
+notes/         Brain dumps
+```
+
+## Key Commands
+
+```bash
+# Deploy workspace + skills to VPS
+./scripts/workspace-push.sh && ./scripts/skills-push.sh
+
+# Switch VPS model
+./scripts/model-swap.sh {sonnet|kimi|haiku|flash|status}
+
+# Check VPS health
+ssh jimbo "systemctl status openclaw --no-pager && docker ps --filter name=openclaw-sbx"
+
+# Restart after config changes
+ssh jimbo "systemctl restart openclaw"
+```
+
+## Docs Index
+
+| Doc | What it covers |
+|-----|----------------|
+| `CLAUDE.md` | Full project context for Claude Code sessions |
+| `CAPABILITIES.md` | What Jimbo can/can't do, token expiry dates |
+| `docs/reference/vps-operations.md` | VPS gotchas (reboot, SSH, networking) |
+| `docs/reference/orchestrator-details.md` | Worker architecture, games, deployment |
+| `setup/configuration.md` | VPS config, provider setup cheatsheet |
+| `notes/triage-deploy.md` | Triage pipeline architecture and ops |
+| `decisions/` | All architectural decision records (001-041) |
+
+## Skills
+
+Custom skills deployed to VPS workspace — prompt-only SKILL.md files, no third-party code.
+
+| Skill | What it does |
+|---|---|
+| `sift-digest` | Orchestrate email workers, synthesise and present the digest |
+| `daily-briefing` | Morning + afternoon briefing (email + calendar + tasks + context) |
+| `blog-publisher` | Write markdown posts → Astro auto-builds |
+| `calendar` | Read/create calendar events via Calendar API |
+| `day-planner` | Proactive day planning — suggest activities for free gaps |
+| `cost-tracker` | Budget monitoring and cost visibility |
+| `tasks-triage` | Interactive Telegram triage for ambiguous vault tasks |
+| `web-style-guide` | Design tokens and HTML/CSS standards |
+| `rss-feed` | Auto-generated RSS feed via Astro |
+
+## Deploying to VPS
+
+Everything we maintain lives in this repo. Edit locally, commit, then push with scripts:
+
+```bash
+./scripts/workspace-push.sh        # brain files + context + helpers → VPS
+./scripts/skills-push.sh           # skills/ → VPS
+```
+
+All workspace/skill changes are picked up on Jimbo's next session (no restart needed). Model changes require a restart (`model-swap.sh` does this automatically).
+
+### What lives where
+
+| This repo | VPS destination | Push script | Restart? |
+|-----------|----------------|-------------|----------|
+| `workspace/SOUL.md` | `/workspace/SOUL.md` | `workspace-push.sh` | No |
+| `workspace/HEARTBEAT.md` | `/workspace/HEARTBEAT.md` | `workspace-push.sh` | No |
+| `workspace/*.py` | `/workspace/*.py` | `workspace-push.sh` | No |
+| `workspace/workers/` | `/workspace/workers/` | `workspace-push.sh` | No |
+| `context/*.md` | `/workspace/context/` | `workspace-push.sh` | No |
+| `skills/*/SKILL.md` | `/workspace/skills/` | `skills-push.sh` | No |
+| `workspace/blog-src/` | `/workspace/blog-src/` | `workspace-push.sh` | No |
+| `openclaw.json` changes | edit on VPS directly | — | Yes |
+
+### Files Jimbo writes himself (NOT tracked here)
+
+These live only on the VPS. Jimbo creates and updates them — don't overwrite:
+- `IDENTITY.md` — Jimbo's personality (written during bootstrap)
+- `USER.md` — What Jimbo knows about Marvin (learned from conversations)
+- `MEMORY.md` — Long-term curated memory
+- `JIMBO_DIARY.md` — Jimbo's daily journal
+- `blog-src/src/content/posts/*.md` — Blog posts Jimbo writes
+
+## Security
+
+- No community skills from ClawHub (ADR-008)
+- Gmail API is read-only (ADR-002)
+- Prompt injection mitigation via Reader/Actor split (ADR-003)
+- No production credentials on VPS (ADR-001)
+- See `security/` and `CLAUDE.md` for full security model
 
 ## Quick Links
 
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
 - [OpenClaw Docs](https://docs.openclaw.ai/)
-- [OpenClaw on DigitalOcean](https://docs.openclaw.ai/platforms/digitalocean)
 - [Dashboard](https://167.99.206.214)
 - [Jimbo's Blog](https://jimbo.pages.dev/)
+- [Jimbo Dashboard](https://site.marvinbarretto.workers.dev/app/jimbo/)
 
-## Quick Reference
+---
 
-```bash
-# Connect to VPS (ssh -t root@167.99.206.214)
-ssh jimbo
-
-# Check status
-systemctl status openclaw
-
-# Tail logs
-journalctl -u openclaw -f
-
-# Restart after config changes
-systemctl restart openclaw
-
-# Config files
-/opt/openclaw.env                              # API keys, tokens
-/home/openclaw/.openclaw/openclaw.json         # Plugins, channels, model
-```
-
-## Skills
-
-Custom skills that teach Jimbo structured capabilities. These are `SKILL.md` files deployed to the VPS workspace — prompt-only, no third-party code, zero supply-chain risk.
-
-| Skill | What it does |
-|---|---|
-| `sift-digest` | Read and present the email digest |
-| `daily-briefing` | Morning overview (email + calendar + tasks + context) |
-| `blog-publisher` | Write markdown posts → Astro auto-builds index, tags, archive, RSS |
-| `rss-feed` | Auto-generated RSS feed at `/rss.xml` (via Astro) |
-| `calendar` | Read/create calendar events via Calendar API |
-| `day-planner` | Proactive day planning — suggest activities for free gaps |
-| `web-style-guide` | Design tokens and HTML/CSS standards for blog and web projects |
-
-Note: Skills are triggered via natural language in Telegram, not slash commands.
-
-## Deploying to VPS
-
-Everything we maintain lives in this repo. **Never edit files directly on the VPS** — edit locally, commit, then push with scripts:
-
-```bash
-# Push everything Jimbo needs (brain files + context)
-./scripts/workspace-push.sh        # SOUL.md, HEARTBEAT.md, context/*.md → VPS
-./scripts/skills-push.sh           # skills/ → VPS
-
-# Blog source (Astro project) — push separately
-rsync -avz --exclude='node_modules/' --exclude='dist/' --exclude='.astro/' \
-  workspace/blog-src/ jimbo:/home/openclaw/.openclaw/workspace/blog-src/
-
-# Model management
-./scripts/model-swap.sh daily      # switch Jimbo's LLM model
-./scripts/model-swap.sh status     # check current model
-
-# Dry run (preview without changes)
-./scripts/workspace-push.sh --dry-run
-./scripts/skills-push.sh --dry-run
-```
-
-All workspace/skill changes are picked up on Jimbo's next session (no restart needed). Model changes require a restart (model-swap.sh does this automatically).
-
-### What lives where
-
-| This repo | VPS destination | Push script | Restart needed? |
-|-----------|----------------|-------------|-----------------|
-| `workspace/SOUL.md` | `/workspace/SOUL.md` | `workspace-push.sh` | No |
-| `workspace/HEARTBEAT.md` | `/workspace/HEARTBEAT.md` | `workspace-push.sh` | No |
-| `context/*.md` | `/workspace/context/` | `workspace-push.sh` | No |
-| `skills/*/SKILL.md` | `/workspace/skills/` | `skills-push.sh` | No |
-| `workspace/blog-src/` | `/workspace/blog-src/` | rsync (see above) | No |
-| `openclaw.json` changes | `/home/openclaw/.openclaw/openclaw.json` | `model-swap.sh` or manual | Yes |
-
-### Files Jimbo writes himself (NOT tracked here)
-
-These live only on the VPS. Jimbo creates and updates them — don't overwrite:
-- `IDENTITY.md` — Jimbo's name and personality (written during bootstrap)
-- `USER.md` — What Jimbo knows about Marvin (learned from conversations)
-- `MEMORY.md` — Long-term curated memory
-- `JIMBO_DIARY.md` — Jimbo's daily journal
-- `memory/*.md` — Per-day conversation logs
-- `blog-src/src/content/posts/*.md` — Blog posts Jimbo writes himself
-
-**Blog publishing (Jimbo's workflow):**
-```
-Write .md file in blog-src/src/content/posts/ → commit → push → Cloudflare auto-builds
-```
-Heartbeat auto-commit (~30 min) also triggers builds, so posts auto-publish.
-
-**Third-party skills:** We do not install community skills from ClawHub. See [ADR-008](decisions/008-plugin-adoption-policy.md) for our adoption policy.
-
-## This Folder
-
-| Folder | Purpose |
-|---|---|
-| `workspace/` | Brain files we maintain (SOUL.md, HEARTBEAT.md) + blog source (blog-src/) → pushed to VPS |
-| `context/` | Marvin's personal context (interests, priorities, taste, goals, patterns) → pushed to VPS |
-| `skills/` | Custom OpenClaw skills (7 skills) → pushed to VPS |
-| `scripts/` | Deploy scripts, classifier, model-swap, vault pipeline |
-| `decisions/` | ADRs (001–027): sandbox, email, models, plugins, automation, blog, vault, recommendations |
-| `setup/` | Configuration docs, [architecture](setup/architecture.md), [workspace files guide](setup/workspace-files.md), provider setup cheatsheet |
-| `hosting/` | VPS comparison (decided: DigitalOcean), networking & DNS |
-| `security/` | Hardening checklist, data privacy |
-| `sandbox/` | Custom Docker image Dockerfile |
-| `data/` | Email digest, vault, recommendations (all gitignored — personal data) |
-| `notes/` | Raw thinking and brain dumps |
+*Last updated: 2026-03-04*
