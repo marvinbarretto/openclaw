@@ -156,6 +156,28 @@ Running git on the VPS as root against the workspace requires two things:
 - If old (> 1 month), archive as stale. Don't send to needs-context — manual review won't help either.
 - Exception: numbers that look like prices ("45 yen"), dates ("17 v 22" = match score), or phone numbers.
 
+## Day-plan notes (from 2026-03-04 triage session)
+
+- Notes like "watford - coffee shop, gym, cron costs" are day plans or checklists for a specific outing.
+- Almost always completed by the time they're triaged. Archive on sight if older than a week.
+- Classify as `type: checklist`, not task.
+
+## Self-improvement clusters
+
+- Notes like "dating", "personal life", "get ready", "my looks etc" often come in thematic batches from a single brain-dump session.
+- Look for the thread rather than treating each one in isolation — they may all relate to a single life priority shift.
+- The underlying priority (e.g. "actively dating now") belongs in context files, not as individual vault notes.
+
+## "Inputs" notes
+
+- "spotify inputs", "youtube inputs" = ideas about feeding external data sources into Jimbo.
+- Tend to be fleeting — if Marvin can't remember the intent, archive as stale.
+
+## Jimbo improvement tagging
+
+- Vault tasks about improving Jimbo should be tagged `jimbo-improvement` alongside `project:openclaw`.
+- This allows filtering and prioritising Jimbo improvements as a group.
+
 ## Gemini confidence calibration (from 2026-02-27 triage session)
 
 - Gemini 9/10 on **type** is usually right (bookmark, media, reference) — but often wrong on **project tags** (guessed project:spoons for a LocalShout URL).

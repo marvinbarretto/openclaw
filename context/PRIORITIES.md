@@ -8,6 +8,7 @@ What matters RIGHT NOW. Review and update weekly.
 
 - **LocalShout** — community platform (Next.js). Full development focus. Not yet live. Sentry alerts not important until launch.
 - **OpenClaw/Jimbo** — AI assistant. Daily iteration on email/briefing pipeline quality.
+- **Hinge X (3-month window, started March 2026)** — actively dating. Needs scheduled time and a system, not just nudges. Balance with creative projects.
 
 ## This Week
 
@@ -32,7 +33,7 @@ Things to periodically remind me about — not tasks with deadlines, just gentle
 - **Spanish** — should be daily, even 10 mins
 - **Walking** — good weather? Suggest a walk (walkingclub.org.uk for routes)
 - **Cooking** — try recipes again: baba ganoush, other hits. Nudge when it's been a while.
-- **Dating** — check dateinadash.com or similar for upcoming events
+- **Dating events** — also try dateinadash.com, speed dating etc. alongside Hinge X
 - **Decluttering** — KonMari method in progress. Nudge to keep going.
 
 ## Deferred
