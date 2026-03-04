@@ -86,11 +86,33 @@ def check_digest():
     email_count = len(digest.get("items", []))
     previous_count = digest.get("previous_count")
 
-    if previous_count is not None:
+    # Enhance with worker output counts if available
+    shortlisted = 0
+    gems = 0
+    try:
+        shortlist_path = os.path.join(_script_dir, ".worker-shortlist.json")
+        if os.path.exists(shortlist_path):
+            with open(shortlist_path) as sf:
+                shortlisted = len(json.load(sf).get("shortlist", []))
+    except (json.JSONDecodeError, OSError):
+        pass
+    try:
+        gems_path = os.path.join(_script_dir, ".worker-gems.json")
+        if os.path.exists(gems_path):
+            with open(gems_path) as gf:
+                gems = len(json.load(gf).get("gems", []))
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    if shortlisted > 0 or gems > 0:
+        detail = f"{email_count} emails, {shortlisted} shortlisted, {gems} gems"
+    elif previous_count is not None:
         new_count = max(0, email_count - previous_count)
-        return True, f"digest: {email_count} emails today ({new_count} new)"
+        detail = f"{email_count} emails ({new_count} new)"
     else:
-        return True, f"digest: {email_count} emails today"
+        detail = f"{email_count} emails"
+
+    return True, f"digest: {detail}"
 
 
 def check_briefing():
@@ -172,17 +194,40 @@ def check_credits():
     if usage is None:
         return False, f"unexpected OpenRouter response: {json.dumps(data)}"
 
-    return True, f"OpenRouter: ${usage:.2f} used"
+    summary = f"OpenRouter: ${usage:.2f} total"
+
+    # Add today's spend from cost-tracker.db if available
+    try:
+        cost_db_path = os.path.join(_script_dir, "cost-tracker.db")
+        if os.path.exists(cost_db_path):
+            db = sqlite3.connect(cost_db_path)
+            today = now_utc().strftime("%Y-%m-%d")
+            row = db.execute(
+                "SELECT SUM(estimated_cost) FROM costs WHERE timestamp LIKE ?",
+                (f"{today}%",),
+            ).fetchone()
+            db.close()
+            if row and row[0]:
+                summary += f", ${row[0]:.2f} today"
+    except (sqlite3.Error, OSError):
+        pass
+
+    return True, summary
+
+
+def _in_sandbox():
+    """Detect if running inside Docker sandbox."""
+    return os.path.exists("/.dockerenv") or os.environ.get("container") == "docker"
 
 
 def check_openclaw():
     """Check OpenClaw gateway is responding. Returns (ok, summary)."""
-    # The gateway listens on port 18789. From inside the sandbox we can't
-    # run `openclaw health`, but we can check the port is accepting connections.
-    # Docker sandbox can reach the host via host.docker.internal or the host IP.
+    if _in_sandbox():
+        return True, "gateway: skipped (sandbox)"
+
     import socket
 
-    host = os.environ.get("OPENCLAW_GATEWAY_HOST", "172.17.0.1")  # default Docker bridge
+    host = os.environ.get("OPENCLAW_GATEWAY_HOST", "127.0.0.1")
     port = int(os.environ.get("OPENCLAW_GATEWAY_PORT", "18789"))
 
     try:
@@ -201,6 +246,8 @@ def check_model():
     )
 
     if not os.path.exists(config_path):
+        if _in_sandbox():
+            return True, "model: skipped (sandbox)"
         return False, "openclaw.json not found"
 
     try:
@@ -251,7 +298,14 @@ def check_status():
 
     parts = []
     any_bad = False
+    is_sandbox = _in_sandbox()
+
     for name, fn in checks:
+        # Suppress gateway and model checks entirely in sandbox — they can't
+        # read openclaw.json or test the gateway from inside Docker.
+        if is_sandbox and name in ("openclaw", "model"):
+            continue
+
         try:
             ok, summary = fn()
         except Exception as e:
