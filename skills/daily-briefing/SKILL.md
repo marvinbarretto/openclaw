@@ -133,6 +133,23 @@ cat /workspace/tasks-triage-pending.json 2>/dev/null || echo '{"needs_triage": 0
 - If GOALS hasn't been updated in more than 45 days, nudge similarly
 - Only mention stale files, skip if fresh
 
+### 8.5 Context health check
+
+Review the structured fields in the priorities and goals output (the `[status | category | timeframe | expires DATE]` metadata lines). Check for:
+
+1. **Active priority count** — if more than N items show `[active]`, note this in the briefing: "You have {N} active priorities — consider pausing something."
+2. **Expiring soon** — any item with `expires {date}` where date is within N days: "Heads up: {item} expires in {N} days."
+3. **Stale priorities** — any active priority that hasn't appeared in recent vault tasks or activity logs for N+ days: "Haven't seen activity on {item} recently — still active?"
+
+Read threshold settings if available:
+```bash
+python3 /workspace/settings-helper.py get max_active_priorities --default 5
+python3 /workspace/settings-helper.py get expiry_warning_days --default 14
+python3 /workspace/settings-helper.py get stale_priority_days --default 14
+```
+
+Present findings conversationally — this isn't a report, it's a nudge. If everything looks healthy, skip this section silently.
+
 ### 9. Heartbeat tasks
 - Read `/workspace/HEARTBEAT.md`
 - If there are pending checks, mention briefly
