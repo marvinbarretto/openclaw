@@ -44,6 +44,22 @@ def fetch_file(slug):
         return None
 
 
+def format_item_meta(item):
+    """Format structured metadata fields for a context item."""
+    parts = []
+    if item.get('status'):
+        parts.append(item['status'])
+    if item.get('category'):
+        parts.append(item['category'])
+    if item.get('timeframe'):
+        parts.append(item['timeframe'])
+    if item.get('expires_at'):
+        parts.append(f"expires {item['expires_at']}")
+    if parts:
+        return f"  [{' | '.join(parts)}]"
+    return ''
+
+
 def format_file(data):
     """Format a context file as readable markdown-like text."""
     lines = [f"# {data['display_name']}", ""]
@@ -61,6 +77,10 @@ def format_file(data):
                     lines.append("")
                 else:
                     lines.append(f"- {item['content']}")
+
+            meta = format_item_meta(item)
+            if meta:
+                lines.append(meta)
 
         lines.append("")
 
