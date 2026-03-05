@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.marvin.opus-briefing.afternoon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/marvinbarretto/development/openclaw/scripts/opus-briefing.sh</string>
+        <string>afternoon</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>15</integer>
+        <key>Minute</key>
+        <integer>50</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/opus-briefing-afternoon.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/opus-briefing-afternoon.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/marvinbarretto</string>
+    </dict>
+</dict>
+</plist>
