@@ -177,8 +177,8 @@ def _format_fm_line(key, val):
 # Context loading
 # ---------------------------------------------------------------------------
 
-def load_context():
-    """Read PRIORITIES.md and GOALS.md from the context directory."""
+def _load_context_files():
+    """Read PRIORITIES.md and GOALS.md from the local context directory (fallback)."""
     sections = []
     for name in ['PRIORITIES.md', 'GOALS.md']:
         path = os.path.join(CONTEXT_DIR, name)
@@ -190,8 +190,58 @@ def load_context():
     return '\n\n---\n\n'.join(sections)
 
 
-def context_mtime():
-    """Return the latest mtime of the context files (as a date string)."""
+def _format_context(data):
+    """Format API context response as readable text."""
+    lines = [f"# {data.get('display_name', 'Context')}"]
+    lines.append("")
+
+    for section in data.get("sections", []):
+        lines.append(f"## {section['name']}")
+        lines.append("")
+
+        for item in section.get("items", []):
+            if item.get("label"):
+                lines.append(f"- **{item['label']}** — {item['content']}")
+            else:
+                lines.append(f"- {item['content']}")
+
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+def load_context():
+    """Load priorities and goals from context API, falling back to files."""
+    api_url = os.environ.get('JIMBO_API_URL', '')
+    api_key = os.environ.get('JIMBO_API_KEY', '')
+
+    if not api_url or not api_key:
+        log("No API credentials — falling back to context files")
+        return _load_context_files()
+
+    context_parts = []
+    for slug in ['priorities', 'goals']:
+        try:
+            req = urllib.request.Request(
+                f'{api_url}/api/context/files/{slug}',
+                headers={
+                    'X-API-Key': api_key,
+                    'Accept': 'application/json',
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                context_parts.append(_format_context(data))
+        except Exception as e:
+            log(f'Warning: failed to fetch {slug} from API: {e}')
+            log('Falling back to context files')
+            return _load_context_files()
+
+    return '\n\n---\n\n'.join(context_parts)
+
+
+def _context_mtime_files():
+    """Return the latest mtime of the local context files (as a date string)."""
     latest = 0
     for name in ['PRIORITIES.md', 'GOALS.md']:
         path = os.path.join(CONTEXT_DIR, name)
@@ -202,6 +252,39 @@ def context_mtime():
     if latest == 0:
         return None
     return datetime.date.fromtimestamp(latest).isoformat()
+
+
+def context_mtime():
+    """Return the latest updated_at from the API, falling back to file mtime."""
+    api_url = os.environ.get('JIMBO_API_URL', '')
+    api_key = os.environ.get('JIMBO_API_KEY', '')
+
+    if not api_url or not api_key:
+        return _context_mtime_files()
+
+    latest = None
+    for slug in ['priorities', 'goals']:
+        try:
+            req = urllib.request.Request(
+                f'{api_url}/api/context/files/{slug}',
+                headers={
+                    'X-API-Key': api_key,
+                    'Accept': 'application/json',
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                updated = data.get('updated_at', '')
+                if updated:
+                    # Extract date portion from ISO timestamp
+                    date_str = updated[:10]
+                    if latest is None or date_str > latest:
+                        latest = date_str
+        except Exception as e:
+            log(f'Warning: failed to fetch {slug} mtime from API: {e}')
+            return _context_mtime_files()
+
+    return latest or _context_mtime_files()
 
 
 # ---------------------------------------------------------------------------
