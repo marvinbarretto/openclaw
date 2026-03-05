@@ -1,215 +1,77 @@
 ---
 name: daily-briefing
-description: Give a concise morning or afternoon briefing combining email, tasks, and context
+description: Compose and deliver the morning or afternoon briefing from pre-computed pipeline data
 user-invokable: true
 ---
 
 # Daily Briefing
 
-When the user says good morning, asks for a briefing, or it's a scheduled briefing session (morning or afternoon), give a concise daily overview.
+When the user says good morning, asks for a briefing, or it's a scheduled briefing session, compose a briefing from the pre-computed pipeline data.
 
-**IMPORTANT: This skill has REQUIRED sections. Do not skip sections 1-4. A briefing without a day plan is not a briefing — it's a notification. Read SOUL.md's "Morning Briefing Minimum Bar" section.**
-
-## Session detection
-
-Determine the current UTC hour:
-```bash
-date -u +%H
-```
-
-- **Morning session:** UTC hour < 12
-- **Afternoon session:** UTC hour >= 12
-
-The session type changes which sections are shown and how they're presented. See per-section notes below.
-
-## Before you start
-
-**Memory check (if available):** Before running any commands, use `memory_search` to look up:
-- Yesterday's briefing — what was highlighted, what Marvin reacted to
-- Recent surprise game results — what worked, what didn't
-- Any feedback patterns (e.g. "stop mentioning X", "I liked when you Y")
-
-This makes today's briefing build on yesterday's instead of starting from scratch.
-
-Run these commands in the SANDBOX, before composing any output. Use the sandbox/execute tool (NOT the read tool — files are inside the Docker container, not on the host filesystem).
-
-1. `python3 /workspace/recommendations-helper.py expire`
-2. `python3 /workspace/calendar-helper.py list-events --days 1`
-3. `cat /workspace/email-digest.json | python3 -c "import sys,json; d=json.load(sys.stdin); items=list(d['items']); print(f'Date: {d[\"date\"]}'); print(f'Total: {len(items)}'); [print(f'  {i[\"sender\"][\"name\"] if isinstance(i[\"sender\"],dict) else i[\"sender\"]}: {i[\"subject\"]}') for i in items[:15]]"`
-4. `python3 /workspace/context-helper.py priorities`
-5. `python3 /workspace/context-helper.py goals`
-6. `python3 /workspace/context-helper.py interests`
-7. `cat /workspace/context/TASTE.md`
-8. `grep -rl 'priority: [789]' /workspace/vault/notes/ | head -20 | xargs -I{} head -25 {}`
-9. `cat /workspace/tasks-triage-pending.json 2>/dev/null || echo '{"needs_triage": 0}'`
-
-IMPORTANT: All file access must go through sandbox commands (cat, grep, python3). Do NOT use the read/file tool — those paths don't exist on the host.
-
-Note: Context files (Priorities, Interests, Goals) are served from the context API via context-helper.py. TASTE.md is still a local file. If context-helper.py fails, fall back to `cat /workspace/context/PRIORITIES.md` etc.
-
-Do ALL of these before writing a single word of output. If a command fails, note it and move on — don't skip the rest.
-
-## What to include (REQUIRED sections marked with *)
-
-### *1. Date and greeting
-- Today's date and day of the week
-- **Morning:** Brief, friendly greeting (match the tone in SOUL.md)
-- **Afternoon:** Afternoon tone — "Afternoon check-in" or similar. Keep it light.
-
-### *2. Today's schedule + day plan proposal
-- **Morning:** Full day plan proposal:
-  - Show today's **fixed** events from the calendar command in chronological order
-  - Flag anything in the next 2 hours
-  - If the calendar command failed: say "Calendar unavailable" and move on (do NOT skip the day plan)
-  - **Then propose a day plan:**
-    - Identify free gaps (30+ minutes) between fixed events
-    - Cross-reference with email digest, PRIORITIES, GOALS, INTERESTS, **and vault tasks**
-    - Suggest 3-5 activities for those gaps with emoji prefixes (see day-planner skill)
-    - Include at least 1 vault task (📋) from the priority-scored results
-    - End with **"Anything you'd swap or skip?"** to invite negotiation
-  - This turns the briefing into a conversation. Don't create any events yet — wait for Marvin's response.
-- **Afternoon:** Check-in format:
-  - Show remaining calendar events for today
-  - Reference the morning plan: "You planned X, Y, Z this morning — anything to adjust for the rest of the day?"
-  - Only suggest new activities if significant free time remains
-
-### *3. Vault tasks
-- **Morning:** Full vault task surfacing:
-  - From the vault search in step 7 above, read the frontmatter of matched files
-  - Filter for `type: task`, `status: active`, sort by `priority` descending
-  - Surface the top 2-3 tasks with `priority >= 7` and `actionability: clear` — weave them into the day plan with 📋 emoji
-  - If any tasks have `suggested_status: stale`, flag them: "This task might be stale — want to dismiss it?"
-  - Fallback if no priority field: `grep -rli 'type: task' /workspace/vault/notes/ | head -20` then check tags
-  - If vault is empty, say so briefly
-- **Afternoon:** Only mention vault tasks if new tasks were scored since the morning briefing (check `prioritise-tasks.py` last run). Otherwise skip this section.
-
-### 3.5 Tasks triage announcement (morning only)
-
-**Skip this section entirely during afternoon sessions.**
+## Step 1: Read inputs
 
 Run in the sandbox:
-```bash
-cat /workspace/tasks-triage-pending.json 2>/dev/null || echo '{"needs_triage": 0}'
-```
 
-- If the file exists and `needs_triage > 0`:
-  - Announce: "I picked up **{total_classified} tasks** overnight. **{needs_triage} need your input** — cryptic notes I couldn't confidently classify."
-  - Ask: "When's good for a 15-min triage session? I'll send a calendar invite."
-  - Wait for Marvin's reply with a time
-  - Create the invite:
-    ```bash
-    python3 /workspace/calendar-helper.py create-event --summary "Jimbo: Tasks Triage" --start <ISO_TIME> --end <ISO_TIME+15min> --description "Triage ambiguous vault tasks from today's sweep"
-    ```
-  - Confirm: "Booked — I'll walk you through them at [time]."
-- If the file is missing or `needs_triage` is 0: skip this section silently
+1. `cat /workspace/briefing-input.json`
+2. `cat /workspace/briefing-analysis.json 2>/dev/null || echo 'null'`
+3. `cat /workspace/SOUL.md`
 
-### *4. Email highlights (NOT just subject lines)
-- Read `/workspace/email-digest.json` (key: `items`, each has `sender`, `subject`, `body_snippet`)
-- If fresh (< 24h): scan for time-sensitive items FIRST (overdue payments, expiring deals, event deadlines, personal replies)
-- Then pick 2-3 genuinely interesting items based on PRIORITIES.md, GOALS.md, and INTERESTS.md
-- **Explain WHY each matters** — "Buenos Aires flight dropped to £632 — you were tracking this" is good. Just listing a subject line is lazy.
-- **You know Marvin.** You have his interests, priorities, goals, and taste. Don't hedge with "if that's your thing" or "if you're interested" — you already know what he's interested in. Be confident. Say "you'll want to read this" not "if politics is your thing".
-- Filter out promotional junk that survived the blacklist — if it's a loyalty scheme, promo, or newsletter with no real content, skip it
-- If stale: "Your email digest is from [date] — might be outdated"
-- If missing: "No email digest today"
+If `briefing-input.json` is missing or older than 4 hours, say: "Pipeline hasn't run yet today. Ask me to check email if you want a manual scan."
 
-### 5. Recommendation follow-ups
-- Run `python3 /workspace/recommendations-helper.py list --urgency time-sensitive --status surfaced --days 7`
-- If any results: "Reminder: [title] expires [date] — still unread"
-- Keep to 1-2 lines
+If `briefing-analysis.json` exists and is less than 2 hours old, you are in **Opus-assisted mode** — the hard thinking is done. Your job is to deliver it in your voice.
 
-### 6. Email quick stats
-- Total emails, brief summary
-- Say "ask me about email for the full rundown" for details
+If `briefing-analysis.json` is missing or stale, you are in **self-compose mode** — build the day plan yourself from the raw data.
 
-### 7. Priority reminders
-- Check PRIORITIES.md for anything due or active
-- Only mention 1-2 things that haven't already been covered in the day plan
+## Step 2: Compose the briefing
 
-### 8. Context freshness
-- The context-helper.py output from steps 4-6 includes a `Last updated:` line at the bottom with the date
-- Use THAT date (from the API), NOT the file modification time of the backup markdown files
-- If PRIORITIES hasn't been updated in more than 10 days, nudge: "Your priorities are [N] days old — worth a quick review via the site?"
-- If GOALS hasn't been updated in more than 45 days, nudge similarly
-- Only mention stale files, skip if fresh
+### HARD RULES (both modes)
 
-### 8.5 Context health check
+- **Calendar contains ONLY events from briefing-input.json.** Do not add, infer, or fabricate any events. If there are 4 events, show 4 events. If there are 0 events, say "nothing on the calendar today."
+- **Email highlights come from the gems array.** Do not re-triage the digest yourself.
+- **Report pipeline failures honestly.** If `pipeline.triage.status` is `"failed"`, say so: "Email triage didn't run today — highlights may be incomplete."
 
-Review the structured fields in the priorities and goals output (the `[status | category | timeframe | expires DATE]` metadata lines). Check for:
+### Opus-assisted mode
 
-1. **Active priority count** — if more than N items show `[active]`, note this in the briefing: "You have {N} active priorities — consider pausing something."
-2. **Expiring soon** — any item with `expires {date}` where date is within N days: "Heads up: {item} expires in {N} days."
-3. **Stale priorities** — any active priority that hasn't appeared in recent vault tasks or activity logs for N+ days: "Haven't seen activity on {item} recently — still active?"
+Use the `briefing-analysis.json` data:
+- Present the `day_plan` entries as time-blocked suggestions with the reasoning
+- Present `email_highlights` with the editorial commentary
+- If `surprise` is not null, present it
+- Use `editorial_voice` to set your tone
+- Rewrite everything in your own voice (SOUL.md personality) — don't just dump the JSON
 
-Read threshold settings if available:
-```bash
-python3 /workspace/settings-helper.py get max_active_priorities --default 5
-python3 /workspace/settings-helper.py get expiry_warning_days --default 14
-python3 /workspace/settings-helper.py get stale_priority_days --default 14
-```
+### Self-compose mode
 
-Present findings conversationally — this isn't a report, it's a nudge. If everything looks healthy, skip this section silently.
+Build from `briefing-input.json`:
+- **Calendar:** List events chronologically. Flag anything in the next 2 hours.
+- **Day plan:** Identify free gaps between events. Cross-reference gems and vault_tasks. Suggest 3-5 activities with reasoning.
+- **Email highlights:** Pick the top 3-5 gems by confidence. Explain WHY each matters.
+- **Vault tasks:** Surface the top 2-3 from `vault_tasks` array. Weave into the day plan.
+- **Surprise game (afternoon only):** Pick the best `surprise_candidate: true` gem, or make your own connection.
 
-### 9. Heartbeat tasks
-- Read `/workspace/HEARTBEAT.md`
-- If there are pending checks, mention briefly
-- If nothing due, skip this section
+### Both modes
 
-## Presentation format
+- **Morning:** Full day plan. End with "Anything you'd swap or skip?"
+- **Afternoon:** Rescue framing. What's left today? What changed since morning? What to let go of?
+- If `triage_pending > 0` and morning: "I picked up **{triage_pending} tasks** that need your input. When's good for a 15-min triage?"
+- Keep it scannable — under 1 minute to read.
 
-Keep the briefing concise — the day plan proposal adds a few lines but the total should still be scannable in under a minute. Example:
+## Step 3: Log (MANDATORY)
 
-```
-Morning, Marvin. It's Thursday 20 Feb.
-
-Fixed: Dentist at 10:30, Spoons standup at 16:00.
-
-I'd suggest:
-  🔨 09:00-10:00 — Spoons PR review (4 days overdue)
-  📧 11:30-12:00 — Chase Daniel about DisplayLink
-  📋 14:00-15:30 — LocalShout: review auth flow notes (from your vault)
-  💰 15:30-16:00 — YNAB setup (keeps slipping)
-
-Anything you'd swap or skip?
-
-Heads up: Anjuna fabric event — tickets might go fast.
-
-Email: 145 messages overnight, ~25 min queued. Standouts: strong UnHerd piece, Watford FC ticket alert.
-
-Heartbeat: All clear — digest is fresh, tokens valid.
-```
-
-### 10. Cost snapshot
-- Run `python3 /workspace/cost-tracker.py budget --check`
-- If a budget is set: show a one-liner like "Costs: $0.42 of $10 this month (4.2%)"
-- If over alert threshold: flag it clearly
-- If no budget set, skip this section
-
-### 11. OpenRouter balance
-- Run `python3 /workspace/openrouter-usage.py balance`
-- If balance is below $5 or daily burn rate exceeds $1: include in the briefing (e.g. "OpenRouter: $3.20 remaining")
-- If balance is below $1: flag prominently and suggest `./scripts/model-swap.sh daily` or `free`
-- If the script fails or env var is missing, skip silently
-
-## After the briefing
-
-Log the briefing to both trackers. This is MANDATORY — the daily accountability check at 20:00 UTC reads these logs to verify the briefing ran and what it covered.
+After delivering the briefing, always run both:
 
 ```bash
-python3 /workspace/cost-tracker.py log --provider <provider> --model <model> --task briefing --input-tokens <est> --output-tokens <est>
-python3 /workspace/activity-log.py log --task briefing \
-    --description "<Morning|Afternoon> briefing: <brief summary of key points>" \
-    --outcome "<success|partial|fallback>" \
-    --rationale "Session: <morning|afternoon>. Components: calendar=<ok|failed>, email=<ok|stale|missing>, vault=<N tasks surfaced|empty|skipped>, surprise=<played|skipped>" \
-    --model <model>
+python3 /workspace/experiment-tracker.py log \
+    --task briefing-synthesis \
+    --model <your-model> \
+    --input-tokens <est> --output-tokens <est> \
+    --session <morning|afternoon> \
+    --conductor-rating <1-10> \
+    --conductor-reasoning '{"mode": "<opus-assisted|self-compose>", "gems_used": <N>, "calendar_events": <N>}'
+
+python3 /workspace/activity-log.py log \
+    --task briefing \
+    --description "<Morning|Afternoon> briefing: <brief summary>" \
+    --outcome "<success|partial>" \
+    --rationale "mode=<opus-assisted|self-compose>, calendar=<N events>, email=<N gems>, vault=<N tasks>" \
+    --model <your-model>
 ```
-
-Use "Morning briefing:" or "Afternoon briefing:" in the description. The `--rationale` field is what the accountability checker uses to verify each component ran. Be specific — "vault=3 tasks surfaced" is better than "vault=ok".
-
-## Rules
-
-- Be concise — this is a glance, not a deep dive
-- Lead with anything time-sensitive or actionable
-- Don't list every queued email — pick the 2-3 best based on his context
-- If all sources are empty/missing, just greet and say "Nothing pressing today"
-- Match Jimbo's personality from SOUL.md
