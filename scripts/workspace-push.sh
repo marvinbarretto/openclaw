@@ -156,5 +156,13 @@ if [ "$CONTEXT_COUNT" -gt 0 ]; then
 fi
 
 
+# Fix ownership — macOS rsync preserves uid 501 (Mac user) which breaks
+# openclaw (uid 1000) on VPS. Single SSH call via multiplexed connection.
+if [[ -z "$DRY_RUN" ]]; then
+    echo ""
+    echo "Fixing ownership..."
+    ssh jimbo "chown -R openclaw:openclaw /home/openclaw/.openclaw/workspace/"
+fi
+
 echo ""
 echo "Done. Changes take effect on Jimbo's next session (no restart needed)."

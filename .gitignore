@@ -17,6 +17,10 @@ data/recommendations.db
 # Cost + activity tracking DBs (live on VPS, never commit)
 workspace/cost-tracker.db
 workspace/activity-log.db
+workspace/experiment-tracker.db
+
+# Briefing pipeline runtime data (generated, never commit)
+workspace/briefing-input.json
 
 # Generated status export (rebuilt by export-status.py)
 workspace/jimbo-status.json
