@@ -224,6 +224,9 @@ class BaseWorker:
             content = load_context_file(filename)
             if content:
                 context[filename] = content
+                sys.stderr.write(f"[{self.task_id}] context loaded: {filename} ({len(content)} chars)\n")
+            else:
+                sys.stderr.write(f"[{self.task_id}] context missing: {filename}\n")
         return context
 
     def call(self, prompt, system=None, model=None):

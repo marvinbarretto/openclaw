@@ -44,11 +44,24 @@ def build_triage_prompt(emails, context, categories=None):
             f"Labels: {', '.join(email.get('labels', []))}\n"
         )
 
-    return f"""You are an email triage assistant. Your job is to classify and rank emails by relevance. Most emails are junk — be ruthless.
+    # Build calibration block if EMAIL_EXAMPLES.md is in context
+    calibration_block = ""
+    if "EMAIL_EXAMPLES.md" in context:
+        calibration_block = f"""
+# Calibration Examples
+
+Use the EMAIL_EXAMPLES below to calibrate your scoring. These show how Marvin actually evaluates emails — what he considers high value, medium value, and skip-worthy. Match your triage decisions to these patterns.
+
+{context.get("EMAIL_EXAMPLES.md", "")}
+"""
+
+    min_shortlist = max(3, len(emails) // 10)
+
+    return f"""You are an email triage assistant. Your job is to classify and rank emails by relevance.
 
 # Marvin's Context
 {context_block}
-
+{calibration_block}
 # Emails to Triage ({len(emails)} total)
 {emails_block}
 
@@ -71,7 +84,7 @@ Each shortlist item must have:
 - "time_sensitive": boolean
 - "deadline": ISO date string if time-sensitive, otherwise null
 
-Be ruthlessly selective. There is no target number — if only 5 emails from a batch of 50 are genuinely worth reading, return 5. Most emails are marketing, generic notifications, or low-value noise. Only shortlist things that pass the "would Marvin regret missing this?" test.
+**Target shortlist rate: 10-20% of the batch.** For {len(emails)} emails, aim for {len(emails) // 10}-{len(emails) // 5} items. You must shortlist at least {min_shortlist} emails unless the batch is truly all junk (automated notifications, receipts, spam). Newsletters, personal emails, events, and deals almost always deserve a spot. Only skip genuine noise.
 
 Respond with ONLY the JSON object, no markdown fences, no explanation."""
 
@@ -95,9 +108,15 @@ class EmailTriageWorker(BaseWorker):
         total_output_tokens = 0
 
         # Process in batches
+        num_batches = (len(items) + batch_size - 1) // batch_size
+        sys.stderr.write(f"[email-triage] processing {len(items)} emails in {num_batches} batch(es)\n")
+
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
+            batch_num = i // batch_size + 1
             prompt = build_triage_prompt(batch, context, categories=categories)
+
+            sys.stderr.write(f"[email-triage] batch {batch_num}/{num_batches}: {len(batch)} emails, prompt {len(prompt)} chars\n")
 
             result = self.call(prompt)
             total_input_tokens += result["input_tokens"]
@@ -107,14 +126,17 @@ class EmailTriageWorker(BaseWorker):
                 parsed = json.loads(result["text"])
                 batch_shortlist = parsed.get("shortlist", [])
                 all_shortlisted.extend(batch_shortlist)
+                sys.stderr.write(f"[email-triage] batch {batch_num}: {len(batch_shortlist)} shortlisted\n")
             except json.JSONDecodeError:
-                sys.stderr.write(f"Failed to parse batch {i // batch_size + 1} response as JSON\n")
+                sys.stderr.write(f"[email-triage] batch {batch_num}: failed to parse response as JSON\n")
                 continue
 
         # Re-rank across all batches
         all_shortlisted.sort(key=lambda x: x.get("rank", 999))
         for idx, item in enumerate(all_shortlisted):
             item["rank"] = idx + 1
+
+        sys.stderr.write(f"[email-triage] total: {len(all_shortlisted)} shortlisted, {len(items) - len(all_shortlisted)} skipped\n")
 
         output = {
             "shortlist": all_shortlisted,
