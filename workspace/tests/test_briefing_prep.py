@@ -123,3 +123,17 @@ def test_run_step_captures_timeout():
     )
     assert ok is False
     assert status["status"] == "timeout"
+
+
+# --- Activity logging tests ---
+
+def test_pipeline_calls_activity_log(tmp_path, monkeypatch):
+    """briefing-prep.py must log to activity-log.py after a pipeline run."""
+    assert hasattr(briefing_prep, "log_to_activity"), \
+        "briefing-prep.py must have a log_to_activity function"
+
+    import inspect
+    sig = inspect.signature(briefing_prep.log_to_activity)
+    params = list(sig.parameters.keys())
+    assert "session" in params, "log_to_activity must accept 'session'"
+    assert "pipeline_status" in params, "log_to_activity must accept 'pipeline_status'"

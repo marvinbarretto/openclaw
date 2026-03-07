@@ -58,47 +58,41 @@ def query_db(db_path, sql, params=()):
 
 
 def check_briefing_ran():
-    """Did morning + afternoon briefing-synthesis runs log today?"""
+    """Did morning + afternoon briefing-prep pipeline runs log today?"""
+    # Check pipeline runs (briefing-prep, logged by cron — reliable)
     rows = query_db(
         TRACKER_DB,
-        "SELECT * FROM runs WHERE task_id = 'briefing-synthesis' AND timestamp LIKE ?",
+        "SELECT * FROM runs WHERE task_id = 'briefing-prep' AND timestamp LIKE ?",
         (f"{today_str()}%",),
     )
     if not rows:
-        return False, "briefing did not run"
+        return False, "briefing pipeline did not run"
 
-    # Classify by session — rows without session value count as morning
+    # Classify by session
     morning_rows = [r for r in rows if (r.get("session") or "morning") == "morning"]
     afternoon_rows = [r for r in rows if r.get("session") == "afternoon"]
 
     parts = []
 
-    # Morning
     if morning_rows:
-        reasoning = (morning_rows[-1].get("conductor_reasoning") or "").lower()
-        rating = morning_rows[-1].get("conductor_rating")
-        if "fallback" in reasoning:
-            parts.append("morning FALLBACK")
-        elif rating:
-            parts.append(f"morning ran (rating {rating})")
+        summary = morning_rows[-1].get("output_summary") or ""
+        if "failed" in summary:
+            parts.append("morning pipeline PARTIAL")
         else:
-            parts.append("morning ran")
+            parts.append("morning pipeline ran")
     else:
-        parts.append("morning missing")
+        parts.append("morning pipeline missing")
 
     # Afternoon — only flag missing after 16:00 UTC
     current_hour = now_utc().hour
     if afternoon_rows:
-        reasoning = (afternoon_rows[-1].get("conductor_reasoning") or "").lower()
-        rating = afternoon_rows[-1].get("conductor_rating")
-        if "fallback" in reasoning:
-            parts.append("afternoon FALLBACK")
-        elif rating:
-            parts.append(f"afternoon ran (rating {rating})")
+        summary = afternoon_rows[-1].get("output_summary") or ""
+        if "failed" in summary:
+            parts.append("afternoon pipeline PARTIAL")
         else:
-            parts.append("afternoon ran")
+            parts.append("afternoon pipeline ran")
     elif current_hour >= 16:
-        parts.append("afternoon missing")
+        parts.append("afternoon pipeline missing")
 
     any_missing = any("missing" in p for p in parts)
     return not any_missing, ", ".join(parts)

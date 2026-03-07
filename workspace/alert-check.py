@@ -118,7 +118,7 @@ def check_digest():
 
 
 def check_briefing():
-    """Check experiment-tracker.db for morning + afternoon briefing runs. Returns (ok, summary)."""
+    """Check experiment-tracker.db for morning + afternoon briefing-prep pipeline runs. Returns (ok, summary)."""
     current_hour = now_utc().hour
 
     if not os.path.exists(TRACKER_DB_PATH):
@@ -142,7 +142,7 @@ def check_briefing():
 
     try:
         rows = db.execute(
-            "SELECT session, conductor_rating FROM runs WHERE task_id = 'briefing-synthesis' AND timestamp LIKE ?",
+            "SELECT session, output_summary FROM runs WHERE task_id = 'briefing-prep' AND timestamp LIKE ?",
             (f"{today}%",),
         ).fetchall()
         db.close()
@@ -155,8 +155,11 @@ def check_briefing():
 
         # Morning status
         if morning_rows:
-            rating = morning_rows[-1]["conductor_rating"]
-            parts.append(f"morning: ran (rating {rating})" if rating else "morning: ran")
+            summary_text = morning_rows[-1]["output_summary"] or ""
+            if "failed" in summary_text:
+                parts.append("morning: partial")
+            else:
+                parts.append("morning: ran")
         elif current_hour < BRIEFING_GRACE_HOUR:
             parts.append("morning: pending")
         else:
@@ -165,8 +168,11 @@ def check_briefing():
         # Afternoon status (only if enabled)
         if AFTERNOON_ENABLED:
             if afternoon_rows:
-                rating = afternoon_rows[-1]["conductor_rating"]
-                parts.append(f"afternoon: ran (rating {rating})" if rating else "afternoon: ran")
+                summary_text = afternoon_rows[-1]["output_summary"] or ""
+                if "failed" in summary_text:
+                    parts.append("afternoon: partial")
+                else:
+                    parts.append("afternoon: ran")
             elif current_hour < AFTERNOON_GRACE_HOUR:
                 parts.append("afternoon: pending")
             else:

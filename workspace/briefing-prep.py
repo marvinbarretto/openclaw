@@ -24,6 +24,7 @@ import time
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
 TRACKER_SCRIPT = os.path.join(_script_dir, "experiment-tracker.py")
+ACTIVITY_LOG_SCRIPT = os.path.join(_script_dir, "activity-log.py")
 OUTPUT_PATH = os.path.join(_script_dir, "briefing-input.json")
 
 
@@ -57,6 +58,37 @@ def log_to_tracker(session, pipeline_status, duration_ms):
         ], timeout=10)
     except Exception as e:
         sys.stderr.write(f"Tracker log failed: {e}\n")
+
+
+def log_to_activity(session, pipeline_status):
+    """Log pipeline completion to activity-log."""
+    fetch = pipeline_status.get("email_fetch", {})
+    reader = pipeline_status.get("reader", {})
+    cal = pipeline_status.get("calendar", {})
+    vault = pipeline_status.get("vault", {})
+
+    email_count = fetch.get("count", 0)
+    gem_count = reader.get("gems", 0)
+    event_count = cal.get("events", 0)
+    task_count = vault.get("tasks", 0)
+
+    label = "Morning" if session == "morning" else "Afternoon"
+    any_failed = any(
+        v.get("status") in ("failed", "timeout", "error")
+        for v in pipeline_status.values()
+    )
+    outcome = "partial" if any_failed else "success"
+
+    try:
+        subprocess.run([
+            sys.executable, ACTIVITY_LOG_SCRIPT, "log",
+            "--task", "briefing",
+            "--description", f"{label} pipeline: {email_count} emails, {gem_count} gems, {event_count} events, {task_count} vault tasks",
+            "--outcome", outcome,
+            "--rationale", f"session={session}, pipeline-driven (ADR-042)",
+        ], timeout=10)
+    except Exception as e:
+        sys.stderr.write(f"Activity log failed: {e}\n")
 
 
 def run_step(name, cmd, env=None, timeout=120):
@@ -215,6 +247,7 @@ def run_pipeline(session, dry_run=False):
 
     # --- Log and alert ---
     log_to_tracker(session, pipeline_status, duration_ms)
+    log_to_activity(session, pipeline_status)
     send_status_alert(session, pipeline_status, duration_ms)
 
     return output
