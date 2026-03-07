@@ -190,7 +190,7 @@ def run_pipeline(session, dry_run=False):
     if not dry_run:
         result = subprocess.run(
             [sys.executable, os.path.join(_script_dir, "calendar-helper.py"),
-             "list-events", "--days", "1"],
+             "list-events", "--days", "1", "--primary-only"],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:

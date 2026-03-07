@@ -136,10 +136,16 @@ def cmd_list_events(access_token, args):
 
     calendar_ids = [args.calendar_id] if args.calendar_id else None
 
-    # If no calendar specified, get all calendars
+    # If no calendar specified, get calendars (optionally filtered)
     if calendar_ids is None:
         cal_list = api_request(access_token, "users/me/calendarList")
-        calendar_ids = [c["id"] for c in cal_list.get("items", [])]
+        if args.primary_only:
+            calendar_ids = [
+                c["id"] for c in cal_list.get("items", [])
+                if c.get("primary") or c.get("accessRole") == "owner"
+            ]
+        else:
+            calendar_ids = [c["id"] for c in cal_list.get("items", [])]
 
     all_events = []
     for cal_id in calendar_ids:
@@ -154,11 +160,35 @@ def cmd_list_events(access_token, args):
         })
         result = api_request(access_token, f"calendars/{encoded_id}/events?{params}")
         for event in result.get("items", []):
+            summary = event.get("summary", "(no title)")
+
+            # Skip cancelled events
+            if event.get("status") == "cancelled":
+                continue
+            if "CANCELED" in summary.upper():
+                continue
+
+            start_raw = event.get("start", {})
+            end_raw = event.get("end", {})
+            start_val = start_raw.get("dateTime", start_raw.get("date", ""))
+            end_val = end_raw.get("dateTime", end_raw.get("date", ""))
+
+            # Skip multi-day all-day events (exhibitions, festivals)
+            is_all_day = "date" in start_raw and "dateTime" not in start_raw
+            if is_all_day and start_val and end_val:
+                try:
+                    s = datetime.date.fromisoformat(start_val)
+                    e = datetime.date.fromisoformat(end_val)
+                    if (e - s).days > 1:
+                        continue
+                except ValueError:
+                    pass
+
             all_events.append({
                 "calendar": cal_id,
-                "summary": event.get("summary", "(no title)"),
-                "start": event.get("start", {}).get("dateTime", event.get("start", {}).get("date", "")),
-                "end": event.get("end", {}).get("dateTime", event.get("end", {}).get("date", "")),
+                "summary": summary,
+                "start": start_val,
+                "end": end_val,
                 "location": event.get("location", ""),
                 "status": event.get("status", ""),
                 "html_link": event.get("htmlLink", ""),
@@ -314,6 +344,7 @@ def main():
     le = subparsers.add_parser("list-events", help="List upcoming events")
     le.add_argument("--days", type=int, default=1, help="Number of days ahead (default: 1)")
     le.add_argument("--calendar-id", default=None, help="Specific calendar ID (default: all)")
+    le.add_argument("--primary-only", action="store_true", help="Only owner/primary calendars (skip subscribed feeds)")
 
     # check-conflicts
     cc = subparsers.add_parser("check-conflicts", help="Check for scheduling conflicts")
