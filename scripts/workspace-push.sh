@@ -7,7 +7,7 @@
 #   workspace/workers/               →  /workspace/workers/  (orchestrator worker scripts)
 #   workspace/tasks/                 →  /workspace/tasks/    (task registry configs)
 #   workspace/tests/                 →  /workspace/tests/    (worker test suite)
-#   context/*.md                     →  /workspace/context/  (interests, priorities, taste, goals)
+#   context/*.md                     →  /workspace/context/  (taste, preferences, patterns, backup)
 #
 # NOTE: Vault notes are NOT pushed. VPS is the source of truth for vault
 # data — the tasks sweep creates notes there, and prioritise-tasks.py
