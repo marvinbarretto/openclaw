@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# List all custom Claude Code skills in .claude/commands/
+# List all custom Claude Code skills from ~/.claude/commands/
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMMANDS_DIR="$REPO_ROOT/.claude/commands"
+COMMANDS_DIR="$HOME/.claude/commands"
 
 if [ ! -d "$COMMANDS_DIR" ]; then
-    echo "No skills directory found at .claude/commands/"
+    echo "No skills directory found at ~/.claude/commands/"
     exit 1
 fi
 
