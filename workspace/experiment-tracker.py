@@ -2,7 +2,7 @@
 """
 Experiment tracker for Jimbo's orchestrator.
 
-SQLite-backed logging of every worker run — task, model, tokens, cost,
+API-backed logging of every worker run — task, model, tokens, cost,
 quality scores, conductor ratings, user ratings. Supports comparison
 queries across models and time periods.
 
@@ -19,21 +19,14 @@ Usage:
 """
 
 import argparse
-import datetime
 import hashlib
 import json
 import os
-import sqlite3
 import sys
 import urllib.request
 import urllib.error
-import uuid
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get(
-    "EXPERIMENT_TRACKER_DB",
-    os.path.join(_script_dir, "experiment-tracker.db"),
-)
 
 
 def get_setting(key, default):
@@ -48,6 +41,19 @@ def get_setting(key, default):
             return type(default)(data.get("value", default))
     except Exception:
         return default
+
+
+def api_request(method, path, body=None):
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
 
 
 # Cost rates per 1M tokens (USD)
@@ -65,76 +71,6 @@ COST_RATES = {
     "claude-sonnet-4.6": {"input": 3.00, "output": 15.00},
     "claude-opus-4.6": {"input": 15.00, "output": 75.00},
 }
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS runs (
-    run_id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL,
-    parent_run_id TEXT,
-    timestamp TEXT NOT NULL,
-    model TEXT NOT NULL,
-    config_hash TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    cost_usd REAL,
-    duration_ms INTEGER,
-    input_summary TEXT,
-    output_summary TEXT,
-    quality_scores TEXT,
-    conductor_rating INTEGER,
-    user_rating INTEGER,
-    user_notes TEXT,
-    conductor_reasoning TEXT,
-    config_snapshot TEXT,
-    session TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
-CREATE INDEX IF NOT EXISTS idx_runs_task_id ON runs(task_id);
-CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model);
-CREATE INDEX IF NOT EXISTS idx_runs_parent ON runs(parent_run_id);
-
-CREATE TABLE IF NOT EXISTS games (
-    game_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    created TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS game_rounds (
-    round_id TEXT PRIMARY KEY,
-    game_id TEXT NOT NULL,
-    run_id TEXT,
-    timestamp TEXT NOT NULL,
-    jimbo_play TEXT,
-    outcome TEXT,
-    jimbo_score INTEGER,
-    marvin_score INTEGER,
-    notes TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_rounds_game ON game_rounds(game_id);
-CREATE INDEX IF NOT EXISTS idx_rounds_timestamp ON game_rounds(timestamp);
-"""
-
-
-def get_db():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    db.executescript(SCHEMA)
-    # Migrate: add session column if missing (existing DBs pre-ADR-040)
-    try:
-        db.execute("ALTER TABLE runs ADD COLUMN session TEXT")
-        db.commit()
-    except sqlite3.OperationalError:
-        pass  # column already exists
-    return db
-
-
-def generate_run_id():
-    return "run_" + uuid.uuid4().hex[:8]
-
-
-def now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 def estimate_cost(model, input_tokens, output_tokens):
@@ -160,171 +96,112 @@ def config_hash(task_id):
 # ---------------------------------------------------------------------------
 
 def cmd_log(args):
-    db = get_db()
-    run_id = generate_run_id()
     cost = estimate_cost(args.model, args.input_tokens, args.output_tokens)
     c_hash = config_hash(args.task)
 
-    db.execute(
-        """INSERT INTO runs
-           (run_id, task_id, parent_run_id, timestamp, model, config_hash,
-            input_tokens, output_tokens, cost_usd, duration_ms,
-            input_summary, output_summary, quality_scores,
-            conductor_rating, conductor_reasoning, config_snapshot,
-            session)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            run_id, args.task, getattr(args, "parent_run", None),
-            now_iso(), args.model, c_hash,
-            args.input_tokens, args.output_tokens, cost,
-            getattr(args, "duration", None),
-            getattr(args, "input_summary", None),
-            getattr(args, "output_summary", None),
-            getattr(args, "quality", None),
-            getattr(args, "conductor_rating", None),
-            getattr(args, "conductor_reasoning", None),
-            None,
-            getattr(args, "session", None),
-        ),
-    )
-    db.commit()
-    db.close()
+    body = {
+        "task_id": args.task,
+        "model": args.model,
+        "input_tokens": args.input_tokens,
+        "output_tokens": args.output_tokens,
+        "cost_usd": cost,
+    }
+    if c_hash:
+        body["config_hash"] = c_hash
+    if args.parent_run:
+        body["parent_run_id"] = args.parent_run
+    if args.duration is not None:
+        body["duration_ms"] = args.duration
+    if args.input_summary:
+        body["input_summary"] = args.input_summary
+    if args.output_summary:
+        body["output_summary"] = args.output_summary
+    if args.quality:
+        body["quality_scores"] = args.quality
+    if args.conductor_rating is not None:
+        body["conductor_rating"] = args.conductor_rating
+    if args.conductor_reasoning:
+        body["conductor_reasoning"] = args.conductor_reasoning
+    if args.session:
+        body["session"] = args.session
 
-    print(json.dumps({"status": "ok", "run_id": run_id, "cost_usd": cost}))
+    try:
+        result = api_request("POST", "/api/experiments", body)
+        print(json.dumps({"status": "ok", "run_id": result["run_id"], "cost_usd": cost}))
+    except urllib.error.HTTPError as e:
+        error = json.loads(e.read().decode()) if e.readable() else {"error": str(e)}
+        print(json.dumps({"status": "error", "message": error.get("error", str(e))}), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_runs(args):
-    db = get_db()
-    rows = db.execute(
-        "SELECT * FROM runs WHERE task_id = ? ORDER BY timestamp DESC LIMIT ?",
-        (args.task, args.last),
-    ).fetchall()
-    db.close()
-    print(json.dumps([dict(r) for r in rows], indent=2))
+    try:
+        result = api_request("GET", f"/api/experiments?task={args.task}&last={args.last}")
+        print(json.dumps(result.get("runs", []), indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_compare(args):
-    db = get_db()
-    cutoff = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(days=args.days)
-    ).isoformat()
-
-    query = """
-        SELECT model,
-               COUNT(*) as run_count,
-               ROUND(AVG(conductor_rating), 1) as avg_conductor_rating,
-               ROUND(AVG(user_rating), 1) as avg_user_rating,
-               ROUND(SUM(cost_usd), 4) as total_cost,
-               ROUND(AVG(cost_usd), 4) as avg_cost_per_run,
-               ROUND(AVG(input_tokens), 0) as avg_input_tokens,
-               ROUND(AVG(output_tokens), 0) as avg_output_tokens
-        FROM runs
-        WHERE task_id = ? AND timestamp >= ?
-    """
-    params = [args.task, cutoff]
-
-    if args.models:
-        model_list = [m.strip() for m in args.models.split(",")]
-        placeholders = ",".join("?" * len(model_list))
-        query += f" AND model IN ({placeholders})"
-        params.extend(model_list)
-
-    query += " GROUP BY model ORDER BY avg_conductor_rating DESC"
-    rows = db.execute(query, params).fetchall()
-    db.close()
-    print(json.dumps({
-        "task": args.task, "days": args.days,
-        "models": [dict(r) for r in rows],
-    }, indent=2))
+    try:
+        result = api_request("GET", f"/api/experiments/stats?days={args.days}")
+        # Filter by task if the API returns all tasks
+        by_model = result.get("by_model", [])
+        print(json.dumps({
+            "task": args.task,
+            "days": args.days,
+            "models": by_model,
+        }, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_rate(args):
-    db = get_db()
-    row = db.execute("SELECT run_id FROM runs WHERE run_id = ?", (args.run_id,)).fetchone()
-    if not row:
-        print(json.dumps({"status": "error", "message": f"Run {args.run_id} not found"}))
-        db.close()
-        sys.exit(1)
+    body = {"user_rating": args.user_rating}
+    if args.notes:
+        body["user_notes"] = args.notes
 
-    db.execute(
-        "UPDATE runs SET user_rating = ?, user_notes = ? WHERE run_id = ?",
-        (args.user_rating, args.notes, args.run_id),
-    )
-    db.commit()
-    db.close()
-    print(json.dumps({"status": "ok", "run_id": args.run_id, "user_rating": args.user_rating}))
+    try:
+        result = api_request("PUT", f"/api/experiments/{args.run_id}/rate", body)
+        print(json.dumps({"status": "ok", "run_id": result["run_id"], "user_rating": result.get("user_rating")}))
+    except urllib.error.HTTPError as e:
+        error = json.loads(e.read().decode()) if e.readable() else {"error": str(e)}
+        print(json.dumps({"status": "error", "message": error.get("error", str(e))}), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_stats(args):
-    db = get_db()
-    cutoff = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(days=args.days)
-    ).isoformat()
-
-    total = db.execute(
-        """SELECT COUNT(*) as runs, ROUND(SUM(cost_usd), 4) as total_cost,
-                  ROUND(AVG(conductor_rating), 1) as avg_conductor,
-                  ROUND(AVG(user_rating), 1) as avg_user
-           FROM runs WHERE timestamp >= ?""",
-        (cutoff,),
-    ).fetchone()
-
-    by_task = db.execute(
-        """SELECT task_id, COUNT(*) as runs, ROUND(SUM(cost_usd), 4) as cost,
-                  ROUND(AVG(conductor_rating), 1) as avg_quality
-           FROM runs WHERE timestamp >= ?
-           GROUP BY task_id ORDER BY runs DESC""",
-        (cutoff,),
-    ).fetchall()
-
-    by_model = db.execute(
-        """SELECT model, COUNT(*) as runs, ROUND(SUM(cost_usd), 4) as cost,
-                  ROUND(AVG(conductor_rating), 1) as avg_quality
-           FROM runs WHERE timestamp >= ?
-           GROUP BY model ORDER BY cost DESC""",
-        (cutoff,),
-    ).fetchall()
-
-    db.close()
-    print(json.dumps({
-        "period_days": args.days,
-        "totals": dict(total),
-        "by_task": [dict(r) for r in by_task],
-        "by_model": [dict(r) for r in by_model],
-    }, indent=2))
+    try:
+        result = api_request("GET", f"/api/experiments/stats?days={args.days}")
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_export(args):
-    db = get_db()
-    cutoff = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(days=args.days)
-    ).isoformat()
-
-    rows = db.execute(
-        "SELECT * FROM runs WHERE timestamp >= ? ORDER BY timestamp DESC",
-        (cutoff,),
-    ).fetchall()
-
-    stats = db.execute(
-        """SELECT task_id, model,
-                  COUNT(*) as runs, ROUND(SUM(cost_usd), 4) as cost,
-                  ROUND(AVG(conductor_rating), 1) as avg_conductor,
-                  ROUND(AVG(user_rating), 1) as avg_user
-           FROM runs WHERE timestamp >= ?
-           GROUP BY task_id, model""",
-        (cutoff,),
-    ).fetchall()
-
-    db.close()
-    print(json.dumps({
-        "generated_at": now_iso(),
-        "period_days": args.days,
-        "summary": [dict(s) for s in stats],
-        "runs": [dict(r) for r in rows],
-    }, indent=2))
+    try:
+        runs = api_request("GET", f"/api/experiments?last=1000")
+        stats = api_request("GET", f"/api/experiments/stats?days={args.days}")
+        print(json.dumps({
+            "period_days": args.days,
+            "summary": {
+                "by_task": stats.get("by_task", []),
+                "by_model": stats.get("by_model", []),
+            },
+            "runs": runs.get("runs", []),
+        }, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

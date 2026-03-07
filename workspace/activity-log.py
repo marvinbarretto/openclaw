@@ -2,7 +2,7 @@
 """
 Activity log for Jimbo's sandbox.
 
-SQLite-backed logging of everything Jimbo does — email checks, research,
+API-backed logging of everything Jimbo does — email checks, research,
 nudges, blog posts, chats. Supports satisfaction scoring by Marvin and
 export for dashboard consumption.
 
@@ -18,15 +18,11 @@ Usage:
 """
 
 import argparse
-import datetime
 import json
 import os
-import sqlite3
 import sys
-import uuid
-
-_script_dir = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(_script_dir, "activity-log.db")
+import urllib.request
+import urllib.error
 
 VALID_TASK_TYPES = (
     "email-check", "research", "nudge", "blog", "briefing",
@@ -34,47 +30,18 @@ VALID_TASK_TYPES = (
     "tasks-triage",
 )
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS activities (
-    id TEXT PRIMARY KEY,
-    timestamp TEXT NOT NULL,
-    task_type TEXT NOT NULL,
-    description TEXT NOT NULL,
-    outcome TEXT,
-    rationale TEXT,
-    model_used TEXT,
-    cost_id TEXT,
-    satisfaction INTEGER,
-    notes TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp);
-CREATE INDEX IF NOT EXISTS idx_activities_task_type ON activities(task_type);
-"""
 
-MIGRATE = """
--- Add rationale column if missing (idempotent)
-ALTER TABLE activities ADD COLUMN rationale TEXT;
-"""
-
-
-def get_db():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    db.executescript(SCHEMA)
-    # Migrate: add rationale column if it doesn't exist
-    try:
-        db.execute("SELECT rationale FROM activities LIMIT 0")
-    except sqlite3.OperationalError:
-        db.execute("ALTER TABLE activities ADD COLUMN rationale TEXT")
-    return db
-
-
-def generate_id():
-    return "act_" + uuid.uuid4().hex[:8]
-
-
-def now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def api_request(method, path, body=None):
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
 
 
 # ---------------------------------------------------------------------------
@@ -83,206 +50,117 @@ def now_iso():
 
 def cmd_log(args):
     """Log an activity."""
-    db = get_db()
+    if args.task not in VALID_TASK_TYPES:
+        print(json.dumps({"status": "error", "message": f"Invalid task type: {args.task}. Valid: {', '.join(VALID_TASK_TYPES)}"}))
+        sys.exit(1)
 
-    act_id = generate_id()
+    body = {
+        "task_type": args.task,
+        "description": args.description,
+    }
+    if args.outcome:
+        body["outcome"] = args.outcome
+    if args.rationale:
+        body["rationale"] = args.rationale
+    if args.model:
+        body["model_used"] = args.model
+    if args.cost_id:
+        body["cost_id"] = args.cost_id
 
-    db.execute(
-        """INSERT INTO activities
-           (id, timestamp, task_type, description, outcome, rationale, model_used, cost_id, satisfaction, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            act_id,
-            now_iso(),
-            args.task,
-            args.description,
-            args.outcome,
-            args.rationale,
-            args.model,
-            args.cost_id,
-            None,
-            args.notes,
-        ),
-    )
-    db.commit()
-    db.close()
-
-    print(json.dumps({
-        "status": "ok",
-        "id": act_id,
-        "action": "logged",
-    }))
+    try:
+        result = api_request("POST", "/api/activity", body)
+        print(json.dumps({
+            "status": "ok",
+            "id": result["id"],
+            "action": "logged",
+        }))
+    except urllib.error.HTTPError as e:
+        error = json.loads(e.read().decode()) if e.readable() else {"error": str(e)}
+        print(json.dumps({"status": "error", "message": error.get("error", str(e))}), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_rate(args):
     """Rate an activity (Marvin's satisfaction score)."""
-    db = get_db()
-
-    row = db.execute(
-        "SELECT id FROM activities WHERE id = ?", (args.id,)
-    ).fetchone()
-    if not row:
-        print(json.dumps({"status": "error", "message": f"Not found: {args.id}"}))
-        db.close()
-        sys.exit(1)
-
     if args.satisfaction < 1 or args.satisfaction > 5:
         print(json.dumps({"status": "error", "message": "Satisfaction must be 1-5"}))
-        db.close()
         sys.exit(1)
 
-    updates = ["satisfaction = ?"]
-    params = [args.satisfaction]
-
+    body = {"satisfaction": args.satisfaction}
     if args.notes:
-        updates.append("notes = ?")
-        params.append(args.notes)
+        body["notes"] = args.notes
 
-    params.append(args.id)
-    db.execute(
-        f"UPDATE activities SET {', '.join(updates)} WHERE id = ?",
-        params,
-    )
-    db.commit()
-    db.close()
-
-    print(json.dumps({
-        "status": "ok",
-        "id": args.id,
-        "action": "rated",
-        "satisfaction": args.satisfaction,
-    }))
+    try:
+        result = api_request("PUT", f"/api/activity/{args.id}/rate", body)
+        print(json.dumps({
+            "status": "ok",
+            "id": result["id"],
+            "action": "rated",
+            "satisfaction": result.get("satisfaction"),
+        }))
+    except urllib.error.HTTPError as e:
+        error = json.loads(e.read().decode()) if e.readable() else {"error": str(e)}
+        print(json.dumps({"status": "error", "message": error.get("error", str(e))}), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_list(args):
     """List recent activities."""
-    db = get_db()
-
-    conditions = []
     params = []
-
-    if args.task:
-        conditions.append("task_type = ?")
-        params.append(args.task)
-
     if args.days:
-        cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.days)).isoformat()
-        conditions.append("timestamp >= ?")
-        params.append(cutoff)
+        params.append(f"days={args.days}")
+    if args.task:
+        params.append(f"task={args.task}")
 
-    where = ""
-    if conditions:
-        where = "WHERE " + " AND ".join(conditions)
+    query = "&".join(params)
+    path = f"/api/activity?{query}" if query else "/api/activity"
 
-    limit = args.limit or 50
-    params.append(limit)
-
-    rows = db.execute(
-        f"SELECT * FROM activities {where} ORDER BY timestamp DESC LIMIT ?",
-        params,
-    ).fetchall()
-    db.close()
-
-    results = [dict(r) for r in rows]
-    print(json.dumps(results, indent=2))
+    try:
+        result = api_request("GET", path)
+        entries = result.get("entries", [])
+        if args.limit:
+            entries = entries[:args.limit]
+        print(json.dumps(entries, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_export(args):
     """Export activity data as JSON for dashboard consumption."""
-    db = get_db()
-    cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.days)).isoformat()
+    try:
+        result = api_request("GET", f"/api/activity?days={args.days}")
+        stats = api_request("GET", f"/api/activity/stats?days={args.days}")
 
-    rows = db.execute(
-        "SELECT * FROM activities WHERE timestamp >= ? ORDER BY timestamp DESC",
-        (cutoff,),
-    ).fetchall()
-
-    # By task type
-    task_rows = db.execute(
-        """SELECT task_type, COUNT(*) as count
-           FROM activities WHERE timestamp >= ? GROUP BY task_type ORDER BY count DESC""",
-        (cutoff,),
-    ).fetchall()
-
-    # By day
-    day_rows = db.execute(
-        """SELECT DATE(timestamp) as day, COUNT(*) as count
-           FROM activities WHERE timestamp >= ? GROUP BY DATE(timestamp) ORDER BY day""",
-        (cutoff,),
-    ).fetchall()
-
-    # Satisfaction stats
-    sat_row = db.execute(
-        """SELECT AVG(satisfaction) as avg_satisfaction, COUNT(satisfaction) as rated_count
-           FROM activities WHERE timestamp >= ? AND satisfaction IS NOT NULL""",
-        (cutoff,),
-    ).fetchone()
-
-    db.close()
-
-    export = {
-        "generated_at": now_iso(),
-        "period_days": args.days,
-        "total_activities": len(rows),
-        "avg_satisfaction": round(sat_row["avg_satisfaction"], 2) if sat_row["avg_satisfaction"] else None,
-        "rated_count": sat_row["rated_count"],
-        "by_task_type": [dict(r) for r in task_rows],
-        "by_day": [dict(r) for r in day_rows],
-        "entries": [dict(r) for r in rows],
-    }
-
-    print(json.dumps(export, indent=2))
+        entries = result.get("entries", [])
+        export = {
+            "period_days": args.days,
+            "total_activities": stats.get("total", len(entries)),
+            "avg_satisfaction": stats.get("avg_satisfaction"),
+            "by_task_type": stats.get("by_task_type", {}),
+            "by_day": stats.get("by_day", {}),
+            "entries": entries,
+        }
+        print(json.dumps(export, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_stats(args):
     """Summary statistics for the last N days."""
-    db = get_db()
-    cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.days)).isoformat()
-
-    total = db.execute(
-        "SELECT COUNT(*) as count FROM activities WHERE timestamp >= ?",
-        (cutoff,),
-    ).fetchone()["count"]
-
-    # By task type
-    task_rows = db.execute(
-        """SELECT task_type, COUNT(*) as count
-           FROM activities WHERE timestamp >= ? GROUP BY task_type ORDER BY count DESC""",
-        (cutoff,),
-    ).fetchall()
-
-    # Satisfaction
-    sat_row = db.execute(
-        """SELECT AVG(satisfaction) as avg, COUNT(satisfaction) as rated,
-                  MIN(satisfaction) as min, MAX(satisfaction) as max
-           FROM activities WHERE timestamp >= ? AND satisfaction IS NOT NULL""",
-        (cutoff,),
-    ).fetchone()
-
-    # Most active day
-    busiest = db.execute(
-        """SELECT DATE(timestamp) as day, COUNT(*) as count
-           FROM activities WHERE timestamp >= ?
-           GROUP BY DATE(timestamp) ORDER BY count DESC LIMIT 1""",
-        (cutoff,),
-    ).fetchone()
-
-    db.close()
-
-    result = {
-        "period_days": args.days,
-        "total_activities": total,
-        "by_task_type": {r["task_type"]: r["count"] for r in task_rows},
-        "satisfaction": {
-            "average": round(sat_row["avg"], 2) if sat_row["avg"] else None,
-            "rated_count": sat_row["rated"],
-            "min": sat_row["min"],
-            "max": sat_row["max"],
-        },
-        "busiest_day": dict(busiest) if busiest else None,
-    }
-
-    print(json.dumps(result, indent=2))
+    try:
+        result = api_request("GET", f"/api/activity/stats?days={args.days}")
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

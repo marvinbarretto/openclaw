@@ -2,7 +2,7 @@
 """
 Daily accountability checker for Jimbo.
 
-Queries activity-log.db + experiment-tracker.db for today's activity,
+Queries jimbo-api for today's activity, experiments, and costs,
 checks whether key pipeline stages ran, and sends a summary via Telegram.
 
 Designed to run at 20:00 UTC via cron.
@@ -17,18 +17,13 @@ Usage:
 import datetime
 import json
 import os
-import sqlite3
 import subprocess
 import sys
+import urllib.request
+import urllib.error
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
-ACTIVITY_DB = os.path.join(_script_dir, "activity-log.db")
-TRACKER_DB = os.environ.get(
-    "EXPERIMENT_TRACKER_DB",
-    os.path.join(_script_dir, "experiment-tracker.db"),
-)
-COST_DB = os.path.join(_script_dir, "cost-tracker.db")
 
 
 def send_alert(message):
@@ -43,28 +38,27 @@ def today_str():
     return now_utc().strftime("%Y-%m-%d")
 
 
-def query_db(db_path, sql, params=()):
-    """Run a query against a SQLite db, return rows as dicts. Returns [] if db missing."""
-    if not os.path.exists(db_path):
-        return []
-    try:
-        db = sqlite3.connect(db_path)
-        db.row_factory = sqlite3.Row
-        rows = db.execute(sql, params).fetchall()
-        db.close()
-        return [dict(r) for r in rows]
-    except sqlite3.Error:
-        return []
+def api_request(method, path, body=None):
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
 
 
 def check_briefing_ran():
     """Did morning + afternoon briefing-prep pipeline runs log today?"""
-    # Check pipeline runs (briefing-prep, logged by cron — reliable)
-    rows = query_db(
-        TRACKER_DB,
-        "SELECT * FROM runs WHERE task_id = 'briefing-prep' AND timestamp LIKE ?",
-        (f"{today_str()}%",),
-    )
+    try:
+        result = api_request("GET", "/api/experiments?task=briefing-prep&last=50")
+        rows = [r for r in result.get("runs", []) if r.get("timestamp", "").startswith(today_str())]
+    except Exception as e:
+        return False, f"experiments API unreachable: {e}"
+
     if not rows:
         return False, "briefing pipeline did not run"
 
@@ -100,11 +94,12 @@ def check_briefing_ran():
 
 def check_gems_produced():
     """Did the newsletter reader produce gems today?"""
-    rows = query_db(
-        TRACKER_DB,
-        "SELECT * FROM runs WHERE task_id = 'newsletter-deep-read' AND timestamp LIKE ?",
-        (f"{today_str()}%",),
-    )
+    try:
+        result = api_request("GET", "/api/experiments?task=newsletter-deep-read&last=50")
+        rows = [r for r in result.get("runs", []) if r.get("timestamp", "").startswith(today_str())]
+    except Exception:
+        return False, "no gems produced (experiments API unreachable)"
+
     if not rows:
         return False, "no gems produced (newsletter reader didn't run)"
     return True, f"gems produced ({len(rows)} run(s))"
@@ -112,11 +107,12 @@ def check_gems_produced():
 
 def check_surprise_game():
     """Did a surprise game round happen today?"""
-    rows = query_db(
-        TRACKER_DB,
-        "SELECT * FROM runs WHERE task_id = 'surprise-game' AND timestamp LIKE ?",
-        (f"{today_str()}%",),
-    )
+    try:
+        result = api_request("GET", "/api/experiments?task=surprise-game&last=50")
+        rows = [r for r in result.get("runs", []) if r.get("timestamp", "").startswith(today_str())]
+    except Exception:
+        return False, "surprise game not played"
+
     if not rows:
         return False, "surprise game not played"
     return True, "surprise game played"
@@ -124,16 +120,18 @@ def check_surprise_game():
 
 def check_vault_tasks_surfaced():
     """Were vault tasks surfaced in the briefing today?"""
-    rows = query_db(
-        ACTIVITY_DB,
-        "SELECT * FROM activities WHERE task_type = 'briefing' AND timestamp LIKE ?",
-        (f"{today_str()}%",),
-    )
-    if not rows:
+    try:
+        result = api_request("GET", f"/api/activity?date={today_str()}")
+        rows = result.get("entries", [])
+    except Exception:
+        return False, "no briefing activity logged (activity API unreachable)"
+
+    briefing_rows = [r for r in rows if r.get("task_type") == "briefing"]
+    if not briefing_rows:
         return False, "no briefing activity logged"
 
     # Check if any briefing mention vault tasks
-    for row in rows:
+    for row in briefing_rows:
         desc = (row.get("description") or "").lower()
         if "vault" in desc or "task" in desc:
             return True, "vault tasks surfaced in briefing"
@@ -143,30 +141,37 @@ def check_vault_tasks_surfaced():
 
 def check_activity_count():
     """How many activities were logged today?"""
-    rows = query_db(
-        ACTIVITY_DB,
-        "SELECT task_type, COUNT(*) as count FROM activities WHERE timestamp LIKE ? GROUP BY task_type",
-        (f"{today_str()}%",),
-    )
+    try:
+        result = api_request("GET", f"/api/activity?date={today_str()}")
+        rows = result.get("entries", [])
+    except Exception:
+        return False, "no activities logged today (activity API unreachable)"
+
     if not rows:
         return False, "no activities logged today"
 
-    total = sum(r["count"] for r in rows)
-    breakdown = ", ".join(f"{r['task_type']}: {r['count']}" for r in rows)
+    # Group by task_type
+    by_type = {}
+    for r in rows:
+        task_type = r.get("task_type", "unknown")
+        by_type[task_type] = by_type.get(task_type, 0) + 1
+
+    total = len(rows)
+    breakdown = ", ".join(f"{k}: {v}" for k, v in sorted(by_type.items()))
     return True, f"{total} activities ({breakdown})"
 
 
 def check_cost_today():
     """What did today cost?"""
-    rows = query_db(
-        COST_DB,
-        "SELECT SUM(estimated_cost_usd) as total FROM costs WHERE timestamp LIKE ?",
-        (f"{today_str()}%",),
-    )
-    if not rows or rows[0]["total"] is None:
+    try:
+        result = api_request("GET", "/api/costs/summary?days=1")
+        total = result.get("total_cost", 0)
+    except Exception:
         return True, "no cost data today"
 
-    total = rows[0]["total"]
+    if total == 0:
+        return True, "no cost data today"
+
     return True, f"${total:.3f} spent today"
 
 

@@ -10,7 +10,7 @@ Python 3.11 stdlib only. No pip dependencies.
 Usage:
     python3 alert-check.py openclaw   # check gateway is responding
     python3 alert-check.py digest     # check email-digest.json is fresh (<25h)
-    python3 alert-check.py briefing   # check experiment-tracker.db has today's run
+    python3 alert-check.py briefing   # check experiments API has today's run
     python3 alert-check.py credits    # check OpenRouter credit balance
     python3 alert-check.py model      # check current VPS model from openclaw.json
     python3 alert-check.py status     # combined status (all checks in one message)
@@ -20,7 +20,6 @@ import datetime
 import json
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import urllib.request
@@ -30,10 +29,7 @@ import urllib.error
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
 DIGEST_PATH = os.path.join(_script_dir, "email-digest.json")
-TRACKER_DB_PATH = os.environ.get(
-    "EXPERIMENT_TRACKER_DB",
-    os.path.join(_script_dir, "experiment-tracker.db"),
-)
+
 
 def get_setting(key, default):
     """Read a setting from the settings API, or return default on failure."""
@@ -47,6 +43,19 @@ def get_setting(key, default):
             return type(default)(data.get("value", default))
     except Exception:
         return default
+
+
+def api_request(method, path, body=None):
+    api_url = os.environ.get("JIMBO_API_URL", "http://localhost:3100")
+    api_key = os.environ.get("JIMBO_API_KEY", os.environ.get("API_KEY", ""))
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
 
 
 BRIEFING_GRACE_HOUR = get_setting("briefing_grace_hour_utc", 8)
@@ -118,73 +127,55 @@ def check_digest():
 
 
 def check_briefing():
-    """Check experiment-tracker.db for morning + afternoon briefing-prep pipeline runs. Returns (ok, summary)."""
+    """Check experiments API for morning + afternoon briefing-prep pipeline runs. Returns (ok, summary)."""
     current_hour = now_utc().hour
-
-    if not os.path.exists(TRACKER_DB_PATH):
-        if current_hour < BRIEFING_GRACE_HOUR:
-            return True, "morning: pending"
-        return False, "experiment-tracker.db not found"
-
-    try:
-        db = sqlite3.connect(TRACKER_DB_PATH)
-        db.row_factory = sqlite3.Row
-        # Migrate: add session column if missing (existing DBs pre-ADR-040)
-        try:
-            db.execute("ALTER TABLE runs ADD COLUMN session TEXT")
-            db.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
-    except sqlite3.Error as e:
-        return False, f"experiment-tracker.db unreadable: {e}"
-
     today = now_utc().strftime("%Y-%m-%d")
 
     try:
-        rows = db.execute(
-            "SELECT session, output_summary FROM runs WHERE task_id = 'briefing-prep' AND timestamp LIKE ?",
-            (f"{today}%",),
-        ).fetchall()
-        db.close()
+        result = api_request("GET", "/api/experiments?task=briefing-prep&last=50")
+        all_runs = result.get("runs", [])
+    except Exception as e:
+        if current_hour < BRIEFING_GRACE_HOUR:
+            return True, "morning: pending"
+        return False, f"experiments API unreachable: {e}"
 
-        # Classify rows by session — rows without session value count as morning
-        morning_rows = [r for r in rows if (r["session"] or "morning") == "morning"]
-        afternoon_rows = [r for r in rows if r["session"] == "afternoon"]
+    # Filter to today's runs
+    rows = [r for r in all_runs if r.get("timestamp", "").startswith(today)]
 
-        parts = []
+    # Classify rows by session — rows without session value count as morning
+    morning_rows = [r for r in rows if (r.get("session") or "morning") == "morning"]
+    afternoon_rows = [r for r in rows if r.get("session") == "afternoon"]
 
-        # Morning status
-        if morning_rows:
-            summary_text = morning_rows[-1]["output_summary"] or ""
-            if "failed" in summary_text:
-                parts.append("morning: partial")
-            else:
-                parts.append("morning: ran")
-        elif current_hour < BRIEFING_GRACE_HOUR:
-            parts.append("morning: pending")
+    parts = []
+
+    # Morning status
+    if morning_rows:
+        summary_text = morning_rows[-1].get("output_summary") or ""
+        if "failed" in summary_text:
+            parts.append("morning: partial")
         else:
-            parts.append("morning: missing")
+            parts.append("morning: ran")
+    elif current_hour < BRIEFING_GRACE_HOUR:
+        parts.append("morning: pending")
+    else:
+        parts.append("morning: missing")
 
-        # Afternoon status (only if enabled)
-        if AFTERNOON_ENABLED:
-            if afternoon_rows:
-                summary_text = afternoon_rows[-1]["output_summary"] or ""
-                if "failed" in summary_text:
-                    parts.append("afternoon: partial")
-                else:
-                    parts.append("afternoon: ran")
-            elif current_hour < AFTERNOON_GRACE_HOUR:
-                parts.append("afternoon: pending")
+    # Afternoon status (only if enabled)
+    if AFTERNOON_ENABLED:
+        if afternoon_rows:
+            summary_text = afternoon_rows[-1].get("output_summary") or ""
+            if "failed" in summary_text:
+                parts.append("afternoon: partial")
             else:
-                parts.append("afternoon: missing")
+                parts.append("afternoon: ran")
+        elif current_hour < AFTERNOON_GRACE_HOUR:
+            parts.append("afternoon: pending")
+        else:
+            parts.append("afternoon: missing")
 
-        any_missing = "missing" in " ".join(parts)
-        summary = f"briefing: {' | '.join(parts)}"
-        return not any_missing, summary
-
-    except sqlite3.Error as e:
-        db.close()
-        return False, f"experiment-tracker.db query failed: {e}"
+    any_missing = "missing" in " ".join(parts)
+    summary = f"briefing: {' | '.join(parts)}"
+    return not any_missing, summary
 
 
 def check_credits():
@@ -217,20 +208,13 @@ def check_credits():
 
     summary = f"OpenRouter: ${usage:.2f} total"
 
-    # Add today's spend from cost-tracker.db if available
+    # Add today's spend from costs API
     try:
-        cost_db_path = os.path.join(_script_dir, "cost-tracker.db")
-        if os.path.exists(cost_db_path):
-            db = sqlite3.connect(cost_db_path)
-            today = now_utc().strftime("%Y-%m-%d")
-            row = db.execute(
-                "SELECT SUM(estimated_cost) FROM costs WHERE timestamp LIKE ?",
-                (f"{today}%",),
-            ).fetchone()
-            db.close()
-            if row and row[0]:
-                summary += f", ${row[0]:.2f} today"
-    except (sqlite3.Error, OSError):
+        costs_summary = api_request("GET", "/api/costs/summary?days=1")
+        today_cost = costs_summary.get("total_cost", 0)
+        if today_cost > 0:
+            summary += f", ${today_cost:.2f} today"
+    except Exception:
         pass
 
     return True, summary
