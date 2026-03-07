@@ -12,7 +12,7 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 │  site/      ─── personal site (Astro/Cloudflare Workers)        │
 │                  └── /app/jimbo/  dashboard, triage UI,         │
 │                      context editor, settings                   │
-│  jimbo/notes-triage-api/  ─── jimbo-api source (Hono/Node)     │
+│  jimbo/jimbo-api/  ─── jimbo-api source (Hono/Node)            │
 │                                                                 │
 │  Deploy:  workspace-push.sh ──rsync──►  VPS                    │
 │           skills-push.sh   ──rsync──►  VPS                     │
@@ -40,9 +40,9 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 │  │  ├── context-helper.py         ← reads from jimbo-api     │  │
 │  │  ├── settings-helper.py        ← reads from jimbo-api     │  │
 │  │  ├── alert.py / alert-check.py ← Telegram alerts          │  │
-│  │  ├── experiment-tracker.py     ← SQLite run logging       │  │
-│  │  ├── cost-tracker.py           ← SQLite cost logging      │  │
-│  │  ├── activity-log.py           ← SQLite activity logging  │  │
+│  │  ├── experiment-tracker.py     ← run logging (via API)    │  │
+│  │  ├── cost-tracker.py           ← cost logging (via API)   │  │
+│  │  ├── activity-log.py           ← activity log (via API)   │  │
 │  │  ├── prioritise-tasks.py       ← Gemini Flash task scorer │  │
 │  │  ├── workers/                  ← orchestrator workers     │  │
 │  │  │   ├── email_triage.py       (Gemini Flash)             │  │
@@ -53,11 +53,15 @@ Personal AI assistant powered by [OpenClaw](https://github.com/openclaw/openclaw
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  jimbo-api (systemd: notes-triage-api, port 3100)         │  │
-│  │  ├── /api/triage/*    ← notes triage                      │  │
-│  │  ├── /api/context/*   ← priorities, interests, goals      │  │
-│  │  ├── /api/settings/*  ← key-value config store            │  │
-│  │  └── data/context.db  ← SQLite backing store              │  │
+│  │  jimbo-api (systemd: jimbo-api, port 3100)                │  │
+│  │  ├── /api/triage/*       ← notes triage                   │  │
+│  │  ├── /api/context/*      ← priorities, interests, goals   │  │
+│  │  ├── /api/settings/*     ← key-value config store         │  │
+│  │  ├── /api/activity/*     ← activity log                   │  │
+│  │  ├── /api/costs/*        ← cost tracking                  │  │
+│  │  ├── /api/experiments/*  ← experiment runs                │  │
+│  │  ├── /api/vault/*        ← vault notes                    │  │
+│  │  └── data/context.db     ← SQLite backing store           │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  Caddy (auto TLS) ── routes /api/* → jimbo-api                  │
@@ -94,7 +98,7 @@ UTC   What                              Model
 
 ```
 context/       Marvin's personal context (interests, priorities, taste, goals)
-decisions/     ADRs (001-041)
+decisions/     ADRs (001-042)
 docs/
   plans/       Implementation plans
   reviews/     Review session notes
@@ -136,7 +140,7 @@ ssh jimbo "systemctl restart openclaw"
 | `docs/reference/orchestrator-details.md` | Worker architecture, games, deployment |
 | `setup/configuration.md` | VPS config, provider setup cheatsheet |
 | `notes/triage-deploy.md` | Triage pipeline architecture and ops |
-| `decisions/` | All architectural decision records (001-041) |
+| `decisions/` | All architectural decision records (001-042) |
 
 ## Skills
 
@@ -205,4 +209,4 @@ These live only on the VPS. Jimbo creates and updates them — don't overwrite:
 
 ---
 
-*Last updated: 2026-03-04*
+*Last updated: 2026-03-07*
