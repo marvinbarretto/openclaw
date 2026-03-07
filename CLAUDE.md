@@ -49,7 +49,7 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 ## Repo Structure
 
 ```
-context/          Marvin's personal context files (interests, priorities, taste, goals, preferences)
+context/          Marvin's prose context files (taste, preferences, patterns) + API fallback
 decisions/        ADRs (001-036) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API, vault task prioritisation, VPS vault source of truth, Haiku conductor model
 docs/             Design docs and implementation plans
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
@@ -79,7 +79,11 @@ notes/            Brain dumps
 - `scripts/workspace-push.sh` — Pushes brain files + context files to VPS workspace (one command for everything we maintain)
 - `workspace/SOUL.md` — Jimbo's personality, behaviour rules, output rules
 - `workspace/HEARTBEAT.md` — Periodic self-check tasks for Jimbo
-- `context/*.md` — Marvin's interests, priorities, taste, goals, preferences
+- `context/TASTE.md` — What "good" looks like, what bores him (prose, lives in repo)
+- `context/PREFERENCES.md` — How to combine context files for decision-making (prose, lives in repo)
+- `context/CONTEXT-BACKUP.md` — Condensed fallback for when jimbo-api is unreachable
+- `context/PATTERNS.md` — Learned patterns from note review sessions (living document)
+- `.claude/commands/assess.md` — Claude Code skill for evaluating URLs/links against Marvin's context
 - `scripts/model-swap.sh` — SSH helper to switch LLM model on VPS
 - `skills/sift-digest/SKILL.md` — Teaches Jimbo to present email digests
 - `skills/daily-briefing/SKILL.md` — Teaches Jimbo to give morning briefings (includes tasks triage announcement, section 3.5)
@@ -87,12 +91,6 @@ notes/            Brain dumps
 - `sandbox/Dockerfile` — Custom sandbox image definition
 - `setup/configuration.md` — VPS config state, API keys, **provider setup cheatsheet** (how to add new LLM providers/models to openclaw.json)
 - `CAPABILITIES.md` — Quick-reference matrix of what Jimbo can/can't do, token expiry dates, current VPS model
-- `context/INTERESTS.md` — What Marvin cares about (changes slowly)
-- `context/PRIORITIES.md` — What matters right now (changes weekly)
-- `context/TASTE.md` — What "good" looks like, what bores him
-- `context/GOALS.md` — Longer-term ambitions (changes monthly)
-- `context/PREFERENCES.md` — How to combine context files for decision-making
-- `context/PATTERNS.md` — Learned patterns from note review sessions (living document)
 - `scripts/tasks-dump.py` — Dumps all Google Tasks to JSON via Tasks API
 - `scripts/ingest-tasks.py` — Converts tasks-dump.json → vault inbox markdown files
 - `scripts/ingest-keep.py` — Converts Google Keep JSON export → vault inbox markdown files
@@ -281,19 +279,22 @@ data/vault/
 
 ## Context Files
 
-The `context/` directory contains Marvin's personal context files — pushed to VPS as a backup. The **primary source** for context data (Priorities, Interests, Goals) is now the context API (ADR-033), edited via the web UI at `/app/jimbo/context`. Jimbo reads context via `context-helper.py` which calls the API. Files are NOT hard rules or blocklists — they teach taste and judgment that evolves over time.
+Context is split between the API and the repo:
 
-- `INTERESTS.md` — topics, hobbies, communities (changes slowly)
-- `PRIORITIES.md` — active projects, this week's focus (changes weekly)
-- `TASTE.md` — what "good" looks like, what bores him, how he consumes content
-- `GOALS.md` — longer-term ambitions (changes monthly)
-- `PREFERENCES.md` — the glue: how Jimbo should combine the above for decisions
+- **jimbo-api** is the source of truth for Priorities, Interests, and Goals (structured data, edited via web UI at `/app/jimbo/context`). Jimbo reads these via `context-helper.py` which calls the API. The old `INTERESTS.md`, `PRIORITIES.md`, and `GOALS.md` files have been removed from the repo.
+- **Local repo** owns prose judgment files that are too verbose for structured API storage:
+  - `TASTE.md` — what "good" looks like, what bores him, how he consumes content
+  - `PREFERENCES.md` — the glue: how Jimbo should combine context for decisions
+  - `PATTERNS.md` — learned patterns from note review sessions
+  - `EMAIL_EXAMPLES.md` — example email classifications
+- `CONTEXT-BACKUP.md` — condensed fallback containing priorities, interests, and goals for when the API is unreachable. Not the source of truth.
 
 **How context flows:**
-- Context files are pushed to VPS workspace so Jimbo can read them during briefings
-- Jimbo reads ALL context files and applies judgment to decide what to highlight from the email digest
+- Jimbo reads Priorities/Interests/Goals from jimbo-api via `context-helper.py`
+- Prose files (TASTE.md, PREFERENCES.md) are pushed to VPS workspace so Jimbo can read them during briefings
+- Jimbo combines API context + prose files to decide what to highlight from the email digest
 
-**Deploy:** `./scripts/workspace-push.sh` pushes both context files and workspace brain files (SOUL.md, HEARTBEAT.md) to the VPS in one command.
+**Deploy:** `./scripts/workspace-push.sh` pushes prose context files and workspace brain files (SOUL.md, HEARTBEAT.md) to the VPS in one command.
 
 ## Data Files (Gitignored)
 
