@@ -38,13 +38,6 @@ class TestBuildReaderPrompt(unittest.TestCase):
 
 
 class TestNewsletterReaderWorker(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        os.environ["EXPERIMENT_TRACKER_DB"] = os.path.join(self.tmpdir, "tracker.db")
-
-    def tearDown(self):
-        os.environ.pop("EXPERIMENT_TRACKER_DB", None)
-
     @patch("workers.base_worker.call_model")
     def test_run_returns_gems_and_skipped(self, mock_call):
         mock_call.return_value = {

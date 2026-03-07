@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -21,22 +20,15 @@ class TestLoadTaskConfig(unittest.TestCase):
 
 
 class TestBaseWorker(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "experiment-tracker.db")
-        os.environ["EXPERIMENT_TRACKER_DB"] = self.db_path
-
-    def tearDown(self):
-        os.environ.pop("EXPERIMENT_TRACKER_DB", None)
-
     def test_worker_init_loads_config(self):
         worker = BaseWorker("email-triage")
         self.assertEqual(worker.task_id, "email-triage")
         self.assertEqual(worker.config["default_model"], "gemini-2.5-flash")
         self.assertIsNotNone(worker.run_id)
 
-    def test_worker_log_run_writes_to_tracker(self):
-        import sqlite3
+    @patch("subprocess.run")
+    def test_worker_log_run_calls_tracker_script(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout='{"status":"ok","run_id":"run_test","cost_usd":0.001}', stderr='')
         worker = BaseWorker("email-triage")
         worker.log_run(
             model="gemini-2.5-flash",
@@ -45,12 +37,11 @@ class TestBaseWorker(unittest.TestCase):
             input_summary="200 emails",
             output_summary="30 shortlisted",
         )
-        db = sqlite3.connect(self.db_path)
-        db.row_factory = sqlite3.Row
-        row = db.execute("SELECT * FROM runs").fetchone()
-        self.assertIsNotNone(row)
-        self.assertEqual(row["task_id"], "email-triage")
-        db.close()
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("experiment-tracker.py", cmd[1])
+        self.assertIn("--task", cmd)
+        self.assertIn("email-triage", cmd)
 
 
 class TestApiClients(unittest.TestCase):
