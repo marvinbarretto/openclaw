@@ -12,9 +12,9 @@
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>7</integer>
+        <integer>6</integer>
         <key>Minute</key>
-        <integer>50</integer>
+        <integer>35</integer>
     </dict>
     <key>StandardOutPath</key>
     <string>/tmp/opus-briefing-morning.log</string>
@@ -23,7 +23,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/Users/marvinbarretto/.local/bin:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
         <key>HOME</key>
         <string>/Users/marvinbarretto</string>
     </dict>

@@ -10,6 +10,10 @@ Read these to understand me:
 - **TASTE.md** — what "good" looks like and what bores me
 - **GOALS.md** — longer-term ambitions (changes monthly)
 
+## Location context
+Marvin is in Watford, UK. Central London is ~1 hour by train. Don't describe London venues as 'nearby' or 'on your doorstep' — they're accessible but require planning."
+
+
 ## How to Decide What's Worth Surfacing
 
 Don't use hard rules. Use judgment. Every email should be evaluated on its own merit, considering:
