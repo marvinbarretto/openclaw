@@ -5,7 +5,7 @@
 A mobile-friendly web UI for triaging ~6,500 vault notes from the inbox. Three pieces work together:
 
 1. **process-inbox.py** (openclaw repo) — generates a `manifest.json` describing every inbox note with LLM-suggested actions
-2. **notes-triage-api** (github.com/marvinbarretto/notes-triage-api, private) — Hono/Node API, serves the manifest as a queue and stores triage decisions as JSON
+2. **jimbo-api** (github.com/marvinbarretto/jimbo-api, private) — Hono/Node API, serves the manifest as a queue and stores triage decisions as JSON
 3. **site** (github.com/marvinbarretto/site) — Astro/React triage UI at `/app/jimbo/notes-triage`, swipe cards to accept/archive/skip
 
 ## Architecture
@@ -13,7 +13,7 @@ A mobile-friendly web UI for triaging ~6,500 vault notes from the inbox. Three p
 ```
 Laptop                                VPS (167.99.206.214)
 ┌──────────────────┐                  ┌──────────────────────────────┐
-│ process-inbox.py │                  │ notes-triage-api (port 3100) │
+│ process-inbox.py │                  │ jimbo-api (port 3100) │
 │   --manifest     │──push-manifest──▶│   /api/triage/queue          │
 │                  │                  │   /api/triage/decisions       │
 │ apply-decisions  │◀─pull-decisions──│   /api/triage/stats          │
@@ -51,10 +51,10 @@ Laptop                                VPS (167.99.206.214)
 
 ## VPS Components
 
-### notes-triage-api
-- **Location**: `/home/openclaw/notes-triage-api/`
-- **Service**: `systemctl {status|restart|stop} notes-triage-api`
-- **Logs**: `journalctl -u notes-triage-api -f`
+### jimbo-api
+- **Location**: `/home/openclaw/jimbo-api/`
+- **Service**: `systemctl {status|restart|stop} jimbo-api`
+- **Logs**: `journalctl -u jimbo-api -f`
 - **Port**: 3100
 - **Data dir**: `/home/openclaw/.openclaw/workspace/triage/`
 - **Auth**: API key in systemd env, validated via `X-API-Key` header
@@ -87,7 +87,7 @@ python3 scripts/process-inbox.py --manifest --provider gemini --skip-fetch --lim
 
 ## Troubleshooting
 
-- **API not responding**: `ssh jimbo "systemctl status notes-triage-api"`
-- **CORS errors**: Check CORS origins in `notes-triage-api/src/index.ts`
+- **API not responding**: `ssh jimbo "systemctl status jimbo-api"`
+- **CORS errors**: Check CORS origins in `jimbo-api/src/index.ts`
 - **Empty queue**: Check manifest.json exists in triage data dir on VPS
 - **Auth failures**: Verify `X-API-Key` header matches `API_KEY` env var in systemd service

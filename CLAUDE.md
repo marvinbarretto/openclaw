@@ -34,10 +34,10 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── workers/ — orchestrator workers (email_triage.py, newsletter_reader.py — call Flash/Haiku APIs directly)
   │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
   │     └── tests/ — worker test suite
-  ├── jimbo-api (Hono/Node, port 3100, systemd, formerly notes-triage-api)
+  ├── jimbo-api (Hono/Node, port 3100, systemd)
   │     ├── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
   │     └── data/context.db — SQLite context store (ADR-033)
-  └── Caddy (auto TLS, routes /api/triage/* + /api/context/* → jimbo-api)
+  └── Caddy (auto TLS, routes /api/* → jimbo-api)
 ```
 
 Email pipeline: Gmail API runs IN the sandbox (no laptop dependency). Blacklist removes junk, then the orchestrator pipeline (Flash triage + Haiku deep-read) processes the digest before Jimbo synthesises the briefing.
@@ -162,24 +162,32 @@ notes/            Brain dumps
 - Blog is Astro-built, deployed via Cloudflare Pages from `blog-src/` on `gh-pages` branch. Live at `jimbo.pages.dev`. PAT is in the git remote URL. (ADR-027)
 - `jimbo-vps` token expires ~May 2026 — check `CAPABILITIES.md` for all token dates.
 
-## Email Pipeline (ADR-022, ADR-029)
+## Email Pipeline (ADR-022, ADR-029, ADR-042)
 
 ### How it works now
 
-Gmail API runs IN the sandbox. No laptop dependency, no Ollama, no mbsync. The orchestrator-conductor pattern (ADR-029) adds a two-pass worker pipeline before Jimbo synthesises the briefing.
+Cron-orchestrated pipeline (ADR-042). `briefing-prep.py` runs all workers via cron, assembles `briefing-input.json`, then Jimbo reads the pre-built data at briefing time. Optional Opus analysis layer via Mac `claude -p`.
 
 ```
-VPS sandbox:
-  gmail-helper.py fetch --hours 24    → calls Gmail API
-                                       → applies blacklist (rules, no LLM)
-                                       → writes /workspace/email-digest.json
+VPS cron (06:15 / 14:15):
+  briefing-prep.py morning|afternoon
+    → gmail-helper.py fetch            → Gmail API → email-digest.json
+    → email_triage.py                  → Flash triages → shortlist
+    → newsletter_reader.py             → Haiku deep-reads → gems JSON
+    → calendar-helper.py list-events   → today's calendar
+    → vault task selection             → top priority tasks
+    → assembles briefing-input.json
+    → logs to experiment-tracker
+    → sends Telegram pipeline status
 
-  Orchestrator pipeline (triggered by sift-digest skill):
-    email_triage.py                   → Flash triages digest → shortlist (~30 emails)
-    newsletter_reader.py              → Haiku deep-reads shortlist → gems JSON
-    Jimbo (conductor)                 → reviews worker output, rates quality, synthesises briefing
+Mac (optional, via launchd):
+  opus-briefing.sh                     → pulls briefing-input.json
+                                       → runs claude -p (Opus via Max plan)
+                                       → pushes briefing-analysis.json to VPS
 
-  experiment-tracker.py               → logs every run with model, tokens, config hash
+Jimbo (07:00 / 15:00):
+  reads briefing-input.json + optional briefing-analysis.json
+  delivers briefing via Telegram
 ```
 
 ### gmail-helper.py commands
@@ -201,69 +209,19 @@ To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists
 
 ### Scheduling
 
-VPS root crontab runs the daily pipeline, with failure alerting (ADR-030):
+VPS root crontab runs the daily pipeline, with per-pipeline Telegram alerts (ADR-030, ADR-042):
 ```
 # 04:30 — vault task scoring (Gemini Flash)
-30 4 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/prioritise-tasks.py \
-  >> /var/log/task-scoring.log 2>&1
-
 # 05:00 — Google Tasks sweep (vault intake)
-0 5 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
-              -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET \
-              -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN \
-              -e GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY \
-              -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  sh -c 'python3 /workspace/tasks-helper.py pipeline || \
-         python3 /workspace/alert.py "05:00 tasks sweep FAILED"' \
-  >> /var/log/tasks-sweep.log 2>&1
-
-# Hourly — email fetch (interval-aware, reads setting from API)
-0 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e GOOGLE_CALENDAR_CLIENT_ID=$GOOGLE_CALENDAR_CLIENT_ID \
-              -e GOOGLE_CALENDAR_CLIENT_SECRET=$GOOGLE_CALENDAR_CLIENT_SECRET \
-              -e GOOGLE_CALENDAR_REFRESH_TOKEN=$GOOGLE_CALENDAR_REFRESH_TOKEN \
-              -e JIMBO_API_URL=$JIMBO_API_URL \
-              -e JIMBO_API_KEY=$JIMBO_API_KEY \
-              -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/email-fetch-cron.py \
-  >> /var/log/email-fetch.log 2>&1
-
-# Hourly (offset) — combined Telegram status (digest + briefing + credits + model)
-30 * * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
-              -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/alert-check.py status \
-  >> /var/log/alert-check.log 2>&1
-
-# 06:45 — switch to Sonnet for morning briefing window
-45 6 * * * /usr/local/bin/model-swap-local.sh sonnet >> /var/log/model-swap.log 2>&1
-
-# 07:30 — switch to Kimi K2 after morning briefing
-30 7 * * * /usr/local/bin/model-swap-local.sh kimi >> /var/log/model-swap.log 2>&1
-
-# 14:45 — switch to Sonnet for afternoon briefing (ADR-040)
-45 14 * * * /usr/local/bin/model-swap-local.sh sonnet >> /var/log/model-swap.log 2>&1
-
-# 15:30 — switch back to Kimi K2 after afternoon briefing
-30 15 * * * /usr/local/bin/model-swap-local.sh kimi >> /var/log/model-swap.log 2>&1
-
-# 20:00 — daily accountability report via Telegram
-0 20 * * * export $(grep -v "^#" /opt/openclaw.env | xargs) && \
-  docker exec -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-              -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
-  $(docker ps -q --filter name=openclaw-sbx) \
-  python3 /workspace/accountability-check.py \
-  >> /var/log/accountability.log 2>&1
+# 06:15 — morning briefing pipeline (briefing-prep.py)
+# 06:45 — model swap to Sonnet for briefing delivery
+# 07:00 — Jimbo morning briefing (OpenClaw cron)
+# 07:30 — model swap back to Kimi K2
+# 14:15 — afternoon briefing pipeline (briefing-prep.py)
+# 14:45 — model swap to Sonnet for briefing delivery
+# 15:00 — Jimbo afternoon briefing
+# 15:30 — model swap back to Kimi K2
+# 20:00 — daily accountability report
 ```
 
 ### Sandbox API keys
@@ -278,9 +236,9 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → model swap to Sonnet (06:45) → email fetch (hourly, interval-aware via settings API) → Jimbo's morning briefing (07:00, OpenClaw cron) → model swap to Kimi K2 (07:30) → model swap to Sonnet (14:45) → afternoon briefing (~15:00, heartbeat-triggered, ADR-040) → model swap to Kimi K2 (15:30) → status check (hourly at :30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → model swap to Sonnet (06:45) → Jimbo's morning briefing (07:00) → model swap to Kimi K2 (07:30) → afternoon briefing-prep pipeline (14:15) → model swap to Sonnet (14:45) → Jimbo's afternoon briefing (15:00) → model swap to Kimi K2 (15:30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
-No laptop dependency. The old launchd-triggered pipeline (mbsync → sift-classify.py → sift-push.sh) has been fully retired.
+No laptop dependency for core pipeline. Optional Opus analysis layer runs on Mac via launchd (opus-briefing.sh).
 
 ## Notes Vault Pipeline (ADR-023, ADR-024)
 
@@ -309,7 +267,7 @@ data/vault/
 ```
 
 ### Triage UI stack
-- **jimbo-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/notes-triage-api (private)
+- **jimbo-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/jimbo-api (private)
 - **site** — React triage UI at `/app/jimbo/notes-triage`. Deployed to Cloudflare Workers.
 - **Caddy** routes `/api/triage/*` to the API, everything else to OpenClaw.
 - See `notes/triage-deploy.md` for full deployment and operations guide.
