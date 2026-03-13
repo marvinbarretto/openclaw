@@ -41,8 +41,12 @@ def load_context_file(filename):
     return None
 
 
-def call_google_ai(prompt, model="gemini-2.5-flash", api_key=None, system=None):
-    """Call Google AI Generative Language API. Returns {text, input_tokens, output_tokens}."""
+def call_google_ai(prompt, model="gemini-2.5-flash", api_key=None, system=None, images=None):
+    """Call Google AI Generative Language API. Returns {text, input_tokens, output_tokens}.
+
+    Args:
+        images: Optional list of {"data": base64_str, "mime_type": "image/png"} dicts.
+    """
     api_key = api_key or os.environ.get("GOOGLE_AI_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_AI_API_KEY not set")
@@ -52,7 +56,17 @@ def call_google_ai(prompt, model="gemini-2.5-flash", api_key=None, system=None):
         f":generateContent?key={api_key}"
     )
 
-    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    parts = [{"text": prompt}]
+    if images:
+        for img in images:
+            parts.append({
+                "inline_data": {
+                    "mime_type": img["mime_type"],
+                    "data": img["data"],
+                }
+            })
+
+    contents = [{"role": "user", "parts": parts}]
     body = {"contents": contents}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
@@ -110,11 +124,56 @@ def call_anthropic(prompt, model="claude-haiku-4.5", api_key=None, system=None, 
     }
 
 
-def call_model(prompt, model, provider=None, api_key=None, system=None):
+def call_openrouter(prompt, model, api_key=None, system=None, max_tokens=4096, images=None):
+    """Call OpenRouter API (OpenAI-compatible). Returns {text, input_tokens, output_tokens}.
+
+    images parameter accepted for interface compatibility but ignored (text-only provider).
+    """
+    api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY not set")
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    body = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(url, data=data, headers=headers)
+
+    with urllib.request.urlopen(req) as resp:
+        result = json.loads(resp.read())
+
+    text = result["choices"][0]["message"]["content"]
+    usage = result.get("usage", {})
+
+    return {
+        "text": text,
+        "input_tokens": usage.get("prompt_tokens", 0),
+        "output_tokens": usage.get("completion_tokens", 0),
+    }
+
+
+def call_model(prompt, model, provider=None, api_key=None, system=None, images=None):
     """Route to the correct API based on model name or provider."""
     start = time.time()
-    if provider == "google" or model.startswith("gemini"):
-        result = call_google_ai(prompt, model=model, api_key=api_key, system=system)
+    if provider == "openrouter" or model.startswith("openrouter/"):
+        api_model = model.removeprefix("openrouter/")
+        result = call_openrouter(prompt, model=api_model, api_key=api_key, system=system)
+    elif provider == "google" or model.startswith("gemini"):
+        result = call_google_ai(prompt, model=model, api_key=api_key, system=system, images=images)
     elif provider == "anthropic" or model.startswith("claude"):
         result = call_anthropic(prompt, model=model, api_key=api_key, system=system)
     else:
@@ -229,18 +288,18 @@ class BaseWorker:
                 sys.stderr.write(f"[{self.task_id}] context missing: {filename}\n")
         return context
 
-    def call(self, prompt, system=None, model=None):
+    def call(self, prompt, system=None, model=None, images=None):
         """Call the model API with automatic fallback."""
         model = model or self.get_model()
         try:
-            return call_model(prompt, model=model, system=system)
+            return call_model(prompt, model=model, system=system, images=images)
         except Exception as e:
             fallback = self.get_fallback_model()
             if fallback and fallback != model:
                 sys.stderr.write(
                     f"Primary model {model} failed ({e}), trying fallback {fallback}\n"
                 )
-                return call_model(prompt, model=fallback, system=system)
+                return call_model(prompt, model=fallback, system=system, images=images)
             raise
 
     def log_run(self, model=None, input_tokens=0, output_tokens=0,

@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from workers.base_worker import BaseWorker, load_task_config, call_google_ai, call_anthropic
+from workers.base_worker import BaseWorker, load_task_config, call_google_ai, call_anthropic, call_openrouter, call_model
 
 
 class TestLoadTaskConfig(unittest.TestCase):
@@ -164,6 +164,113 @@ class TestCallModelTracing(unittest.TestCase):
         self.assertEqual(call_args.kwargs["model"], "gemini-2.5-flash")
         self.assertEqual(call_args.kwargs["prompt"], "test prompt")
         self.assertEqual(call_args.kwargs["response"], "ok")
+
+
+class TestOpenRouterRouting(unittest.TestCase):
+    def test_call_model_routes_openrouter_prefix(self):
+        """Models with openrouter/ prefix should route to call_openrouter."""
+        with self.assertRaises(RuntimeError) as ctx:
+            call_model("test", model="openrouter/moonshotai/kimi-k2:free")
+        self.assertIn("OPENROUTER_API_KEY", str(ctx.exception))
+
+    def test_call_model_routes_openrouter_provider(self):
+        """Provider='openrouter' should route to call_openrouter."""
+        with self.assertRaises(RuntimeError) as ctx:
+            call_model("test", model="some-model", provider="openrouter")
+        self.assertIn("OPENROUTER_API_KEY", str(ctx.exception))
+
+    def test_call_model_routes_gemini(self):
+        """Gemini models should route to Google AI."""
+        saved = os.environ.pop("GOOGLE_AI_API_KEY", None)
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                call_model("test", model="gemini-2.5-flash")
+            self.assertIn("GOOGLE_AI_API_KEY", str(ctx.exception))
+        finally:
+            if saved is not None:
+                os.environ["GOOGLE_AI_API_KEY"] = saved
+
+    def test_call_model_routes_claude(self):
+        """Claude models should route to Anthropic."""
+        with self.assertRaises(RuntimeError) as ctx:
+            call_model("test", model="claude-haiku-4.5")
+        self.assertIn("ANTHROPIC_API_KEY", str(ctx.exception))
+
+    @patch("workers.base_worker.trace_to_langfuse")
+    @patch("workers.base_worker.urllib.request.urlopen")
+    def test_openrouter_strips_prefix(self, mock_urlopen, mock_trace):
+        """call_model should strip openrouter/ prefix before sending to API."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+        }).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        os.environ["OPENROUTER_API_KEY"] = "fake-key"
+        try:
+            result = call_model("test", model="openrouter/moonshotai/kimi-k2:free")
+            self.assertEqual(result["text"], "ok")
+            # Verify the request body has prefix stripped
+            req = mock_urlopen.call_args[0][0]
+            body = json.loads(req.data)
+            self.assertEqual(body["model"], "moonshotai/kimi-k2:free")
+        finally:
+            del os.environ["OPENROUTER_API_KEY"]
+
+
+class TestMultimodalGoogleAI(unittest.TestCase):
+    @patch("workers.base_worker.urllib.request.urlopen")
+    def test_call_google_ai_builds_multimodal_parts(self, mock_urlopen):
+        """When images are provided, call_google_ai should include inline_data parts."""
+        import base64
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "candidates": [{"content": {"parts": [{"text": "test response"}]}}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5},
+        }).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        result = call_google_ai(
+            "Describe this image",
+            api_key="fake-key",
+            images=[{"data": base64.b64encode(b"fake-png").decode(), "mime_type": "image/png"}],
+        )
+
+        self.assertEqual(result["text"], "test response")
+
+        # Verify the request body includes image parts
+        req = mock_urlopen.call_args[0][0]
+        body = json.loads(req.data)
+        parts = body["contents"][0]["parts"]
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[0]["text"], "Describe this image")
+        self.assertEqual(parts[1]["inline_data"]["mime_type"], "image/png")
+
+    @patch("workers.base_worker.urllib.request.urlopen")
+    def test_call_google_ai_text_only_no_images(self, mock_urlopen):
+        """Without images, call_google_ai should have only text part."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "candidates": [{"content": {"parts": [{"text": "hello"}]}}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5},
+        }).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        call_google_ai("test", api_key="fake-key")
+
+        req = mock_urlopen.call_args[0][0]
+        body = json.loads(req.data)
+        parts = body["contents"][0]["parts"]
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["text"], "test")
 
 
 if __name__ == "__main__":
