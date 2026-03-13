@@ -68,6 +68,7 @@ COST_RATES = {
 VALID_TASK_TYPES = (
     "heartbeat", "briefing", "chat", "research", "blog",
     "email-check", "nudge", "own-project", "digest", "day-planner",
+    "email-decision",
 )
 
 
