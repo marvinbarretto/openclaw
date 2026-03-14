@@ -16,7 +16,8 @@
   "budget_ceiling_per_run": 0.02,
   "batch_size": 50,
   "categories": ["newsletter", "event", "personal", "deal", "job-alert", "football", "notification", "other"],
-  "context_files": ["INTERESTS.md", "TASTE.md", "PRIORITIES.md", "GOALS.md", "EMAIL_EXAMPLES.md"],
+  "context_slugs": ["priorities", "interests", "goals"],
+  "context_files": ["TASTE.md", "EMAIL_EXAMPLES.md"],
   "output_schema": {
     "shortlist": [
       {

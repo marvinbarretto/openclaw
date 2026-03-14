@@ -214,6 +214,38 @@ class EmailDecisionWorker(BaseWorker):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read())
 
+    def _load_context(self):
+        """Load context from jimbo-api context endpoints.
+
+        Fetches each context slug (priorities, interests, goals) and
+        renders to a readable text block for the prompt.
+        """
+        context = {}
+        slugs = self.config.get("context_slugs", [])
+        for slug in slugs:
+            try:
+                data = self._api_get(f"/api/context/files/{slug}")
+                # Render sections and items into readable text
+                lines = [f"# {data.get('display_name', slug)}"]
+                for section in data.get("sections", []):
+                    lines.append(f"\n## {section['name']}")
+                    for item in section.get("items", []):
+                        label = item.get("label", "")
+                        content = item.get("content", "")
+                        status = item.get("status", "")
+                        if label:
+                            line = f"- **{label}**: {content}"
+                        else:
+                            line = f"- {content}"
+                        if status and status != "active":
+                            line += f" [{status}]"
+                        lines.append(line)
+                context[slug] = "\n".join(lines)
+                sys.stderr.write(f"[email-decision] context loaded: {slug} ({len(context[slug])} chars)\n")
+            except Exception as e:
+                sys.stderr.write(f"[email-decision] failed to load context '{slug}': {e}\n")
+        return context
+
     def _log_cost(self, model, input_tokens, output_tokens):
         """Log cost via cost-tracker subprocess."""
         provider = "openrouter" if model.startswith("openrouter/") else "google"
@@ -234,7 +266,7 @@ class EmailDecisionWorker(BaseWorker):
         """Score undecided email reports. Returns summary dict."""
         # 1. Fetch undecided reports
         try:
-            reports = self._api_get("/emails/reports/undecided")
+            reports = self._api_get("/api/emails/reports/undecided")
         except Exception as e:
             sys.stderr.write(f"[email-decision] failed to fetch undecided reports: {e}\n")
             return {"decided": 0, "errors": 1, "model": self.get_model()}
@@ -243,8 +275,8 @@ class EmailDecisionWorker(BaseWorker):
             sys.stderr.write("[email-decision] no undecided reports\n")
             return {"decided": 0, "errors": 0, "model": self.get_model()}
 
-        # 2. Load context
-        context = self.get_context()
+        # 2. Load context from jimbo-api
+        context = self._load_context()
 
         decided = 0
         errors = 0
@@ -271,7 +303,7 @@ class EmailDecisionWorker(BaseWorker):
                     errors += 1
                     continue
 
-                self._api_patch(f"/emails/reports/{gmail_id}/decide", decision)
+                self._api_patch(f"/api/emails/reports/{gmail_id}/decide", decision)
                 decided += 1
                 sys.stderr.write(
                     f"[email-decision] {gmail_id}: "

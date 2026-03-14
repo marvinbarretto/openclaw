@@ -277,8 +277,45 @@ class BaseWorker:
         return self.config.get("fallback_model")
 
     def get_context(self):
-        """Load all context files specified in the task config."""
+        """Load context from API slugs and local files as specified in task config."""
         context = {}
+
+        # Fetch context slugs from jimbo-api
+        api_url = os.environ.get("JIMBO_API_URL", "")
+        api_key = os.environ.get("JIMBO_API_KEY", "")
+        for slug in self.config.get("context_slugs", []):
+            if not api_url or not api_key:
+                sys.stderr.write(f"[{self.task_id}] skipping slug '{slug}': no API credentials\n")
+                continue
+            try:
+                req = urllib.request.Request(
+                    f"{api_url}/api/context/files/{slug}",
+                    headers={"X-API-Key": api_key, "Accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode())
+                # Render sections into readable text
+                lines = [f"# {data.get('display_name', slug)}"]
+                for section in data.get("sections", []):
+                    lines.append(f"\n## {section['name']}")
+                    for item in section.get("items", []):
+                        label = item.get("label", "")
+                        content = item.get("content", "")
+                        status = item.get("status", "")
+                        if label:
+                            line = f"- **{label}**: {content}"
+                        else:
+                            line = f"- {content}"
+                        if status and status != "active":
+                            line += f" [{status}]"
+                        lines.append(line)
+                text = "\n".join(lines)
+                context[slug] = text
+                sys.stderr.write(f"[{self.task_id}] context loaded from API: {slug} ({len(text)} chars)\n")
+            except Exception as e:
+                sys.stderr.write(f"[{self.task_id}] failed to fetch context slug '{slug}': {e}\n")
+
+        # Load local context files (TASTE.md, EMAIL_EXAMPLES.md, etc.)
         for filename in self.config.get("context_files", []):
             content = load_context_file(filename)
             if content:

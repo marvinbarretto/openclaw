@@ -10,7 +10,7 @@ from workers.email_decision import build_decision_prompt, parse_decision
 
 def test_build_decision_prompt_includes_context():
     """Prompt should include user context."""
-    context = {"PRIORITIES.md": "1. Ship email decision worker"}
+    context = {"priorities": "1. Ship email decision worker"}
     report = {
         "gmail_id": "test-123",
         "subject": "Comedy Night",
@@ -34,7 +34,7 @@ def test_build_decision_prompt_includes_context():
 
 def test_build_decision_prompt_includes_link_summaries():
     """Prompt should include link page_summary and entities from flat format."""
-    context = {"PRIORITIES.md": "test priorities"}
+    context = {"priorities": "test priorities"}
     report = {
         "gmail_id": "test-123",
         "subject": "Test",
@@ -60,7 +60,7 @@ def test_build_decision_prompt_includes_link_summaries():
 
 def test_build_decision_prompt_notes_low_confidence_screenshots():
     """For LOW/MEDIUM confidence links with screenshots, prompt should note to check the image."""
-    context = {"PRIORITIES.md": "test"}
+    context = {"priorities": "test"}
     report = {
         "gmail_id": "test-123",
         "subject": "Test",

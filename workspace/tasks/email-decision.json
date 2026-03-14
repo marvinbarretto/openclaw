@@ -2,5 +2,5 @@
     "task_id": "email-decision",
     "default_model": "gemini-2.5-flash",
     "fallback_model": "openrouter/moonshotai/kimi-k2:free",
-    "context_files": ["PRIORITIES.md", "INTERESTS.md", "GOALS.md"]
+    "context_slugs": ["priorities", "interests", "goals"]
 }

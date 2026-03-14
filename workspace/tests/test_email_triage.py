@@ -155,7 +155,7 @@ class TestWorkerLogging(unittest.TestCase):
                 all_output = "".join(
                     call.args[0] for call in mock_stderr.write.call_args_list
                 )
-                self.assertIn("INTERESTS.md", all_output)
+                self.assertIn("TASTE.md", all_output)
                 self.assertIn("EMAIL_EXAMPLES.md", all_output)
 
     @patch("workers.base_worker.call_model")
