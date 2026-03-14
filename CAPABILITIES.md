@@ -160,6 +160,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Model identification | WORKING | SOUL.md instructs Jimbo to tag first message with [Flash]/[Haiku]/etc. (ADR-031) |
 | Docker/host-level alerts | COVERED | Gateway TCP probe from sandbox detects service crash. (ADR-039) |
 | OpenClaw service crash | COVERED | `alert-check.py openclaw` detects gateway down. Hourly at :30. (ADR-039) |
+| Phone call escalation | WORKING | `alert-call.py` — Twilio voice API for critical failures (both briefings failed, gateway down, budget exceeded). 60-min cooldown. (ADR-043) |
 
 ## Security Boundaries
 
@@ -177,10 +178,12 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | `jimbo-vps` (fine-grained PAT) | 2026-05-18 | Read+write jimbo-workspace |
 | `openclaw-readonly` (fine-grained PAT) | ~2026-04-17 | Read-only Marvin's repos (currently disabled) |
 | Google OAuth refresh token | Non-expiring* | Calendar + Gmail read-only API access (* if app is published; 7 days if in testing mode) |
+| Twilio Account SID + Auth Token | Non-expiring | Voice API for critical failure phone calls (ADR-043) |
 
 ---
 
-*Last updated: 2026-03-06*
+*Last updated: 2026-03-12*
+*Twilio phone call alerts (ADR-043): 2026-03-12*
 *Context structured fields (ADR-041): 2026-03-06*
 *Briefing pipeline redesign (ADR-042): 2026-03-05*
 *Twice-daily briefing (ADR-040): 2026-03-04*

@@ -31,6 +31,10 @@ GOOGLE_CALENDAR_CLIENT_ID=<id>     # added by calendar-setup.sh
 GOOGLE_CALENDAR_CLIENT_SECRET=<secret>
 GOOGLE_CALENDAR_REFRESH_TOKEN=<token>
 OPENROUTER_API_KEY=<api-key>       # also passed to sandbox for balance checks (ADR-031)
+TWILIO_ACCOUNT_SID=AC...           # Twilio voice API for critical failure phone calls (ADR-043)
+TWILIO_AUTH_TOKEN=<auth-token>     # Twilio auth token
+TWILIO_FROM_NUMBER=+44...         # Twilio UK number (purchased)
+TWILIO_TO_NUMBER=+44...           # Marvin's mobile number
 ```
 
 ## Config file: `/home/openclaw/.openclaw/openclaw.json`
@@ -173,6 +177,10 @@ These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaul
 | `TELEGRAM_BOT_TOKEN` | `${TELEGRAM_BOT_TOKEN}` | Telegram Bot API token. Used by `alert.py` for failure alerts. Interpolated from `/opt/openclaw.env`. |
 | `TELEGRAM_CHAT_ID` | `${TELEGRAM_CHAT_ID}` | Telegram chat ID for alerts. Used by `alert.py`. Interpolated from `/opt/openclaw.env`. |
 | `OPENROUTER_API_KEY` | `${OPENROUTER_API_KEY}` | OpenRouter API key for balance/usage checks. Used by `openrouter-usage.py` and `alert-check.py credits`. Interpolated from `/opt/openclaw.env`. |
+| `TWILIO_ACCOUNT_SID` | `${TWILIO_ACCOUNT_SID}` | Twilio Account SID for voice API. Used by `alert-call.py`. Interpolated from `/opt/openclaw.env`. |
+| `TWILIO_AUTH_TOKEN` | `${TWILIO_AUTH_TOKEN}` | Twilio Auth Token for voice API. Used by `alert-call.py`. Interpolated from `/opt/openclaw.env`. |
+| `TWILIO_FROM_NUMBER` | `${TWILIO_FROM_NUMBER}` | Twilio UK phone number (purchased). Used by `alert-call.py`. Interpolated from `/opt/openclaw.env`. |
+| `TWILIO_TO_NUMBER` | `${TWILIO_TO_NUMBER}` | Marvin's mobile number for critical alerts. Used by `alert-call.py`. Interpolated from `/opt/openclaw.env`. |
 
 **Key insight (ADR-016):** The original "uid mismatch causes fchown errors" diagnosis was misleading. The fchown warnings were always harmless. The real blocker was tools crashing when trying to write to the read-only root filesystem at `$HOME=/root/`. Setting `HOME=/workspace` fixes everything.
 
@@ -187,6 +195,7 @@ These are set in both the Dockerfile (`ENV`) and `openclaw.json` (`agents.defaul
 | Google Calendar OAuth creds | VPS `/opt/openclaw.env` | Calendar API (Jimbo's account) | 2026-02-20 |
 | GitHub fine-grained `openclaw-readonly` | VPS sandbox `docker.env` as `GH_TOKEN` | Read-only access to LocalShout, Spoons, Pomodoro (Zone 2) | 2026-02-16, expires ~60 days |
 | GitHub fine-grained `jimbo-vps` | VPS sandbox `docker.env` as `JIMBO_GH_TOKEN` | Read+write access to `jimbo-workspace` only | 2026-02-17, expires ~90 days |
+| Twilio Account SID + Auth Token | VPS `/opt/openclaw.env` | Voice API for critical failure phone calls (ADR-043) | 2026-03-12 |
 
 ## GitHub Skill (sandbox access)
 

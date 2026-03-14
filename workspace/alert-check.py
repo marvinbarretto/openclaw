@@ -28,6 +28,7 @@ import urllib.error
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
+CALL_SCRIPT = os.path.join(_script_dir, "alert-call.py")
 DIGEST_PATH = os.path.join(_script_dir, "email-digest.json")
 
 
@@ -66,6 +67,14 @@ AFTERNOON_ENABLED = get_setting("afternoon_briefing_enabled", "true").lower() ==
 def send_alert(message):
     """Send alert via alert.py."""
     subprocess.run([sys.executable, ALERT_SCRIPT, message])
+
+
+def send_call(message):
+    """Escalate to phone call for critical failures."""
+    try:
+        subprocess.run([sys.executable, CALL_SCRIPT, message], timeout=30)
+    except Exception:
+        pass
 
 
 def now_utc():
@@ -361,6 +370,13 @@ def main():
         send_alert(f"\u2705 {timestamp} {summary}")
     else:
         send_alert(f"\u274c {timestamp} ALERT: {summary}")
+
+        # Escalate critical failures to phone call
+        if command == "openclaw":
+            send_call("Jimbo alert: OpenClaw gateway is down. Service may need a restart.")
+        elif command == "credits":
+            send_call(f"Jimbo alert: budget threshold exceeded. {summary}")
+
         sys.exit(1)
 
 
