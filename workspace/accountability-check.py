@@ -24,10 +24,19 @@ import urllib.error
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
+CALL_SCRIPT = os.path.join(_script_dir, "alert-call.py")
 
 
 def send_alert(message):
     subprocess.run([sys.executable, ALERT_SCRIPT, message])
+
+
+def send_call(message):
+    """Escalate to phone call for critical failures."""
+    try:
+        subprocess.run([sys.executable, CALL_SCRIPT, message], timeout=30)
+    except Exception:
+        pass
 
 
 def now_utc():
@@ -111,10 +120,10 @@ def check_surprise_game():
         result = api_request("GET", "/api/experiments?task=surprise-game&last=50")
         rows = [r for r in result.get("runs", []) if r.get("timestamp", "").startswith(today_str())]
     except Exception:
-        return False, "surprise game not played"
+        return None, "surprise game not played (nudge)"
 
     if not rows:
-        return False, "surprise game not played"
+        return None, "surprise game not played (nudge)"
     return True, "surprise game played"
 
 
@@ -195,9 +204,14 @@ def main():
         except Exception as e:
             ok, summary = False, f"{name}: error — {e}"
 
-        icon = "\u2705" if ok else "\u274c"
+        if ok is None:
+            icon = "\U0001f4ad"  # 💭 soft nudge
+        elif ok:
+            icon = "\u2705"
+        else:
+            icon = "\u274c"
         results.append((icon, summary, ok))
-        if not ok:
+        if ok is False:
             failures += 1
 
     if quiet and failures == 0:
@@ -216,6 +230,11 @@ def main():
         lines.append(f"{failures} item(s) need attention.")
 
     send_alert("\n".join(lines))
+
+    # Escalate: if both briefing pipelines missed, phone call
+    briefing_ok, briefing_summary = check_briefing_ran()
+    if not briefing_ok and "morning pipeline missing" in briefing_summary and "afternoon pipeline missing" in briefing_summary:
+        send_call("Jimbo alert: both morning and afternoon briefing pipelines failed today. Check the VPS.")
 
 
 if __name__ == "__main__":
