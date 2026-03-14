@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.request
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
@@ -69,6 +70,8 @@ def log_to_activity(session, pipeline_status):
 
     email_count = fetch.get("count", 0)
     gem_count = reader.get("gems", 0)
+    insights_info = pipeline_status.get("email_insights", {})
+    insight_count = insights_info.get("count", 0)
     event_count = cal.get("events", 0)
     task_count = vault.get("tasks", 0)
 
@@ -83,7 +86,7 @@ def log_to_activity(session, pipeline_status):
         subprocess.run([
             sys.executable, ACTIVITY_LOG_SCRIPT, "log",
             "--task", "briefing",
-            "--description", f"{label} pipeline: {email_count} emails, {gem_count} gems, {event_count} events, {task_count} vault tasks",
+            "--description", f"{label} pipeline: {email_count} emails, {gem_count} gems, {insight_count} insights, {event_count} events, {task_count} vault tasks",
             "--outcome", outcome,
             "--rationale", f"session={session}, pipeline-driven (ADR-042)",
         ], timeout=10)
@@ -186,6 +189,15 @@ def run_pipeline(session, dry_run=False):
     else:
         pipeline_status["reader"] = {"status": "skipped"}
 
+    # --- Step 3b: Email insights from decision worker ---
+    email_insights = []
+    if not dry_run:
+        insight_hours = 14 if session == "morning" else 8
+        email_insights, insights_status = fetch_email_insights(hours=insight_hours, min_relevance=5)
+        pipeline_status["email_insights"] = insights_status
+    else:
+        pipeline_status["email_insights"] = {"status": "skipped (dry-run)"}
+
     # --- Step 4: Calendar ---
     if not dry_run:
         result = subprocess.run(
@@ -234,6 +246,7 @@ def run_pipeline(session, dry_run=False):
         "pipeline": pipeline_status,
         "calendar": calendar,
         "gems": gems,
+        "email_insights": email_insights,
         "shortlist_reasons": shortlist_reasons,
         "vault_tasks": vault_tasks,
         "context_summary": context_summary,
@@ -309,11 +322,99 @@ def select_vault_tasks(limit=5, vault_dir=None):
     return tasks, {"status": "ok", "tasks": len(tasks)}
 
 
-def build_context_summary():
-    """Build a context summary from context files."""
-    summary = {}
-    context_dir = os.path.join("/workspace", "context")
+def fetch_email_insights(hours=14, min_relevance=5):
+    """Fetch recent decided email reports from jimbo-api.
 
+    Returns (insights_list, status_dict). Each insight has the decision
+    worker's scoring, category, and briefing-ready insight text.
+    """
+    api_url = os.environ.get("JIMBO_API_URL", "")
+    api_key = os.environ.get("JIMBO_API_KEY", "")
+
+    if not api_url or not api_key:
+        return [], {"status": "skipped", "error": "no API credentials"}
+
+    try:
+        url = f"{api_url}/api/emails/reports?min_relevance={min_relevance}"
+        req = urllib.request.Request(url, headers={
+            "X-API-Key": api_key,
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            reports = json.loads(resp.read().decode())
+
+        # Filter to reports decided within the briefing window
+        cutoff = now_utc() - datetime.timedelta(hours=hours)
+        recent = []
+        for r in reports:
+            decided_at = r.get("decided_at", "")
+            if decided_at:
+                try:
+                    dt = datetime.datetime.fromisoformat(decided_at)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=datetime.timezone.utc)
+                    if dt < cutoff:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            recent.append({
+                "gmail_id": r.get("gmail_id"),
+                "subject": r.get("subject"),
+                "from_email": r.get("from_email"),
+                "relevance_score": r.get("relevance_score"),
+                "category": r.get("category"),
+                "suggested_action": r.get("suggested_action"),
+                "reason": r.get("reason"),
+                "insight": r.get("insight"),
+                "connections": r.get("connections", []),
+                "time_sensitive": r.get("time_sensitive", False),
+                "deadline": r.get("deadline"),
+            })
+
+        # Sort by relevance score descending
+        recent.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+
+        sys.stderr.write(f"[briefing-prep] email insights: {len(recent)} decided reports (min_relevance={min_relevance})\n")
+        return recent, {"status": "ok", "count": len(recent)}
+
+    except Exception as e:
+        sys.stderr.write(f"[briefing-prep] failed to fetch email insights: {e}\n")
+        return [], {"status": "failed", "error": str(e)[:200]}
+
+
+def build_context_summary():
+    """Build a context summary from jimbo-api, falling back to local files."""
+    summary = {}
+    api_url = os.environ.get("JIMBO_API_URL", "")
+    api_key = os.environ.get("JIMBO_API_KEY", "")
+
+    if api_url and api_key:
+        for slug, key in [("priorities", "priorities_updated"), ("goals", "goals_updated")]:
+            try:
+                req = urllib.request.Request(
+                    f"{api_url}/api/context/files/{slug}",
+                    headers={"X-API-Key": api_key, "Accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode())
+                updated = data.get("updated_at", "")
+                if updated:
+                    summary[key] = updated[:10]
+                # Extract top priority from first section's first item
+                if slug == "priorities":
+                    sections = data.get("sections", [])
+                    if sections:
+                        items = sections[0].get("items", [])
+                        if items:
+                            label = items[0].get("label", "")
+                            content = items[0].get("content", "")
+                            summary["top_priority"] = f"{label}: {content}" if label else content
+            except Exception as e:
+                sys.stderr.write(f"[briefing-prep] failed to fetch {slug} summary: {e}\n")
+        return summary
+
+    # Fallback to local files
+    context_dir = os.path.join("/workspace", "context")
     for name, key in [("PRIORITIES.md", "priorities_updated"), ("GOALS.md", "goals_updated")]:
         path = os.path.join(context_dir, name)
         if os.path.exists(path):
@@ -321,21 +422,6 @@ def build_context_summary():
             summary[key] = datetime.datetime.fromtimestamp(
                 mtime, tz=datetime.timezone.utc
             ).strftime("%Y-%m-%d")
-
-    # Read top priority from PRIORITIES.md
-    priorities_path = os.path.join(context_dir, "PRIORITIES.md")
-    if os.path.exists(priorities_path):
-        try:
-            with open(priorities_path) as f:
-                content = f.read(500)
-            # Look for first bullet point after "This Week" or similar header
-            for line in content.split("\n"):
-                line = line.strip()
-                if line.startswith("- ") or line.startswith("* "):
-                    summary["top_priority"] = line.lstrip("-* ").strip()
-                    break
-        except OSError:
-            pass
 
     return summary
 
@@ -355,6 +441,11 @@ def send_status_alert(session, pipeline_status, duration_ms):
         parts.append(f"{count} emails -> {shortlisted} shortlisted -> {gem_count} gems")
     else:
         parts.append(f"email: {fetch.get('status', 'unknown')}")
+
+    # Email insights (from decision worker)
+    insights = pipeline_status.get("email_insights", {})
+    if insights.get("status") == "ok":
+        parts.append(f"insights: {insights.get('count', 0)}")
 
     # Calendar
     cal = pipeline_status.get("calendar", {})

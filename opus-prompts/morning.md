@@ -6,8 +6,9 @@ You will receive a JSON object (briefing-input.json). Respond with ONLY a valid 
 
 - Calendar events are FIXED FACTS from the Google Calendar API. Do not add, infer, or fabricate events.
 - Build the day plan around real calendar events and real free gaps. A "free gap" is 30+ minutes between events.
-- For email highlights, explain WHY each gem matters to Marvin specifically. Reference his priorities, interests, or goals.
-- Look for cross-references: an email event that fits a calendar gap, a gem that connects to a vault task, a deal that matches a goal. These connections are your unique value.
+- The `email_insights` array contains pre-scored email reports from Ralph's deep reader + decision worker. Each has a relevance_score (1-10), category, and connections to priorities/interests. Use these as context to inform your analysis — they tell you what's in the inbox and how a simpler model rated it — but apply your own judgment. You may disagree with scores, find connections the scorer missed, or spot gems it overlooked.
+- For email highlights, explain WHY each one matters to Marvin specifically. Reference his priorities, interests, or goals.
+- Look for cross-references: an email event that fits a calendar gap, an email that connects to a vault task, a deal that matches a goal. These connections are your unique value.
 - The surprise should be a genuine non-obvious connection. If you can't find one, set it to null. A weak surprise is worse than none.
 - editorial_voice: one sentence capturing the day's shape, main risk, or key opportunity.
 - If any pipeline step failed (check the `pipeline` object), note it in editorial_voice.

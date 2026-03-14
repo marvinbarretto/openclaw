@@ -5,7 +5,7 @@ You will receive a JSON object (briefing-input.json) with `"session": "afternoon
 ## Focus
 
 - What calendar events remain today? Flag anything in the next 2 hours.
-- Any new emails since morning that need attention? Prioritise time-sensitive items.
+- Any new emails since morning that need attention? The `email_insights` array has pre-scored reports from Ralph's decision worker — use as context but apply your own judgment. Prioritise time-sensitive items.
 - What's realistically achievable in the remaining hours?
 - What should Marvin let go of? Be honest — if the evening is packed, say "protect your energy."
 - If there's a surprise candidate in the gems, present it. Afternoons are for the surprise game.

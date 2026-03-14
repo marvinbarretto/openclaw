@@ -24,7 +24,7 @@ if [ "$INPUT_SESSION" != "$SESSION" ]; then
     exit 0
 fi
 
-# Check it's fresh (less than 2 hours old)
+# Check it's fresh (less than 10 hours old — wide window so Mac can be asleep at cron time)
 IS_FRESH=$(echo "$INPUT" | python3 -c "
 import sys, json, datetime
 d = json.load(sys.stdin)
@@ -32,7 +32,7 @@ gen = datetime.datetime.fromisoformat(d['generated_at'])
 if gen.tzinfo is None:
     gen = gen.replace(tzinfo=datetime.timezone.utc)
 age = (datetime.datetime.now(datetime.timezone.utc) - gen).total_seconds()
-print('yes' if age < 7200 else 'no')
+print('yes' if age < 36000 else 'no')
 " 2>/dev/null) || exit 0
 
 if [ "$IS_FRESH" != "yes" ]; then
