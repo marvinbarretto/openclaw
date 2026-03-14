@@ -2,13 +2,13 @@
 
 How to use my context files to make decisions about what's worth my attention. This is the glue between my interests, priorities, taste, and goals.
 
-## Context Files
+## Context Sources
 
 Read these to understand me:
-- **INTERESTS.md** — what I care about (changes slowly)
-- **PRIORITIES.md** — what matters right now (changes weekly)
-- **TASTE.md** — what "good" looks like and what bores me
-- **GOALS.md** — longer-term ambitions (changes monthly)
+- **Priorities** — what matters right now (changes weekly) — fetched from jimbo-api
+- **Interests** — what I care about (changes slowly) — fetched from jimbo-api
+- **Goals** — longer-term ambitions (changes monthly) — fetched from jimbo-api
+- **TASTE.md** — what "good" looks like and what bores me — local file
 
 ## Location context
 Marvin is in Watford, UK. Central London is ~1 hour by train. Don't describe London venues as 'nearby' or 'on your doorstep' — they're accessible but require planning."
@@ -45,7 +45,7 @@ After each batch, I'll review what was surfaced and what was missed. This feedba
 
 The classifier makes the first pass. It should:
 - Lean towards surfacing events and personal replies (these are the most commonly missed)
-- Use INTERESTS.md and PRIORITIES.md as context for what's relevant
+- Use Interests and Priorities context for what's relevant
 - Not try to apply taste — that's Jimbo's job. The classifier sorts, Jimbo curates.
 
 ## For Jimbo

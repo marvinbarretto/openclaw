@@ -210,3 +210,30 @@ These live only on the VPS. Jimbo creates and updates them — don't overwrite:
 ---
 
 *Last updated: 2026-03-07*
+
+
+
+TEMP NOTES: Need to store the overall intentions and rationale somewhere centrally and iterate on this:
+
+  Decision layer — Something on the VPS (Gemini Flash / Haiku) reads the
+  undecided reports, cross-references your priorities and context from
+  jimbo-api, and decides: is this relevant? does it need action? should it
+  surface in your briefing? That's the decided flag.
+
+  Briefing integration — The morning briefing pipeline should pull decided
+  email insights alongside calendar, tasks, vault. "You got an email about a
+  comedy night Friday at Watford Palace — matches your 'local events'
+  interest."
+
+  Feedback loop — When you mark things as useful/not useful, that tunes what
+  Ralph prioritises. Right now everything gets the same treatment.
+
+  More job types — The job architecture is there. RSS feeds, Hacker News,
+  calendar prep, anything with a queue of items to read deeply.
+
+  Scheduling — Ralph should run on a launchd timer, not manually. Probably
+  every few hours while the Mac is open.
+
+  The pattern is always the same: Ralph does the slow, thorough, free work
+  locally. Smart models on the VPS make the judgment calls. You see the
+  results in your briefing.

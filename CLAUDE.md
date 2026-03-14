@@ -28,6 +28,7 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── recommendations-helper.py — SQLite CRUD for persistent recommendations store
   │     ├── experiment-tracker.py — SQLite run logging for worker experiments
   │     ├── alert.py — Telegram alert sender (stdlib only, Bot API)
+  │     ├── alert-call.py — Twilio phone call alert for critical failures (stdlib only, REST API)
   │     ├── alert-check.py — Pipeline health checker with positive heartbeat (digest, briefing, credits)
   │     ├── openrouter-usage.py — OpenRouter balance/usage checker (stdlib only)
   │     ├── prioritise-tasks.py — Gemini Flash batch scorer for vault tasks (priority, actionability)
@@ -112,11 +113,13 @@ notes/            Brain dumps
 - `decisions/036-haiku-conductor-model.md` — ADR for switching conductor from Flash to Haiku 4.5
 - `decisions/038-tasks-triage-session.md` — ADR for interactive tasks triage via Telegram (briefing announcement + triage skill)
 - `decisions/040-twice-daily-briefing.md` — ADR for splitting briefing into morning (07:00) + afternoon (15:00) sessions, session-aware experiment tracking, controllable via settings
+- `decisions/043-twilio-phone-alerts.md` — ADR for Twilio phone call escalation on critical failures (gateway down, both briefings failed, budget exceeded)
 - `docs/plans/2026-02-24-orchestrator-design.md` — Full orchestrator design doc
 - `docs/plans/2026-02-24-orchestrator-plan.md` — Implementation plan
 - `workspace/experiment-tracker.py` — SQLite experiment tracking for worker runs. Logs model, tokens, config hash per run. Stdlib only.
 - `workspace/context-helper.py` — Context API client for sandbox. Fetches context (priorities, interests, goals) from jimbo-api, formats as readable text. Replaces file reads in skills. Stdlib only. (ADR-033)
 - `workspace/alert.py` — Telegram alert sender. Sends via Bot API, exits silently if env vars missing. Stdlib only. (ADR-030)
+- `workspace/alert-call.py` — Twilio phone call alert for critical failures. TTS via REST API, 60-min cooldown, exits silently if env vars missing. Stdlib only. (ADR-043)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (reports email volume), `briefing` (checks experiment-tracker.db, time-aware), `credits` (reports OpenRouter usage), `model` (reports current VPS model from openclaw.json), `status` (combined). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/accountability-check.py` — Daily accountability checker. Queries activity-log.db + experiment-tracker.db for today. Checks: briefing ran, gems produced, surprise game played, vault tasks surfaced, activity count, cost. Sends Telegram summary. Runs at 20:00 UTC via cron. Stdlib only.
 - `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Sonnet/Kimi switching around both briefing windows (morning 06:45-07:30, afternoon 14:45-15:30).
@@ -233,6 +236,7 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `JIMBO_API_URL` — jimbo-api base URL for context-helper.py (ADR-033)
 - `JIMBO_API_KEY` — API key for jimbo-api (same as `API_KEY` on the server) (ADR-033)
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_TO_NUMBER` — Twilio voice API for critical failure phone calls (ADR-043)
 
 Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → model swap to Sonnet (06:45) → Jimbo's morning briefing (07:00) → model swap to Kimi K2 (07:30) → afternoon briefing-prep pipeline (14:15) → model swap to Sonnet (14:45) → Jimbo's afternoon briefing (15:00) → model swap to Kimi K2 (15:30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
