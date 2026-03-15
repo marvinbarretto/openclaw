@@ -34,7 +34,15 @@ No real briefing delivered. Flash shortlisted 0 emails for the 5th consecutive s
 
 **Realisation:** The multi-stage pipeline was the problem. One capable model reading everything in one pass beats a pipeline of cheaper models. Disabled VPS briefing delivery, kept silent data collection, compose with Opus locally.
 
-## Current Architecture (as of 2026-03-08)
+### Session 6 — 2026-03-15 (The Opus Pipeline Was Never Wired Up)
+
+Flash self-compose briefing. Calendar fabrication back (F1, Premier League, Mother's Day added from general knowledge). Email bypasses pipeline's scored insights. Day plan was the best non-Opus version yet. But Marvin spotted immediately it wasn't Opus.
+
+**Root cause:** `opus-briefing.sh` used `/workspace/` (sandbox path) instead of `/home/openclaw/.openclaw/workspace/` (host path) in SSH commands. Silent `|| exit 0` on every line meant 10 days of invisible failure. Fix applied.
+
+**Pattern:** Silent failures are the worst failures. `|| exit 0` optimised for resilience over observability.
+
+## Current Architecture (as of 2026-03-15)
 
 ```
 VPS (always on):
@@ -72,12 +80,13 @@ Jimbo (Telegram):
 | Dashboard empty (SQLite island) | Migrated to jimbo-api endpoints | 4 |
 | Multi-stage pipeline producing nothing | Switched to single-model Opus composition | 5 |
 | OpenRouter cost burn ($10+/week) | Disabled, using free Opus via Max plan | 5 |
+| Opus pipeline silently broken | Wrong SSH path (`/workspace/` vs host path). Fixed both read and write paths. | 6 |
 
 ## Open Issues
 
 | Issue | Notes |
 |-------|-------|
-| Flash triage calibration | 0 shortlisted across 5 sessions. Worker runs but rejects everything. |
+| Flash triage calibration | 0 shortlisted across 7 sessions. Worker runs but rejects everything. |
 | Calendar fabrication in self-compose mode | Jimbo ignores structured JSON data or invents entries. Works when Opus handles it. |
 | Vault tasks stale | Same items surfaced repeatedly. Scorer may not differentiate well at top of range. |
 | daily-briefing skill references conductor-rating | Legacy field from the conductor era. Still in skill prompt but concept is retired. |
@@ -92,3 +101,5 @@ Jimbo (Telegram):
 - **Personality and voice are consistent and valued.** Jimbo's editorial voice is a feature, not a bug.
 - **Visibility enables improvement.** We couldn't improve what we couldn't see. The API migration unblocked real evaluation.
 - **Monitoring can make things worse.** False alerts triggered triple briefings. Heartbeat burned tokens for "no nudge needed." Sometimes less is more.
+- **Silent failures are the worst failures.** `|| exit 0` patterns hide bugs for days/weeks. A single error log line would have caught the Opus path bug on day one.
+- **Path confusion (sandbox vs host) is a recurring trap.** `/workspace/` means different things inside Docker vs on the VPS host.

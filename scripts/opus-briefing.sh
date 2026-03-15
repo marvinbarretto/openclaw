@@ -14,7 +14,7 @@ if [ ! -f "$PROMPT_DIR/${SESSION}.md" ]; then
 fi
 
 # Pull briefing-input.json from VPS
-INPUT=$(ssh jimbo 'cat /workspace/briefing-input.json' 2>/dev/null) || exit 0
+INPUT=$(ssh jimbo 'cat /home/openclaw/.openclaw/workspace/briefing-input.json' 2>/dev/null) || exit 0
 [ -z "$INPUT" ] && exit 0
 
 # Check it's for the right session
@@ -48,6 +48,6 @@ ANALYSIS=$(echo "$INPUT" | claude -p "$PROMPT" 2>/dev/null) || exit 0
 echo "$ANALYSIS" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'day_plan' in d" 2>/dev/null || exit 0
 
 # Push to VPS
-echo "$ANALYSIS" | ssh jimbo 'cat > /workspace/briefing-analysis.json' 2>/dev/null || exit 0
+echo "$ANALYSIS" | ssh jimbo 'cat > /home/openclaw/.openclaw/workspace/briefing-analysis.json' 2>/dev/null || exit 0
 
 echo "Opus analysis pushed for $SESSION session"
