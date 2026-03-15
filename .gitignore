@@ -21,6 +21,7 @@ workspace/experiment-tracker.db
 
 # Briefing pipeline runtime data (generated, never commit)
 workspace/briefing-input.json
+data/briefing-input.json
 
 # Generated status export (rebuilt by export-status.py)
 workspace/jimbo-status.json
@@ -48,6 +49,9 @@ workspace/blog-src/.astro/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Editor
+.vscode/
 
 # OS
 .DS_Store
