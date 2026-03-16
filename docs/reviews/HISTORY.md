@@ -52,6 +52,10 @@ Marvin stepped back: "I'm not sure that's the point of OpenClaw." Researched sho
 
 Also: cleaned up stale memory files causing incorrect assumptions across sessions.
 
+**Implementation:** Built and deployed API endpoint, rewrote opus-briefing.sh + skill + prompts. Live testing revealed a Docker bind mount (`/usr/lib/node_modules/openclaw/skills`) was hiding all custom skills for 7 sessions. After removing it, Flash produced the best non-Opus briefing yet — real calendar data, no fabrication, relevant email highlights. Calendar fabrication problem appears solved by making skills visible.
+
+**Pattern:** The bind mount was the biggest single fix. Skills were never loaded — the model was always freestyling.
+
 ## Current Architecture (as of 2026-03-16)
 
 ```
@@ -101,6 +105,7 @@ Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
 | Vault tasks stale | Same items surfaced repeatedly. Scorer may not differentiate well at top of range. |
 | Opus layer Mac-dependent | If Mac is asleep, no analysis. Jimbo needs a fallback (quick scan from raw data, or say "Opus hasn't run"). |
 | No mechanism to rate briefings retroactively | Experiment tracker has user_rating field but no UI or workflow to use it. |
+| Skill not triggering API fetch | Model self-composes from raw data instead of fetching Opus analysis from API. Lower priority now that fabrication is solved. |
 | briefing-input.json still file-based | Opus reads via SSH. Could move to jimbo-api in v2 to eliminate all file-based flow. |
 
 ## Patterns (Across All Sessions)
@@ -113,3 +118,4 @@ Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
 - **Visibility enables improvement.** We couldn't improve what we couldn't see. The API migration unblocked real evaluation.
 - **Silent failures are the worst failures.** `|| exit 0` patterns hide bugs for days/weeks. Always log errors.
 - **Stale context causes stale assumptions.** Memory files and CLAUDE.md accumulated incorrect claims across sessions. Less is more — keep memory lean, derive from code.
+- **Check the plumbing before blaming the model.** Seven sessions of "Flash can't follow instructions" — turns out the instructions were never visible. A bind mount hid all custom skills.
