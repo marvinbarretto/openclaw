@@ -26,6 +26,12 @@
         <string>/Users/marvinbarretto/.local/bin:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
         <key>HOME</key>
         <string>/Users/marvinbarretto</string>
+        <key>JIMBO_API_KEY</key>
+        <string>7e37e4ae1650b6ebc2a925b918924d80</string>
+        <key>TELEGRAM_BOT_TOKEN</key>
+        <string>8228119735:AAFN2BLnqFoSBgcpCv0Ov9kq9f6JQ8Ie0jA</string>
+        <key>TELEGRAM_CHAT_ID</key>
+        <string>7483956469</string>
     </dict>
 </dict>
 </plist>
