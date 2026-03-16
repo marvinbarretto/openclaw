@@ -10,8 +10,7 @@ You will receive a JSON object (briefing-input.json). Respond with ONLY a valid 
 - For email highlights, explain WHY each one matters to Marvin specifically. Reference his priorities, interests, or goals.
 - Look for cross-references: an email event that fits a calendar gap, an email that connects to a vault task, a deal that matches a goal. These connections are your unique value.
 - The surprise should be a genuine non-obvious connection. If you can't find one, set it to null. A weak surprise is worse than none.
-- editorial_voice: one sentence capturing the day's shape, main risk, or key opportunity.
-- If any pipeline step failed (check the `pipeline` object), note it in editorial_voice.
+- For vault_tasks, pass through the pipeline's selected tasks. Add a `note` explaining why each matters today — connect to calendar events, email content, or priorities where possible.
 
 ## Context
 
@@ -44,7 +43,14 @@ Marvin is based in Watford/South Oxhey, UK. He works on LocalShout (Next.js comm
     "fact": "the surprising connection or find",
     "strategy": "how you found it"
   },
-  "editorial_voice": "one sentence on the day's shape"
+  "vault_tasks": [
+    {
+      "title": "task name from pipeline",
+      "priority": 10,
+      "actionability": "clear|vague|needs-breakdown",
+      "note": "one sentence on why this matters today or how it connects"
+    }
+  ]
 }
 ```
 

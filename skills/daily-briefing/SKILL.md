@@ -1,77 +1,56 @@
 ---
 name: daily-briefing
-description: Compose and deliver the morning or afternoon briefing from pre-computed pipeline data
+description: Deliver the morning or afternoon briefing from Opus analysis via jimbo-api
 user-invokable: true
 ---
 
 # Daily Briefing
 
-When the user says good morning, asks for a briefing, or it's a scheduled briefing session, compose a briefing from the pre-computed pipeline data.
+When the user says good morning, asks for a briefing, or it's a scheduled briefing session.
 
-## Step 1: Read inputs
+## Step 1: Fetch today's briefing
 
 Run in the sandbox:
 
-1. `cat /workspace/briefing-input.json`
-2. `cat /workspace/briefing-analysis.json 2>/dev/null || echo 'null'`
-3. `cat /workspace/SOUL.md`
+```bash
+curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/briefing/latest"
+```
 
-If `briefing-input.json` is missing or older than 4 hours, say: "Pipeline hasn't run yet today. Ask me to check email if you want a manual scan."
+- If the curl fails entirely (connection refused, timeout): say "jimbo-api is down. I can still check your calendar and email directly — want me to?"
+- If it returns 404: say "Opus hasn't run yet today. I can check your calendar and top vault tasks if you'd like."
+- If it returns data: parse the JSON and continue.
 
-If `briefing-analysis.json` exists and is less than 2 hours old, you are in **Opus-assisted mode** — the hard thinking is done. Your job is to deliver it in your voice.
+## Step 2: Deliver the briefing
 
-If `briefing-analysis.json` is missing or stale, you are in **self-compose mode** — build the day plan yourself from the raw data.
+Walk through the analysis **one section at a time**. Send each as a separate message. Use your own voice — be conversational, not robotic.
 
-## Step 2: Compose the briefing
+1. **Day plan** — present the time blocks with suggestions and reasoning. Flag anything in the next 2 hours.
+2. **Email highlights** — present each pick with WHY it matters. Skip if the array is empty.
+3. **Surprise** — present the connection/find. Skip if null.
+4. **Vault tasks** — present priority tasks with notes on why they matter today. If triage_pending > 0 in briefing-input.json, announce: "I picked up N tasks that need your input. When's good for a 15-min triage?"
 
-### HARD RULES (both modes)
+After delivering, ask: "Anything you'd swap or skip?"
 
-- **Calendar contains ONLY events from briefing-input.json.** Do not add, infer, or fabricate any events. If there are 4 events, show 4 events. If there are 0 events, say "nothing on the calendar today."
-- **Email highlights come from the gems array.** Do not re-triage the digest yourself.
-- **Report pipeline failures honestly.** If `pipeline.triage.status` is `"failed"`, say so: "Email triage didn't run today — highlights may be incomplete."
+## Step 3: Log delivery
 
-### Opus-assisted mode
-
-Use the `briefing-analysis.json` data:
-- Present the `day_plan` entries as time-blocked suggestions with the reasoning
-- Present `email_highlights` with the editorial commentary
-- If `surprise` is not null, present it
-- Use `editorial_voice` to set your tone
-- Rewrite everything in your own voice (SOUL.md personality) — don't just dump the JSON
-
-### Self-compose mode
-
-Build from `briefing-input.json`:
-- **Calendar:** List events chronologically. Flag anything in the next 2 hours.
-- **Day plan:** Identify free gaps between events. Cross-reference gems and vault_tasks. Suggest 3-5 activities with reasoning.
-- **Email highlights:** Pick the top 3-5 gems by confidence. Explain WHY each matters.
-- **Vault tasks:** Surface the top 2-3 from `vault_tasks` array. Weave into the day plan.
-- **Surprise game (afternoon only):** Pick the best `surprise_candidate: true` gem, or make your own connection.
-
-### Both modes
-
-- **Morning:** Full day plan. End with "Anything you'd swap or skip?"
-- **Afternoon:** Rescue framing. What's left today? What changed since morning? What to let go of?
-- If `triage_pending > 0` and morning: "I picked up **{triage_pending} tasks** that need your input. When's good for a 15-min triage?"
-- Keep it scannable — under 1 minute to read.
-
-## Step 3: Log (MANDATORY)
-
-After delivering the briefing, always run both:
+Run both in the sandbox:
 
 ```bash
-python3 /workspace/experiment-tracker.py log \
-    --task briefing-synthesis \
-    --model <your-model> \
-    --input-tokens <est> --output-tokens <est> \
-    --session <morning|afternoon> \
-    --conductor-rating <1-10> \
-    --conductor-reasoning '{"mode": "<opus-assisted|self-compose>", "gems_used": <N>, "calendar_events": <N>}'
+curl -sf -X POST -H "X-API-Key: $JIMBO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"task_type":"briefing","description":"<Morning|Afternoon> briefing delivered (opus-assisted)","outcome":"success"}' \
+  "$JIMBO_API_URL/api/activity"
 
-python3 /workspace/activity-log.py log \
-    --task briefing \
-    --description "<Morning|Afternoon> briefing: <brief summary>" \
-    --outcome "<success|partial>" \
-    --rationale "mode=<opus-assisted|self-compose>, calendar=<N events>, email=<N gems>, vault=<N tasks>" \
-    --model <your-model>
+curl -sf -X POST -H "X-API-Key: $JIMBO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"task":"briefing-synthesis","model":"<your-model>","input_tokens":0,"output_tokens":0,"config_hash":"opus-assisted","notes":"{\"mode\":\"opus-assisted\",\"session\":\"<morning|afternoon>\"}"}' \
+  "$JIMBO_API_URL/api/experiments"
 ```
+
+## Step 4: Stay available
+
+You are now in conversation. Marvin may ask follow-ups. Use your sandbox tools:
+
+- **"Tell me more about [email]"** → `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/emails/reports"` and find the relevant report
+- **"Add that to my calendar"** → `python3 /workspace/calendar-helper.py create-event --summary "..." --start ... --end ...`
+- **"Check conflicts at 3pm"** → `python3 /workspace/calendar-helper.py check-conflicts --start ... --end ...`
+- **"What vault tasks are urgent?"** → `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/notes?status=active&sort=priority&limit=10"`
+- **"Remind me at 3pm about X"** → `python3 /workspace/calendar-helper.py create-event --summary "Reminder: X" --start 2026-03-16T15:00:00 --end 2026-03-16T15:15:00`

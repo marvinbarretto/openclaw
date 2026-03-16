@@ -14,7 +14,7 @@ You will receive a JSON object (briefing-input.json) with `"session": "afternoon
 
 - Calendar events are FIXED FACTS. Do not fabricate.
 - Be honest about what's achievable. Don't suggest cramming 4 tasks into 2 hours.
-- editorial_voice should acknowledge the day so far, not just the remaining hours.
+- For vault_tasks, pass through the pipeline's selected tasks. Add a `note` explaining why each matters in the remaining hours.
 
 ## Context
 
@@ -47,7 +47,14 @@ Marvin is based in Watford/South Oxhey, UK. LocalShout is the main project. See 
     "fact": "...",
     "strategy": "..."
   },
-  "editorial_voice": "one sentence"
+  "vault_tasks": [
+    {
+      "title": "task name from pipeline",
+      "priority": 10,
+      "actionability": "clear|vague|needs-breakdown",
+      "note": "one sentence on why this matters today or how it connects"
+    }
+  ]
 }
 ```
 
