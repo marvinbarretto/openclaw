@@ -42,7 +42,17 @@ Flash self-compose briefing. Calendar fabrication back (F1, Premier League, Moth
 
 **Pattern:** Silent failures are the worst failures. `|| exit 0` optimised for resilience over observability.
 
-## Current Architecture (as of 2026-03-15)
+### Session 7 — 2026-03-16 (Going With the Flow)
+
+Opus pipeline worked for the first time (path fix from session 6). Excellent analysis sitting on VPS. Flash ignored it completely — fabricated 3 calendar events, missed CCCL #4 (most important event), stalled for 2 hours. Widest gap between available and delivered quality.
+
+Marvin stepped back: "I'm not sure that's the point of OpenClaw." Researched showcase + awesome-usecases. Realised we'd been fighting the platform — asking a free model to do one-shot composition when OpenClaw is built for step-by-step tool use.
+
+**Decision:** Opus publishes structured analysis to jimbo-api (not files). Jimbo fetches via API, delivers section-by-section, stays as full conversational agent. Opus owns thinking, Jimbo owns voice + actions. Design spec: `docs/superpowers/specs/2026-03-16-briefing-api-delivery-design.md`
+
+Also: cleaned up stale memory files causing incorrect assumptions across sessions.
+
+## Current Architecture (as of 2026-03-16)
 
 ```
 VPS (always on):
@@ -52,17 +62,18 @@ VPS (always on):
     - newsletter_reader.py (Haiku)
     - calendar-helper.py
     - vault task selection
-  jimbo-api → dashboard, context, settings, activity, costs, experiments
+  jimbo-api → dashboard, context, settings, activity, costs, experiments, briefing analysis
 
 Mac (optional):
-  opus-briefing.sh (launchd) → pulls briefing-input.json
-    → claude -p (Opus via Max plan) → briefing-analysis.json
-    → pushes back to VPS
+  opus-briefing.sh (launchd 06:35 + 14:35)
+    → pulls briefing-input.json via SSH
+    → claude -p (Opus via Max plan)
+    → POST /api/briefing/analysis → jimbo-api
 
-Jimbo (Telegram):
-  Reads briefing-input.json + optional briefing-analysis.json
-  Two modes: Opus-assisted delivery or self-compose from raw data
-  Lightweight assistant on Step 3.5 Flash (free) outside briefing windows
+Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
+  Fetches analysis from jimbo-api
+  Delivers section-by-section via tool calls
+  Full agent: calendar write, vault browse, email detail, follow-up Q&A
 ```
 
 ## Resolved Issues
@@ -86,20 +97,19 @@ Jimbo (Telegram):
 
 | Issue | Notes |
 |-------|-------|
-| Flash triage calibration | 0 shortlisted across 7 sessions. Worker runs but rejects everything. |
-| Calendar fabrication in self-compose mode | Jimbo ignores structured JSON data or invents entries. Works when Opus handles it. |
+| Flash triage calibration | 0 shortlisted across 8 sessions. Worker runs but rejects everything. Costs $0.03/day — low priority. |
 | Vault tasks stale | Same items surfaced repeatedly. Scorer may not differentiate well at top of range. |
-| daily-briefing skill references conductor-rating | Legacy field from the conductor era. Still in skill prompt but concept is retired. |
-| Opus layer Mac-dependent | If Mac is asleep, no briefing-analysis.json. Jimbo falls back to self-compose (lower quality). |
+| Opus layer Mac-dependent | If Mac is asleep, no analysis. Jimbo needs a fallback (quick scan from raw data, or say "Opus hasn't run"). |
 | No mechanism to rate briefings retroactively | Experiment tracker has user_rating field but no UI or workflow to use it. |
+| briefing-input.json still file-based | Opus reads via SSH. Could move to jimbo-api in v2 to eliminate all file-based flow. |
 
 ## Patterns (Across All Sessions)
 
 - **One good model > pipeline of cheap models.** Opus in one pass consistently beats Flash → Haiku → Sonnet pipeline.
+- **Work with OpenClaw, not against it.** Step-by-step tool use + conversation is what the platform does well. One-shot composition from giant JSON is fighting it.
 - **Email quality correlates with context, not architecture.** Adding PRIORITIES.md and EMAIL_EXAMPLES.md improved email picks more than any pipeline change.
-- **Calendar is the most failure-prone section.** Five sessions, five different failure modes.
+- **Calendar is the most failure-prone section.** Seven sessions, seven different failure modes. All caused by cheap models, never by the pipeline data.
 - **Personality and voice are consistent and valued.** Jimbo's editorial voice is a feature, not a bug.
 - **Visibility enables improvement.** We couldn't improve what we couldn't see. The API migration unblocked real evaluation.
-- **Monitoring can make things worse.** False alerts triggered triple briefings. Heartbeat burned tokens for "no nudge needed." Sometimes less is more.
-- **Silent failures are the worst failures.** `|| exit 0` patterns hide bugs for days/weeks. A single error log line would have caught the Opus path bug on day one.
-- **Path confusion (sandbox vs host) is a recurring trap.** `/workspace/` means different things inside Docker vs on the VPS host.
+- **Silent failures are the worst failures.** `|| exit 0` patterns hide bugs for days/weeks. Always log errors.
+- **Stale context causes stale assumptions.** Memory files and CLAUDE.md accumulated incorrect claims across sessions. Less is more — keep memory lean, derive from code.
