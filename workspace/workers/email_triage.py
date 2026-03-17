@@ -123,12 +123,20 @@ class EmailTriageWorker(BaseWorker):
             total_output_tokens += result["output_tokens"]
 
             try:
-                parsed = json.loads(result["text"])
+                # Strip markdown code fences if present (Flash wraps JSON in ```json ... ```)
+                text = result["text"].strip()
+                if text.startswith("```"):
+                    # Remove opening fence (```json or ```)
+                    text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+                if text.endswith("```"):
+                    text = text[:-3].strip()
+                parsed = json.loads(text)
                 batch_shortlist = parsed.get("shortlist", [])
                 all_shortlisted.extend(batch_shortlist)
                 sys.stderr.write(f"[email-triage] batch {batch_num}: {len(batch_shortlist)} shortlisted\n")
             except json.JSONDecodeError:
                 sys.stderr.write(f"[email-triage] batch {batch_num}: failed to parse response as JSON\n")
+                sys.stderr.write(f"[email-triage] raw response (first 500 chars): {result['text'][:500]}\n")
                 continue
 
         # Re-rank across all batches

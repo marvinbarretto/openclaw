@@ -11,9 +11,13 @@ Jimbo owns his own Google Calendar and has read access to Marvin's shared calend
 ## Before you start
 
 Read Marvin's context to make calendar decisions intelligently:
-1. `/workspace/context/PRIORITIES.md` — what's active this week
-2. `/workspace/context/INTERESTS.md` — events and topics he cares about
-3. `/workspace/context/TASTE.md` — how he likes information presented
+1. Run `python3 /workspace/context-helper.py priorities` — what's active this week
+2. Run `python3 /workspace/context-helper.py interests` — events and topics he cares about
+3. Read `/workspace/context/TASTE.md` — how he likes information presented
+
+**Calendar sources:** Marvin has two Google accounts on his calendar:
+- **Primary (marvin@...)** — real commitments, fixed events
+- **marbar.alt@gmail.com** — an "options" calendar. These are nudges about events that *might* be happening, not commitments. This calendar was off for months so some content is stale. Treat marbar.alt events as lower-confidence possibilities, not fixed schedule items.
 
 ## Available commands
 

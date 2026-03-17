@@ -125,11 +125,18 @@ class NewsletterReaderWorker(BaseWorker):
             total_output_tokens += result["output_tokens"]
 
             try:
-                parsed = json.loads(result["text"])
+                # Strip markdown code fences if present
+                text = result["text"].strip()
+                if text.startswith("```"):
+                    text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+                if text.endswith("```"):
+                    text = text[:-3].strip()
+                parsed = json.loads(text)
                 all_gems.extend(parsed.get("gems", []))
                 all_skipped.extend(parsed.get("skipped", []))
             except json.JSONDecodeError:
                 sys.stderr.write(f"Failed to parse batch {i // batch_size + 1} response as JSON\n")
+                sys.stderr.write(f"Raw response (first 500 chars): {result['text'][:500]}\n")
                 continue
 
         output = {

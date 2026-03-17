@@ -9,7 +9,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Telegram chat | WORKING | Via `@fourfold_openclaw_bot` |
 | Morning briefing | WORKING | Cron pipeline at 06:15 → Jimbo delivers at 07:00. `briefing-prep.py` orchestrates workers. (ADR-042) |
 | Afternoon briefing | WORKING | Cron pipeline at 14:15 → Jimbo delivers at ~15:00. Same pipeline, lighter format. Controllable via `afternoon_briefing_enabled` setting. (ADR-040, ADR-042) |
-| Opus analysis layer | WORKING | Mac-side `claude -p` (Opus via Max plan) analyses briefing data. Optional — Jimbo self-composes if unavailable. (ADR-042) |
+| Opus analysis layer | BROKEN | Mac-side `claude -p` runs but POST to `/api/briefing/analysis` returns 404. Route not deployed in jimbo-api. Jimbo self-composes. (ADR-042) |
 | Email digest summary | WORKING | Via `daily-briefing` skill (reads `briefing-input.json` + optional `briefing-analysis.json`) |
 
 ## Context
@@ -56,10 +56,12 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. Triggered by `briefing-prep.py` before each briefing. No laptop dependency. (ADR-022, ADR-042) |
 | Read email digest | WORKING | JSON written directly in sandbox by gmail-helper.py |
 | Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
-| Deep newsletter reading | WORKING | Two-pass pipeline: Flash triages → Haiku deep-reads. Cron-orchestrated via `briefing-prep.py`. (ADR-029, ADR-042) |
+| Deep newsletter reading | BROKEN | Flash triage shortlists 0 emails for 9+ sessions → Haiku gets nothing to read → 0 gems. Pipeline runs but produces no output. (ADR-029, ADR-042) |
 | Briefing prep pipeline | WORKING | `briefing-prep.py` — cron-driven orchestrator. Runs email fetch, triage, reader, calendar, vault tasks. Assembles `briefing-input.json`. Per-pipeline Telegram alerts. (ADR-042) |
-| Opus briefing analysis | WORKING | `opus-briefing.sh` — Mac-side script. Pulls briefing-input.json, runs Opus via `claude -p`, pushes analysis back to VPS. Launchd-scheduled. (ADR-042) |
+| Opus briefing analysis | BROKEN | `opus-briefing.sh` runs and produces analysis, but POST to jimbo-api returns 404. Route never deployed. (ADR-042) |
 | Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
+| Hourly email fetch | RETIRED | `email-fetch-cron.py` replaced by briefing-prep.py fetch step. (ADR-042) |
+| Hourly status check | RETIRED | `alert-check.py status` replaced by per-pipeline alerts from briefing-prep.py. (ADR-042) |
 | Hourly email fetch | RETIRED | `email-fetch-cron.py` replaced by briefing-prep.py fetch step. (ADR-042) |
 | Hourly status check | RETIRED | `alert-check.py status` replaced by per-pipeline alerts from briefing-prep.py. (ADR-042) |
 | Sift-digest skill | RETIRED | Replaced by briefing-prep.py + daily-briefing skill. (ADR-042) |
@@ -75,7 +77,7 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 | LLM batch classification | WORKING | `process-inbox.py` — Claude Haiku classifies inbox → notes/needs-context/archive |
 | Vault browsing (Obsidian) | WORKING | Point Obsidian at `data/vault/`, frontmatter compatible |
 | Classification patterns | WORKING | `context/PATTERNS.md` — learned from review sessions, improves classification |
-| Mobile review queue | NOT STARTED | ADR-024 — needs personal website (Vercel/Cloudflare TBD) |
+| Mobile triage UI | WORKING | React UI at `site.marvinbarretto.workers.dev/app/jimbo/notes-triage`. jimbo-api serves manifest. |
 | Task prioritisation | WORKING | `prioritise-tasks.py` — Gemini Flash batch-scores active tasks against priorities + goals (from context API, file fallback). Writes `priority`, `actionability`, `scored` into frontmatter. Cron at 04:30 UTC. |
 | Daily ingest from Tasks API | WORKING | `tasks-helper.py` runs at 05:00 UTC via cron. Sweeps My Tasks → vault inbox → Gemini Flash classification. |
 | Tasks triage session | WORKING | `tasks-triage` skill — interactive Telegram session for ambiguous items. Announced in morning briefing. Calendar invite via `calendar-helper.py`. (ADR-038) |
@@ -106,10 +108,10 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Self-publish blog posts | WORKING | Write `.md` in `blog-src/src/content/posts/`, commit + push → Cloudflare auto-builds (ADR-027) |
+| Self-publish blog posts | STALE | Mechanism works but last post was Feb 23. Agent not self-initiating. (ADR-027) |
 | Update own diary | WORKING | JIMBO_DIARY.md in workspace |
 | Automated briefing pipeline | WORKING | VPS root cron → briefing-prep.py at 06:15 + 14:15 UTC. Mac launchd → opus-briefing.sh. No manual dependency. (ADR-042) |
-| Heartbeat / self-monitoring | WORKING | HEARTBEAT.md with monitoring + active daytime tasks (ADR-028) |
+| Heartbeat / self-monitoring | BROKEN | HEARTBEAT.md tasks not executing. Activity log empty. Kimi K2 does not act on heartbeat tasks between briefings. (ADR-028) |
 | Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
 | Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
 
@@ -182,7 +184,8 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-03-12*
+*Last updated: 2026-03-17*
+*Session 9 honesty audit: marked Opus layer, newsletter pipeline, heartbeat, blog as BROKEN/STALE*
 *Twilio phone call alerts (ADR-043): 2026-03-12*
 *Context structured fields (ADR-041): 2026-03-06*
 *Briefing pipeline redesign (ADR-042): 2026-03-05*
