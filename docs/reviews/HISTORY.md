@@ -56,28 +56,49 @@ Also: cleaned up stale memory files causing incorrect assumptions across session
 
 **Pattern:** The bind mount was the biggest single fix. Skills were never loaded — the model was always freestyling.
 
-## Current Architecture (as of 2026-03-16)
+**Afternoon follow-up (15:00):** First cron-triggered afternoon briefing. 22 real calendar events, no fabrication, CCCL #4 prominent, conversational tone, proper sections. Day-of-week confusion ("Monday" on a Sunday). Pipeline gaps: 0 emails, 0 vault tasks, stale Opus. Marvin: "Not useful yet but the data seems better." Confirms bind mount fix + explicit cron prompt = model reads and follows the skill.
+
+### Session 8 — 2026-03-17 (Best Briefing, Worst Infrastructure)
+
+Best briefing yet: real calendar (19 events, no fabrication), 7 decent email picks, all 5 vault tasks surfaced with reasoning, conversational tone, agent-like closer. Self-composed by Sonnet — no Opus (API returned 404).
+
+But the session became about everything *around* the briefing:
+
+- **marbar.alt calendar is an "options" calendar** — nudges about possible events, not commitments. Most content stale (calendar was off for months). Reframes the entire "calendar fabrication" story from sessions 1-7: those were real entries from a stale maybe-calendar, not hallucinations.
+- **Jimbo is mostly asleep.** HEARTBEAT.md describes nudges, email check-ins, blog posts, end-of-day reviews. Activity log: empty. Blog: last post Feb 23. Kimi K2 (daily driver) doesn't follow heartbeat tasks.
+- **Email scoring broken.** All 27 insights scored 0. Worker runs, actions assigned, but no meaningful signal.
+- **Briefing API returns 404.** Opus can't POST analysis. Route either never deployed or path mismatch.
+- **Stale info everywhere.** HEARTBEAT.md references retired skills and moved files. Skills directory has 4-5 retired entries. TODO.md mostly outdated. CAPABILITIES.md claims things work that don't.
+- **Surprise game needs definition.** First real attempt but not delightful. Marvin wants: "deep into vault + newsletters + external URLs, match with priorities/goals/hobbies, pick out weird and wonderful things."
+- **Calendar write access wanted.** Jimbo should propose and create schedules, not just narrate.
+
+**Key realisation:** "We may need to go backwards in order to go forwards." Should be working with OpenClaw's actual docs (features, CLI reference, concepts) rather than assumptions. The current architecture may be too complex for what the platform actually supports.
+
+## Current Architecture (as of 2026-03-17)
 
 ```
 VPS (always on):
   briefing-prep.py (cron 06:15 + 14:15) → briefing-input.json
     - gmail-helper.py fetch
-    - email_triage.py (Flash)
-    - newsletter_reader.py (Haiku)
-    - calendar-helper.py
-    - vault task selection
-  jimbo-api → dashboard, context, settings, activity, costs, experiments, briefing analysis
+    - email_triage.py (Flash) — 0 shortlisted for 9 sessions
+    - newsletter_reader.py (Haiku) — 0 gems (nothing shortlisted to read)
+    - email_decision.py (Flash) — 27 insights but all scored 0
+    - calendar-helper.py — WORKING (19 events today)
+    - vault task selection — WORKING (5 tasks)
+  jimbo-api → dashboard, context, settings, activity, costs, experiments
+    ⚠ POST /api/briefing/analysis returns 404 — Opus can't post
 
 Mac (optional):
   opus-briefing.sh (launchd 06:35 + 14:35)
     → pulls briefing-input.json via SSH
     → claude -p (Opus via Max plan)
-    → POST /api/briefing/analysis → jimbo-api
+    → POST /api/briefing/analysis → jimbo-api ← BROKEN (404)
 
-Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
-  Fetches analysis from jimbo-api
-  Delivers section-by-section via tool calls
-  Full agent: calendar write, vault browse, email detail, follow-up Q&A
+Jimbo (OpenClaw on Telegram, Sonnet in briefing window, Kimi K2 otherwise):
+  Self-composes from briefing-input.json (doesn't fetch from API)
+  HEARTBEAT.md tasks: NOT EXECUTING (agent inactive between briefings)
+  Blog: last post Feb 23
+  Calendar write: available but not used
 ```
 
 ## Resolved Issues
@@ -101,12 +122,19 @@ Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
 
 | Issue | Notes |
 |-------|-------|
-| Flash triage calibration | 0 shortlisted across 8 sessions. Worker runs but rejects everything. Costs $0.03/day — low priority. |
-| Vault tasks stale | Same items surfaced repeatedly. Scorer may not differentiate well at top of range. |
-| Opus layer Mac-dependent | If Mac is asleep, no analysis. Jimbo needs a fallback (quick scan from raw data, or say "Opus hasn't run"). |
-| No mechanism to rate briefings retroactively | Experiment tracker has user_rating field but no UI or workflow to use it. |
-| Skill not triggering API fetch | Model self-composes from raw data instead of fetching Opus analysis from API. Lower priority now that fabrication is solved. |
-| briefing-input.json still file-based | Opus reads via SSH. Could move to jimbo-api in v2 to eliminate all file-based flow. |
+| Email insight scores all 0 | **BROKEN.** email_decision.py produces insights but all scored 0. No signal for briefing. Session 8. |
+| Briefing API 404 | **BROKEN.** POST /api/briefing/analysis returns 404. Opus can't post. Session 8. |
+| Jimbo inactive between briefings | **BROKEN.** HEARTBEAT.md tasks not executing. Activity log empty. Blog silent 3 weeks. Session 8. |
+| Stale files throughout repo | HEARTBEAT.md refs retired skills, skills/ has 4-5 retired entries, TODO.md outdated, CAPABILITIES.md inaccurate. Session 8. |
+| No surprise game definition | Only a vague "non-obvious connection" instruction. Needs proper doc defining what delight means. Session 8. |
+| marbar.alt calendar = options | Model doesn't know this calendar is "maybe" events. Treats as commitments. Session 8. |
+| Calendar write not used | Jimbo has write access but only narrates, never proposes+creates. Session 8. |
+| Flash triage calibration | 0 shortlisted across 9 sessions. Worker runs but rejects everything. Costs $0.03/day. |
+| Vault tasks stale | Same 5 priority-9 items surfaced repeatedly. Scorer may not differentiate well at top of range. |
+| Opus layer Mac-dependent | If Mac is asleep, no analysis. Plus API is broken anyway (404). |
+| No mechanism to rate briefings | Experiment tracker has user_rating field but no UI or workflow. |
+| Skill not triggering API fetch | Model self-composes instead of fetching Opus analysis from API. |
+| Need to align with OpenClaw docs | Should be working with platform features as documented, not assumptions. Key refs: docs.openclaw.ai/concepts/features, /start/wizard-cli-reference, /start/openclaw |
 
 ## Patterns (Across All Sessions)
 
@@ -119,3 +147,6 @@ Jimbo (OpenClaw on Telegram, Step 3.5 Flash):
 - **Silent failures are the worst failures.** `|| exit 0` patterns hide bugs for days/weeks. Always log errors.
 - **Stale context causes stale assumptions.** Memory files and CLAUDE.md accumulated incorrect claims across sessions. Less is more — keep memory lean, derive from code.
 - **Check the plumbing before blaming the model.** Seven sessions of "Flash can't follow instructions" — turns out the instructions were never visible. A bind mount hid all custom skills.
+- **Calendar "fabrication" was real data from a stale source.** The marbar.alt calendar contained real entries from a "maybe" events calendar that had been off for months. Not hallucination — wrong trust level.
+- **A good briefing doesn't mean the system is healthy.** Session 8 had the best briefing yet while email scoring, Opus posting, activity logging, and heartbeat tasks were all broken.
+- **Stale info compounds.** HEARTBEAT.md, skills/, TODO.md, CAPABILITIES.md all accumulated incorrect claims. Regular audits needed — or derive from code, not docs.
