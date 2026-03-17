@@ -31,12 +31,18 @@ Base class:  BaseWorker (from workers/base_worker.py)
 Input:       CLI args (argparse)
 Output:      stdout JSON (structured result)
 Stderr:      progress/debug logging
-Side effects: vault note updates (atomic: write-to-temp-then-rename), activity-log entries, experiment-tracker entries
-Dependencies: Python 3.11 stdlib only (no pip). LLM calls via BaseWorker.call().
+Side effects: vault note updates (atomic: write-to-temp-then-rename), activity-log entries, experiment-tracker entries, insight entries (ADR-045)
+Dependencies: Python 3.11 stdlib only (no pip). LLM calls via BaseWorker.call(). Insight writes via insights_store.py.
 Flags:       All modules that modify files support --dry-run
 ```
 
-Same pattern as existing workers (email_triage.py, newsletter_reader.py). Subclass `BaseWorker` for: config loading, context fetching from jimbo-api, model fallback, experiment tracking, LangFuse tracing. Config controls model, thresholds, batch sizes. Scripts are stateless — all state lives in vault files, SQLite DBs, or jimbo-api.
+Same pattern as existing workers (email_triage.py, newsletter_reader.py). Subclass `BaseWorker` for: config loading, context fetching from jimbo-api, model fallback, experiment tracking, LangFuse tracing. Config controls model, thresholds, batch sizes. Scripts are stateless — all state lives in vault files, SQLite DBs, jimbo-api, or insights.json (ADR-045).
+
+### Knowledge Accumulation (ADR-045)
+
+Every background module can produce **insight entries** — structured observations about patterns, connections, and suggestions discovered during runs. Insights accumulate in `/workspace/insights.json` and are searched by vault-connector and briefing synthesis to improve future results. This is the self-improvement loop: do work → notice patterns → remember patterns → use patterns in future work.
+
+Insight production is optional per run. Only write an insight when there's a genuine pattern worth remembering (3+ keyword hits, recurring connection, novel observation). The `insights_store.py` utility handles storage, search (BM25-lite + temporal decay), and pruning.
 
 ### File Write Safety
 

@@ -21,6 +21,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from workers.base_worker import BaseWorker
 from workers.vault_utils import parse_frontmatter
+import insights_store
 
 
 class VaultRoulette(BaseWorker):
@@ -106,7 +107,7 @@ class VaultRoulette(BaseWorker):
         except OSError:
             preview = ""
 
-        return {
+        result = {
             "file": filename,
             "title": meta.get("title", filename),
             "type": meta.get("type", "unknown"),
@@ -114,6 +115,30 @@ class VaultRoulette(BaseWorker):
             "reason": f"Untouched for {age_days} days." if age_days > 0 else "Random pick.",
             "content_preview": preview,
         }
+
+        # Insight production (ADR-045): if a dormant note gets surfaced frequently,
+        # that's a pattern worth noting. Check if this note type keeps coming up.
+        if age_days > 30:
+            note_type_val = meta.get("type", "other")
+            insight_text = f"Dormant {note_type_val} note '{meta.get('title', filename)}' surfaced after {age_days} days"
+            tags_raw = meta.get("tags", "[]")
+            # Parse tags if they look like a JSON array
+            try:
+                note_tags = json.loads(tags_raw) if tags_raw.startswith("[") else [tags_raw]
+            except (json.JSONDecodeError, TypeError):
+                note_tags = []
+            insight_tags = [note_type_val] + note_tags[:3]
+            if not insights_store.has_similar_insight(insight_text, insight_tags):
+                insights_store.add_insight(
+                    module="vault-roulette",
+                    run_id=self.run_id,
+                    insight_type="reflection",
+                    text=insight_text,
+                    tags=insight_tags,
+                    confidence=0.5,
+                )
+
+        return result
 
     def run(self, input_data=None):
         raise NotImplementedError("Use spin()")

@@ -31,6 +31,7 @@ from workers.vault_utils import (
     parse_frontmatter, extract_urls, html_to_text,
     write_vault_note_atomic, update_frontmatter,
 )
+import insights_store
 
 _workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -218,6 +219,21 @@ Summarise this article and find connections to the user's context."""
             input_summary=f"{filename}: {url}",
             output_summary=f"{'enriched' if not dry_run else 'dry-run'}: {len(themes)} themes, {len(connections)} connections",
         )
+
+        # Insight production (ADR-045): if themes connect to priorities/interests,
+        # record a pattern insight — but only if it's novel
+        if not dry_run and connections and themes:
+            insight_text = f"Bookmark '{meta.get('title', filename)}' themes [{', '.join(themes[:3])}] connect to: {', '.join(connections[:3])}"
+            insight_tags = themes[:5]
+            if not insights_store.has_similar_insight(insight_text, insight_tags):
+                insights_store.add_insight(
+                    module="vault-reader",
+                    run_id=self.run_id,
+                    insight_type="connection",
+                    text=insight_text,
+                    tags=insight_tags,
+                    confidence=min(0.5 + 0.1 * len(connections), 0.9),
+                )
 
         return {
             "file": filename,

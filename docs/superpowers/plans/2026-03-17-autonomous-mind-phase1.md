@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build vault-reader, vault-connector, and vault-roulette, then update HEARTBEAT.md to use them in the background research rotation.
+**Goal:** Build insights_store, vault-reader, vault-connector, and vault-roulette, then update HEARTBEAT.md to use them in the background research rotation. All modules produce insight entries via the knowledge accumulation loop (ADR-045).
 
-**Architecture:** Three workers in `/workspace/workers/` subclassing `BaseWorker`. Each has a task config in `/workspace/tasks/`, a test file in `/workspace/tests/`, and follows the existing email_triage.py/newsletter_reader.py patterns. HEARTBEAT.md gets a new "Background research" section referencing all three.
+**Architecture:** Three workers in `/workspace/workers/` subclassing `BaseWorker`, plus a shared `insights_store.py` utility. Each worker has a task config in `/workspace/tasks/`, a test file in `/workspace/tests/`, and follows the existing email_triage.py/newsletter_reader.py patterns. vault-connector uses BM25-lite scoring (ADR-045) instead of raw grep hit counting. HEARTBEAT.md gets a new "Background research" section referencing all three.
 
 **Tech Stack:** Python 3.11 stdlib only. `html.parser.HTMLParser` for HTML stripping. Flash (gemini-2.5-flash) via BaseWorker.call(). unittest for tests.
 
@@ -16,9 +16,11 @@
 
 | Action | Path | Purpose |
 |--------|------|---------|
-| Create | `workspace/workers/vault_reader.py` | Fetch bookmark URLs, summarise, enrich vault notes |
-| Create | `workspace/workers/vault_connector.py` | Find vault notes related to input text |
-| Create | `workspace/workers/vault_roulette.py` | Pick random/decaying vault notes |
+| Create | `workspace/insights_store.py` | Insight accumulation utility — add, search (BM25-lite), prune (ADR-045) |
+| Create | `workspace/tests/test_insights_store.py` | Tests for insights store |
+| Create | `workspace/workers/vault_reader.py` | Fetch bookmark URLs, summarise, enrich vault notes, produce insights |
+| Create | `workspace/workers/vault_connector.py` | Find vault notes related to input text (BM25-lite scoring + insights search) |
+| Create | `workspace/workers/vault_roulette.py` | Pick random/decaying vault notes, produce insights |
 | Create | `workspace/tasks/vault-reader.json` | Config for vault-reader |
 | Create | `workspace/tasks/vault-connector.json` | Config for vault-connector |
 | Create | `workspace/tasks/vault-roulette.json` | Config for vault-roulette |
