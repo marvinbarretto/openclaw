@@ -1,0 +1,8 @@
+{
+    "task_id": "vault-reader",
+    "default_model": "gemini-2.5-flash",
+    "fallback_model": "gemini-2.5-flash-lite",
+    "max_content_chars": 5000,
+    "context_slugs": ["priorities", "interests"],
+    "skip_if_enriched": true
+}

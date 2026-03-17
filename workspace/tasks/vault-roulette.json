@@ -1,0 +1,7 @@
+{
+    "task_id": "vault-roulette",
+    "default_model": "gemini-2.5-flash",
+    "decay_threshold_days": 30,
+    "type_weights": {"idea": 3, "bookmark": 2, "task": 1, "recipe": 2, "travel": 2},
+    "exclude_types": ["journal"]
+}

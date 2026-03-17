@@ -48,3 +48,19 @@ Run `python3 /workspace/context-helper.py priorities` and look for recurring ite
 ## Telegram status
 
 If any of the above checks surface something that needs Marvin's attention, send it via Telegram. If nothing notable, stay silent — the hourly cron `alert-check.py` handles routine system health.
+
+## Background research (one random module per heartbeat)
+
+Each heartbeat, pick ONE at random from this list. Don't repeat the same module two heartbeats in a row — use memory to track what you did last.
+
+1. **Read a bookmark**: `python3 /workspace/workers/vault_reader.py next` — fetch and summarise the oldest unread bookmark. If it connects to something in today's email or your priorities, tell Marvin via Telegram. Example: "Just read your bookmark about agent architectures. Key themes: multi-agent coordination, tool use. Connects to your LocalShout priority."
+
+2. **Vault roulette**: `python3 /workspace/workers/vault_roulette.py spin --decaying` — surface a note dormant 30+ days. If it connects to today's email or calendar, share it. If not, note it in memory — it might connect later. Example: "Dormant note resurface: 'Gamifying habit tracking' (42 days). Songkick email about Romare + your interest in reward systems might connect."
+
+3. **Email × vault collision**: Pick an email insight from today's briefing-input.json. Run `python3 /workspace/workers/vault_connector.py match --query "<insight text>"`. If 2+ keyword hits, send the connection. Example: "Today's Seeking Alpha article about Fed rates connects to your SIPP timing task (priority 8) and your mortgage calculator bookmark."
+
+**Rules:**
+- Skip silently if the module finds nothing interesting. Don't send "nothing to report."
+- Log every run to activity-log, even silent ones.
+- You have conversation context the modules don't — if a result connects to something Marvin mentioned earlier today, say so.
+- If you notice a pattern across multiple runs, synthesise it into an insight.
