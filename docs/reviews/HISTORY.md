@@ -74,30 +74,55 @@ But the session became about everything *around* the briefing:
 
 **Key realisation:** "We may need to go backwards in order to go forwards." Should be working with OpenClaw's actual docs (features, CLI reference, concepts) rather than assumptions. The current architecture may be too complex for what the platform actually supports.
 
-## Current Architecture (as of 2026-03-17)
+### Session 9 — 2026-03-19 (Jimbo Wakes Up)
+
+Late-night review (00:57) of March 18 data. No March 19 briefing yet — pipeline didn't run this morning. The story is the transformation: session 8 found an empty activity log; March 18 had 36 entries.
+
+**Morning briefing:** Sonnet self-composed (Opus failed with `claude -p error`). Calendar clean — no fabrication, marbar.alt correctly marked "lower confidence." 9 email highlights including genuine urgencies (Supabase security, Claude API credits expiring today). Surprise connected LocalShout alerts into a "finish this app" theme — decent but still pattern-matching.
+
+**Inter-briefing activity (the breakthrough):** First day of sustained heartbeat execution. Gym nudge (08:33), Spanish nudge (11:36), cooking nudge (16:12). Email check-ins at 9am and 5pm with actionable items (LPO £10 tickets, CHEQ deadline, KAYTRANADA, Pisa flights). Vault connector + roulette calls (though vault-reader 401s every time). Blog draft written (git push failed). 451 censorship error from Step 3.5 Flash provider.
+
+**Afternoon briefing:** Best surprise yet — ianVisits "Human Creativity cannot flourish in a TikTok World" debate connected to Marvin's AI work + the fact he's playing guitar and piano that evening. Calendar handled guitar/piano overlap honestly. Anthropic Dispatch flagged as competitor signal. Vault skipped.
+
+**Accountability report (20:00):** Both pipelines ran, 34 activities, $0.07 spent. Incorrectly reports "surprise game not played" — both briefings had surprise sections. Bug in detection logic.
+
+**Flash triage drought broken:** 13 shortlisted morning, 17 afternoon — after 9 consecutive sessions of 0.
+
+**Marvin's reaction:** "Right direction. Nothing really landed yet, but that's OK." Loved the afternoon surprise. Wants: inline links to resources, split messages for Telegram, and ultimately Jimbo making executive decisions and spinning off sub-agents. "I will be most excited once I see Jimbo actually post blog entries, and deploys himself."
+
+**Key insight:** Marvin recognises he needs to improve source data quality (clean up calendar, etc.) before outputs can be useful. The maturity ladder: plumbing → heartbeat → source data → useful outputs → autonomous actions → sub-agents. Currently at step 2.
+
+## Current Architecture (as of 2026-03-18)
 
 ```
 VPS (always on):
   briefing-prep.py (cron 06:15 + 14:15) → briefing-input.json
-    - gmail-helper.py fetch
-    - email_triage.py (Flash) — 0 shortlisted for 9 sessions
-    - newsletter_reader.py (Haiku) — 0 gems (nothing shortlisted to read)
-    - email_decision.py (Flash) — 27 insights but all scored 0
-    - calendar-helper.py — WORKING (19 events today)
-    - vault task selection — WORKING (5 tasks)
+    - gmail-helper.py fetch — WORKING
+    - email_triage.py (Flash) — WORKING (13-17 shortlisted, drought broken)
+    - newsletter_reader.py (Haiku) — WORKING (13-32 gems)
+    - email_decision.py (Flash) — running, costs $0.07/day
+    - calendar-helper.py — WORKING (15-17 events)
+    - vault task selection — WORKING morning, skipped afternoon
   jimbo-api → dashboard, context, settings, activity, costs, experiments
-    ⚠ POST /api/briefing/analysis returns 404 — Opus can't post
+    POST /api/briefing/analysis — fixed in session 9 implementation
+  Autonomous mind tools (Phase 1):
+    - vault_connector.py — WORKING (BM25 search)
+    - vault_roulette.py — WORKING (returns no candidates — no dormant notes >30d)
+    - vault_reader.py — BROKEN (401 Unauthorized on every call)
 
 Mac (optional):
   opus-briefing.sh (launchd 06:35 + 14:35)
     → pulls briefing-input.json via SSH
-    → claude -p (Opus via Max plan)
-    → POST /api/briefing/analysis → jimbo-api ← BROKEN (404)
+    → claude -p (Opus via Max plan) ← BROKEN (claude -p error)
+    → POST /api/briefing/analysis → jimbo-api
 
-Jimbo (OpenClaw on Telegram, Sonnet in briefing window, Kimi K2 otherwise):
-  Self-composes from briefing-input.json (doesn't fetch from API)
-  HEARTBEAT.md tasks: NOT EXECUTING (agent inactive between briefings)
-  Blog: last post Feb 23
+Jimbo (OpenClaw on Telegram):
+  Briefing window: Sonnet (model swap via cron 06:45-07:30, 14:45-15:30)
+  Between briefings: Step 3.5 Flash (free via OpenRouter)
+  HEARTBEAT.md tasks: EXECUTING (36 activities on Mar 18)
+  Nudges: gym, Spanish, cooking — WORKING
+  Email check-ins: 9am, 1pm, 5pm — WORKING
+  Blog: draft written, git push BROKEN
   Calendar write: available but not used
 ```
 
@@ -117,24 +142,31 @@ Jimbo (OpenClaw on Telegram, Sonnet in briefing window, Kimi K2 otherwise):
 | Multi-stage pipeline producing nothing | Switched to single-model Opus composition | 5 |
 | OpenRouter cost burn ($10+/week) | Disabled, using free Opus via Max plan | 5 |
 | Opus pipeline silently broken | Wrong SSH path (`/workspace/` vs host path). Fixed both read and write paths. | 6 |
+| Briefing API 404 | Built routes in jimbo-api (POST /analysis, GET /latest, GET /history). Fixed in session 9 implementation. | 8→9 |
+| Jimbo inactive between briefings | Phase 1 autonomous mind tools deployed + HEARTBEAT.md updated. 36 activities on Mar 18. | 8→9 |
+| Flash triage calibration | Drought broken — 13 shortlisted morning, 17 afternoon on Mar 18. | 8→9 |
+| marbar.alt calendar = options | Jimbo now marks marbar.alt entries as "lower confidence." Working as of Mar 18. | 8→9 |
 
 ## Open Issues
 
 | Issue | Notes |
 |-------|-------|
-| Email insight scores all 0 | **BROKEN.** email_decision.py produces insights but all scored 0. No signal for briefing. Session 8. |
-| Briefing API 404 | **BROKEN.** POST /api/briefing/analysis returns 404. Opus can't post. Session 8. |
-| Jimbo inactive between briefings | **BROKEN.** HEARTBEAT.md tasks not executing. Activity log empty. Blog silent 3 weeks. Session 8. |
+| vault_reader.py 401 | **BROKEN.** Every call fails with Unauthorized. Most-called tool, never succeeds. Session 9. |
+| Opus `claude -p` error | **BROKEN.** Morning analysis failed. File on VPS stale (Mar 16). Session 9. |
+| Accountability surprise detection | **BUG.** Reports "surprise game not played" when both briefings had surprise sections. Session 9. |
+| 451 censorship error | **BUG.** Step 3.5 Flash hit provider content filter mid-day. Unknown trigger. Session 9. |
+| Blog git push broken | **BROKEN.** Draft written but push fails: "no repository initialized at host workspace." Session 9. |
+| March 19 pipeline missing | **UNKNOWN.** Morning pipeline did not run. Needs investigation. Session 9. |
+| No inline links in briefing | Gem data has URLs but briefing says "link in the email" instead of including them. Skill fix needed. Session 9. |
+| Message format (wall of text) | Briefing sent as one long message. Should split by section for Telegram UX. Skill fix needed. Session 9. |
+| Email insight scores all 0 | email_decision.py produces insights but all scored 0. No signal for briefing. Session 8. |
 | Stale files throughout repo | HEARTBEAT.md refs retired skills, skills/ has 4-5 retired entries, TODO.md outdated, CAPABILITIES.md inaccurate. Session 8. |
 | No surprise game definition | Only a vague "non-obvious connection" instruction. Needs proper doc defining what delight means. Session 8. |
-| marbar.alt calendar = options | Model doesn't know this calendar is "maybe" events. Treats as commitments. Session 8. |
 | Calendar write not used | Jimbo has write access but only narrates, never proposes+creates. Session 8. |
-| Flash triage calibration | 0 shortlisted across 9 sessions. Worker runs but rejects everything. Costs $0.03/day. |
-| Vault tasks stale | Same 5 priority-9 items surfaced repeatedly. Scorer may not differentiate well at top of range. |
-| Opus layer Mac-dependent | If Mac is asleep, no analysis. Plus API is broken anyway (404). |
-| No mechanism to rate briefings | Experiment tracker has user_rating field but no UI or workflow. |
-| Skill not triggering API fetch | Model self-composes instead of fetching Opus analysis from API. |
-| Need to align with OpenClaw docs | Should be working with platform features as documented, not assumptions. Key refs: docs.openclaw.ai/concepts/features, /start/wizard-cli-reference, /start/openclaw |
+| Vault tasks stale | Same 5 priority-9 items surfaced repeatedly. Scorer may not differentiate well at top of range. Session 8. |
+| Opus layer Mac-dependent | If Mac is asleep, no analysis. Plus claude -p is erroring anyway. Session 8. |
+| No mechanism to rate briefings | Experiment tracker has user_rating field but no UI or workflow. Session 8. |
+| Need to align with OpenClaw docs | Should be working with platform features as documented, not assumptions. Session 8. |
 
 ## Patterns (Across All Sessions)
 
@@ -150,3 +182,6 @@ Jimbo (OpenClaw on Telegram, Sonnet in briefing window, Kimi K2 otherwise):
 - **Calendar "fabrication" was real data from a stale source.** The marbar.alt calendar contained real entries from a "maybe" events calendar that had been off for months. Not hallucination — wrong trust level.
 - **A good briefing doesn't mean the system is healthy.** Session 8 had the best briefing yet while email scoring, Opus posting, activity logging, and heartbeat tasks were all broken.
 - **Stale info compounds.** HEARTBEAT.md, skills/, TODO.md, CAPABILITIES.md all accumulated incorrect claims. Regular audits needed — or derive from code, not docs.
+- **Activity ≠ value.** 36 activities in a day is progress, but "nothing really landed yet." The gap between tool invocations and useful outcomes is the next frontier.
+- **Source data quality gates output quality.** Stale calendar, stagnant vault, missing links — no amount of model intelligence compensates for bad inputs. Marvin recognises this: "I need to make the source data better."
+- **The maturity ladder is real.** Plumbing → heartbeat → source data → useful outputs → autonomous actions → sub-agents. Each step depends on the previous one being solid. Skipping steps creates the illusion of progress.
