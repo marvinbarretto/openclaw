@@ -92,16 +92,32 @@ Late-night review (00:57) of March 18 data. No March 19 briefing yet — pipelin
 
 **Key insight:** Marvin recognises he needs to improve source data quality (clean up calendar, etc.) before outputs can be useful. The maturity ladder: plumbing → heartbeat → source data → useful outputs → autonomous actions → sub-agents. Currently at step 2.
 
-## Current Architecture (as of 2026-03-18)
+### Session 10 — 2026-03-21 (The Missing Loop)
+
+Reviewing March 20 data. Both pipelines ran. Morning had a gem drought (1 gem from 17 shortlisted — cause unknown; afternoon recovered to 27). Briefing quality steady — real calendar, good email picks, reasonable surprises.
+
+**The Airbnb nagging problem:** Jimbo sent 10 separate reminders for the same two Airbnb items (Rajesh Kumar booking, Zsuzsanna check-in) between 08:42 and 18:48. Marvin dealt with the Airbnb thing. Jimbo kept nagging because he has no feedback loop — no shared state, no way to know it was done.
+
+**Marvin's core insight:** "There was some good suggestions through the day but they're being lost and they're not being converted into issues that can be then completed, and then measured." Actionable items surface in Telegram and evaporate. Nothing gets written down, tracked, or closed. Vault velocity remains 0.
+
+**The interaction gap:** Marvin revealed he hasn't been interacting with Jimbo because he wasn't sure the platform could handle conversational task management. It can — memory-core (FTS5 + vector search), workspace file write, activity logging all work. The gap is skill/prompt design, not platform capability.
+
+**What Marvin wants:** "I'll take this on. You look at the next one." A conversational task handoff where Jimbo creates tasks from signals, tracks who's doing what, stops nagging when things are handled, and picks the next priority item when asked.
+
+**Decision:** The vault should become the shared task system between Marvin and Jimbo. This is a new step in the maturity ladder between "heartbeat fires" and "source data quality." Design a task handoff skill.
+
+**Updated maturity ladder:** plumbing → heartbeat → **vault as shared task system** → source data → useful outputs → autonomous actions → sub-agents. Currently between steps 2 and 3.
+
+## Current Architecture (as of 2026-03-20)
 
 ```
 VPS (always on):
   briefing-prep.py (cron 06:15 + 14:15) → briefing-input.json
     - gmail-helper.py fetch — WORKING
-    - email_triage.py (Flash) — WORKING (13-17 shortlisted, drought broken)
-    - newsletter_reader.py (Haiku) — WORKING (13-32 gems)
-    - email_decision.py (Flash) — running, costs $0.07/day
-    - calendar-helper.py — WORKING (15-17 events)
+    - email_triage.py (Flash) — WORKING (17-18 shortlisted, drought broken)
+    - newsletter_reader.py (Haiku) — INTERMITTENT (1 gem morning, 27 afternoon on Mar 20)
+    - email_decision.py (Flash) — running, costs $0.06/day
+    - calendar-helper.py — WORKING (12-16 events)
     - vault task selection — WORKING morning, skipped afternoon
   jimbo-api → dashboard, context, settings, activity, costs, experiments
     POST /api/briefing/analysis — fixed in session 9 implementation
@@ -113,17 +129,18 @@ VPS (always on):
 Mac (optional):
   opus-briefing.sh (launchd 06:35 + 14:35)
     → pulls briefing-input.json via SSH
-    → claude -p (Opus via Max plan) ← BROKEN (claude -p error)
+    → claude -p (Opus via Max plan) ← BROKEN (stale since Mar 16)
     → POST /api/briefing/analysis → jimbo-api
 
 Jimbo (OpenClaw on Telegram):
   Briefing window: Sonnet (model swap via cron 06:45-07:30, 14:45-15:30)
-  Between briefings: Step 3.5 Flash (free via OpenRouter)
-  HEARTBEAT.md tasks: EXECUTING (36 activities on Mar 18)
-  Nudges: gym, Spanish, cooking — WORKING
-  Email check-ins: 9am, 1pm, 5pm — WORKING
-  Blog: draft written, git push BROKEN
+  Between briefings: Kimi K2 (via OpenRouter)
+  HEARTBEAT.md tasks: EXECUTING (45+ activities on Mar 19, 7+ on Mar 20)
+  Nudges: gym, Spanish, Rex Cinema, Airbnb — WORKING (but no rate-limiting)
+  Email check-ins: throughout the day — WORKING
+  Blog: git push still BROKEN
   Calendar write: available but not used
+  Task handoff: NOT BUILT — the next step
 ```
 
 ## Resolved Issues
@@ -156,7 +173,7 @@ Jimbo (OpenClaw on Telegram):
 | Accountability surprise detection | **BUG.** Reports "surprise game not played" when both briefings had surprise sections. Session 9. |
 | 451 censorship error | **BUG.** Step 3.5 Flash hit provider content filter mid-day. Unknown trigger. Session 9. |
 | Blog git push broken | **BROKEN.** Draft written but push fails: "no repository initialized at host workspace." Session 9. |
-| March 19 pipeline missing | **UNKNOWN.** Morning pipeline did not run. Needs investigation. Session 9. |
+| ~~March 19 pipeline missing~~ | Resolved — pipelines ran on both Mar 19 and Mar 20. Transient issue. | 9→10 |
 | No inline links in briefing | Gem data has URLs but briefing says "link in the email" instead of including them. Skill fix needed. Session 9. |
 | Message format (wall of text) | Briefing sent as one long message. Should split by section for Telegram UX. Skill fix needed. Session 9. |
 | Email insight scores all 0 | email_decision.py produces insights but all scored 0. No signal for briefing. Session 8. |
@@ -167,6 +184,10 @@ Jimbo (OpenClaw on Telegram):
 | Opus layer Mac-dependent | If Mac is asleep, no analysis. Plus claude -p is erroring anyway. Session 8. |
 | No mechanism to rate briefings | Experiment tracker has user_rating field but no UI or workflow. Session 8. |
 | Need to align with OpenClaw docs | Should be working with platform features as documented, not assumptions. Session 8. |
+| No task creation from signals | **DESIGN GAP.** Jimbo surfaces actionable items but doesn't create trackable tasks. Session 10. |
+| No conversational task handoff | **DESIGN GAP.** No protocol for "I'll take this" / "you do it" / "done." Vault velocity 0. Session 10. |
+| Nudge rate-limiting missing | **DESIGN GAP.** 10 Airbnb reminders in one day. No awareness of whether item was actioned. Session 10. |
+| Morning gem drought | **BUG?** 1 gem from 17 shortlisted (Mar 20 morning). Afternoon fine (27). Cause unknown. Session 10. |
 
 ## Patterns (Across All Sessions)
 
@@ -184,4 +205,7 @@ Jimbo (OpenClaw on Telegram):
 - **Stale info compounds.** HEARTBEAT.md, skills/, TODO.md, CAPABILITIES.md all accumulated incorrect claims. Regular audits needed — or derive from code, not docs.
 - **Activity ≠ value.** 36 activities in a day is progress, but "nothing really landed yet." The gap between tool invocations and useful outcomes is the next frontier.
 - **Source data quality gates output quality.** Stale calendar, stagnant vault, missing links — no amount of model intelligence compensates for bad inputs. Marvin recognises this: "I need to make the source data better."
-- **The maturity ladder is real.** Plumbing → heartbeat → source data → useful outputs → autonomous actions → sub-agents. Each step depends on the previous one being solid. Skipping steps creates the illusion of progress.
+- **The maturity ladder is real.** Plumbing → heartbeat → **vault as shared task system** → source data → useful outputs → autonomous actions → sub-agents. Each step depends on the previous one being solid. Skipping steps creates the illusion of progress.
+- **Broadcasting ≠ collaboration.** Telegram messages scroll past. Without shared state (task created, assigned, tracked, closed), Jimbo is a news feed, not a collaborator. The vault is the natural shared state.
+- **No feedback loop = spam.** Without knowing whether an item was actioned, Jimbo defaults to repeating himself. Rate-limiting is a band-aid; shared task state is the fix.
+- **The user won't engage until they trust the system can respond.** Marvin didn't interact with Jimbo because he wasn't sure the platform supported it. Trust gates adoption.
