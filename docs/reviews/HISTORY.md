@@ -108,39 +108,58 @@ Reviewing March 20 data. Both pipelines ran. Morning had a gem drought (1 gem fr
 
 **Updated maturity ladder:** plumbing → heartbeat → **vault as shared task system** → source data → useful outputs → autonomous actions → sub-agents. Currently between steps 2 and 3.
 
-## Current Architecture (as of 2026-03-20)
+### Session 11 — 2026-03-21 (The Pivot)
+
+Reviewing March 21 morning data. Pipeline healthy — 28 gems from 16 shortlisted (drought didn't recur). Briefing structurally competent but flat. Marvin: "No it's not landing yet."
+
+**Duplicate message bug (NEW):** Airbnb, HowTheLightGetsIn, and neighbour petition all sent as duplicate messages at the same timestamp. Different from session 10's nagging — looks like a tool double-fire bug.
+
+**Briefing regressions:** No surprise section (present in sessions 8-10). marbar.alt items not marked as options calendar. Email cherry-picking poor — 4 items from 28 gems, Claude Code 1M context update (0.95 confidence) missed entirely.
+
+**vault_reader still dead:** 5 x 401 failures today, 3rd consecutive day. vault_roulette returns "no_candidates" every time.
+
+**The pivot:** Marvin articulated the full vision: vault as shared task system, Jimbo as task manager not news curator, sub-agent delegation, status dashboard ("6 done, 3 new, 2 on you, no blockers"). Wants to leverage Opus 1M context + Claude Code features (loop, Cowork). "It's absolutely time for the next design piece."
+
+**Key reframe:** The briefing isn't the product — the vault-as-task-system is. The briefing is one interface to it. We've been optimising output quality for 11 sessions when the real problem is purpose.
+
+**Decision:** Design the vault task management system. Comprehensive design prompt prepared for a dedicated session.
+
+**Updated maturity ladder:** plumbing → heartbeat → **vault as shared task system** (designing now) → source data → useful outputs → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-03-21)
 
 ```
 VPS (always on):
   briefing-prep.py (cron 06:15 + 14:15) → briefing-input.json
     - gmail-helper.py fetch — WORKING
-    - email_triage.py (Flash) — WORKING (17-18 shortlisted, drought broken)
-    - newsletter_reader.py (Haiku) — INTERMITTENT (1 gem morning, 27 afternoon on Mar 20)
-    - email_decision.py (Flash) — running, costs $0.06/day
-    - calendar-helper.py — WORKING (12-16 events)
+    - email_triage.py (Flash) — WORKING (16-18 shortlisted, drought broken)
+    - newsletter_reader.py (Haiku) — WORKING (28 gems Mar 21 morning, 1 gem anomaly on Mar 20 was transient)
+    - email_decision.py (Flash) — running, costs $0.04/day
+    - calendar-helper.py — WORKING (16 events)
     - vault task selection — WORKING morning, skipped afternoon
   jimbo-api → dashboard, context, settings, activity, costs, experiments
-    POST /api/briefing/analysis — fixed in session 9 implementation
+    POST /api/briefing/analysis — deployed but unused (Opus broken)
   Autonomous mind tools (Phase 1):
-    - vault_connector.py — WORKING (BM25 search)
-    - vault_roulette.py — WORKING (returns no candidates — no dormant notes >30d)
-    - vault_reader.py — BROKEN (401 Unauthorized on every call)
+    - vault_connector.py — WORKING (BM25 search, found Airbnb match)
+    - vault_roulette.py — NO CANDIDATES (every call, 30d threshold issue?)
+    - vault_reader.py — BROKEN (401 Unauthorized, 3 consecutive days)
 
 Mac (optional):
   opus-briefing.sh (launchd 06:35 + 14:35)
     → pulls briefing-input.json via SSH
     → claude -p (Opus via Max plan) ← BROKEN (stale since Mar 16)
     → POST /api/briefing/analysis → jimbo-api
+  NEW OPPORTUNITY: Opus 1M context, Claude Code loop/Cowork features
 
 Jimbo (OpenClaw on Telegram):
   Briefing window: Sonnet (model swap via cron 06:45-07:30, 14:45-15:30)
   Between briefings: Kimi K2 (via OpenRouter)
-  HEARTBEAT.md tasks: EXECUTING (45+ activities on Mar 19, 7+ on Mar 20)
-  Nudges: gym, Spanish, Rex Cinema, Airbnb — WORKING (but no rate-limiting)
+  HEARTBEAT.md tasks: EXECUTING (18+ activities today)
+  Nudges: gym, Spanish, cooking — WORKING (but duplicate message bug)
   Email check-ins: throughout the day — WORKING
   Blog: git push still BROKEN
   Calendar write: available but not used
-  Task handoff: NOT BUILT — the next step
+  Vault task system: NOT BUILT — DESIGNING NOW
 ```
 
 ## Resolved Issues
@@ -187,7 +206,12 @@ Jimbo (OpenClaw on Telegram):
 | No task creation from signals | **DESIGN GAP.** Jimbo surfaces actionable items but doesn't create trackable tasks. Session 10. |
 | No conversational task handoff | **DESIGN GAP.** No protocol for "I'll take this" / "you do it" / "done." Vault velocity 0. Session 10. |
 | Nudge rate-limiting missing | **DESIGN GAP.** 10 Airbnb reminders in one day. No awareness of whether item was actioned. Session 10. |
-| Morning gem drought | **BUG?** 1 gem from 17 shortlisted (Mar 20 morning). Afternoon fine (27). Cause unknown. Session 10. |
+| Morning gem drought | ~~Resolved~~ — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
+| Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
+| No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
+| marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
+| Email cherry-picking poor | 4 items surfaced from 28 gems. Claude Code 1M update (0.95 confidence) missed entirely. Session 11. |
+| vault_roulette always empty | Returns "no_candidates" on every call (4x today). 30-day dormancy threshold or data issue. Session 11. |
 
 ## Patterns (Across All Sessions)
 
@@ -209,3 +233,5 @@ Jimbo (OpenClaw on Telegram):
 - **Broadcasting ≠ collaboration.** Telegram messages scroll past. Without shared state (task created, assigned, tracked, closed), Jimbo is a news feed, not a collaborator. The vault is the natural shared state.
 - **No feedback loop = spam.** Without knowing whether an item was actioned, Jimbo defaults to repeating himself. Rate-limiting is a band-aid; shared task state is the fix.
 - **The user won't engage until they trust the system can respond.** Marvin didn't interact with Jimbo because he wasn't sure the platform supported it. Trust gates adoption.
+- **The briefing isn't the product.** After 11 sessions optimising briefing output, the real problem is purpose. The vault-as-task-system is the product; the briefing is one interface to it. Optimising output without operational context has a ceiling.
+- **Purpose > polish.** A structurally competent briefing that doesn't connect to shared task state feels flat. "Not landing" isn't about quality — it's about relevance to what's actually happening.
