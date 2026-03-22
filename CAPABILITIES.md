@@ -1,165 +1,152 @@
-# Jimbo Capability Matrix
+# Jimbo Capability Catalogue
 
-Quick reference for what Jimbo can and can't do. Updated as capabilities change.
+> **Live status:** `GET /api/health` — this doc describes capabilities, not their current state.
+> Status claims go stale within hours. The health endpoint is the source of truth.
 
 ## Communication
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Telegram chat | WORKING | Via `@fourfold_openclaw_bot` |
-| Morning briefing | WORKING | Cron pipeline at 06:15 → Jimbo delivers at 07:00. `briefing-prep.py` orchestrates workers. (ADR-042) |
-| Afternoon briefing | WORKING | Cron pipeline at 14:15 → Jimbo delivers at ~15:00. Same pipeline, lighter format. Controllable via `afternoon_briefing_enabled` setting. (ADR-040, ADR-042) |
-| Opus analysis layer | BROKEN | API routes deployed but `claude -p` erroring since Mar 16. Jimbo self-composes. (ADR-042) |
-| Email digest summary | WORKING | Via `daily-briefing` skill (reads `briefing-input.json` + optional `briefing-analysis.json`) |
+| Telegram chat | manual | Via `@fourfold_openclaw_bot` |
+| Morning briefing | `/api/health → pipeline.morning` | Cron pipeline at 06:15 → Jimbo delivers at 07:00. `briefing-prep.py` orchestrates. (ADR-042) |
+| Afternoon briefing | `/api/health → pipeline.afternoon` | Cron pipeline at 14:15 → Jimbo delivers at ~15:00. Controllable via `afternoon_briefing_enabled` setting. (ADR-040) |
+| Opus analysis layer | `/api/health → files.briefing_analysis` | Mac-side `claude -p` via launchd. POSTs to `/api/briefing/analysis`. (ADR-042) |
+| Email digest summary | `/api/health → pipeline` | Via `daily-briefing` skill (reads `briefing-input.json` + optional `briefing-analysis.json`) |
 
 ## Context
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Context API (read/write) | WORKING | jimbo-api serves context data via `/api/context/*`. SQLite-backed. (ADR-033) |
-| Structured context fields | WORKING | Context items have optional `status`, `category`, `timeframe`, `expires_at` fields. Used by priorities and goals. (ADR-041) |
-| Context editor UI | WORKING | `/app/jimbo/context` on personal site. CRUD for Priorities, Interests, Goals. Structured fields (dropdowns, date pickers) for priorities/goals items. |
-| Context helper script | WORKING | `context-helper.py` in sandbox. Fetches from API, formats for Jimbo's context window. Renders structured metadata inline. |
-| Expiring items endpoint | WORKING | `GET /api/context/items/expiring?days=N` — items expiring within N days. |
-| Priority conflict detection | WORKING | Briefing skill checks: too many active priorities, expiring items, stale priorities. Thresholds from settings API. (ADR-041) |
-| Telegram notification on edit | WORKING | jimbo-api sends Telegram notification when context is updated. Debounced. |
-| File fallback | BACKUP | `workspace-push.sh` still pushes context/ as backup. Files in `/workspace/context/`. TASTE.md, PREFERENCES.md, PATTERNS.md remain markdown-only. |
+| Context API (read/write) | manual | jimbo-api `/api/context/*`. SQLite-backed. (ADR-033) |
+| Structured context fields | manual | Items have `status`, `category`, `timeframe`, `expires_at` fields. (ADR-041) |
+| Context editor UI | manual | `/app/jimbo/context` on site. CRUD for Priorities, Interests, Goals. |
+| Context helper script | manual | `context-helper.py` in sandbox. Fetches from API, formats for context window. |
+| Expiring items endpoint | manual | `GET /api/context/items/expiring?days=N` |
+| Priority conflict detection | manual | Briefing skill checks: too many active, expiring, stale priorities. (ADR-041) |
+| Telegram notification on edit | manual | jimbo-api sends Telegram notification when context updated. Debounced. |
+| File fallback | manual | `workspace-push.sh` pushes TASTE.md, PREFERENCES.md, PATTERNS.md as backup. |
 
 ## Code & Files
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Read/write workspace files | WORKING | `/workspace` in sandbox |
-| Git commit & push (jimbo-workspace) | WORKING | Fixed 2026-02-18 (ADR-011) |
-| Cloudflare Pages blog | WORKING | Astro-built from `blog-src/` on `gh-pages` branch, served via `jimbo.pages.dev`. Auto-generates index, tags, archive, RSS. (ADR-027) |
-| Read Marvin's repos (GitHub) | DISABLED | Token exists but skill disabled for free model (ADR-006) |
-| npm / Node build tools | WORKING | Fixed 2026-02-20 (ADR-016). Astro, webpack, npm install all work. Node 18. |
-| Python scripts | WORKING | Python 3.11 in sandbox, stdlib only |
+| Read/write workspace files | manual | `/workspace` in sandbox |
+| Git commit & push (jimbo-workspace) | manual | (ADR-011) |
+| Cloudflare Pages blog | `/api/health → activity.blog_recent` | Astro from `blog-src/` on `gh-pages` branch → `jimbo.pages.dev`. (ADR-027) |
+| Read Marvin's repos (GitHub) | n/a | Token exists but disabled (ADR-006) |
+| npm / Node build tools | manual | Astro, webpack, npm install. Node 18 in sandbox. (ADR-016) |
+| Python scripts | manual | Python 3.11 in sandbox, stdlib only |
 
 ## Calendar
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Read Jimbo's own calendar | READY | Via `calendar-helper.py` in sandbox. Needs setup first. |
-| Read Marvin's shared calendars | READY | Marvin must share calendars with Jimbo's Google account |
-| Create events (Jimbo's calendar) | READY | Primary calendar or suggestions calendar, invites Marvin |
-| Suggestions calendar | READY | "Jimbo Suggestions" — proactive day planning events. Needs one-time setup. |
-| Proactive day planning | READY | Morning negotiation + heartbeat nudges via day-planner skill (ADR-019) |
-| Modify/delete Marvin's events | BLOCKED | By design — no update/delete commands exist |
-| Check scheduling conflicts | READY | FreeBusy API across all visible calendars |
-| Calendar in morning briefing | READY | daily-briefing skill includes today's schedule + day plan proposal |
+| Read calendars | `/api/health → calendar` | Via `calendar-helper.py` in sandbox. Reads Jimbo's + shared calendars. |
+| Create events | manual | Primary calendar or "Jimbo Suggestions" calendar, invites Marvin |
+| Proactive day planning | manual | Morning negotiation + heartbeat nudges via day-planner skill (ADR-019) |
+| Modify/delete Marvin's events | n/a | Blocked by design — no update/delete commands exist |
+| Scheduling conflict check | manual | FreeBusy API across all visible calendars |
 
 ## Email
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Fetch email via Gmail API | WORKING | `gmail-helper.py` in sandbox. Triggered by `briefing-prep.py` before each briefing. No laptop dependency. (ADR-022, ADR-042) |
-| Read email digest | WORKING | JSON written directly in sandbox by gmail-helper.py |
-| Blacklist filtering | WORKING | Rules-based sender/subject blacklist in gmail-helper.py |
-| Deep newsletter reading | WORKING | Flash triage drought broken Mar 19. Typically 7-18 shortlisted, 5-28 gems per session. (ADR-029, ADR-042) |
-| Briefing prep pipeline | WORKING | `briefing-prep.py` — cron-driven orchestrator. Runs email fetch, triage, reader, calendar, vault tasks. Assembles `briefing-input.json`. Per-pipeline Telegram alerts. (ADR-042) |
-| Opus briefing analysis | BROKEN | Briefing API routes deployed (session 9), but `claude -p` erroring since Mar 16. Analysis file 147h stale. Mac launchd dependency. (ADR-042) |
-| Send/delete/modify email | BLOCKED | By design — gmail.readonly scope only (ADR-002) |
-| Hourly email fetch | RETIRED | `email-fetch-cron.py` replaced by briefing-prep.py fetch step. (ADR-042) |
-| Hourly status check | RETIRED | `alert-check.py status` replaced by per-pipeline alerts from briefing-prep.py. (ADR-042) |
-| Sift-digest skill | RETIRED | Replaced by briefing-prep.py + daily-briefing skill. (ADR-042) |
-| Old Sift pipeline (laptop) | RETIRED | mbsync + Ollama + sift-push.sh removed. launchd job unloaded. |
+| Fetch email via Gmail API | `/api/health → email.last_check` | `gmail-helper.py` in sandbox. Triggered by `briefing-prep.py`. (ADR-022, ADR-042) |
+| Blacklist filtering | manual | Rules-based sender/subject blacklist in gmail-helper.py |
+| Deep newsletter reading | `/api/health → pipeline.latest_input.reader` | Flash triage → Haiku deep-read → gems. (ADR-029, ADR-042) |
+| Email insight scoring | `/api/health → email.insight_quality` | `email_decision.py` scores relevance + generates insights. |
+| Briefing prep pipeline | `/api/health → pipeline` | `briefing-prep.py` — cron orchestrator. Assembles `briefing-input.json`. (ADR-042) |
+| Send/delete/modify email | n/a | Blocked by design — gmail.readonly scope only (ADR-002) |
+| Hourly email fetch (legacy) | n/a | Replaced by briefing-prep.py fetch step. (ADR-042) |
+| Sift pipeline (legacy) | n/a | Replaced by briefing-prep.py + daily-briefing skill. (ADR-042) |
 
 ## Notes Vault
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Google Tasks dump | WORKING | `tasks-dump.py` — fetches all tasks via Tasks API |
-| Tasks ingest to vault | WORKING | `ingest-tasks.py` — tasks-dump.json → vault inbox markdown |
-| Keep ingest to vault | WORKING | `ingest-keep.py` — Google Takeout JSON → vault inbox markdown |
-| LLM batch classification | WORKING | `process-inbox.py` — Claude Haiku classifies inbox → notes/needs-context/archive |
-| Vault browsing (Obsidian) | WORKING | Point Obsidian at `data/vault/`, frontmatter compatible |
-| Classification patterns | WORKING | `context/PATTERNS.md` — learned from review sessions, improves classification |
-| Mobile triage UI | WORKING | React UI at `site.marvinbarretto.workers.dev/app/jimbo/notes-triage`. jimbo-api serves manifest. |
-| Task prioritisation | WORKING | `prioritise-tasks.py` — Gemini Flash batch-scores active tasks against priorities + goals (from context API, file fallback). Writes `priority`, `actionability`, `scored` into frontmatter. Cron at 04:30 UTC. |
-| Daily ingest from Tasks API | WORKING | `tasks-helper.py` runs at 05:00 UTC via cron. Sweeps My Tasks → vault inbox → Gemini Flash classification. |
-| Tasks triage session | WORKING | `tasks-triage` skill — interactive Telegram session for ambiguous items. Announced in morning briefing. Calendar invite via `calendar-helper.py`. (ADR-038) |
-| Triage pending output | WORKING | `tasks-triage-pending.json` written after classification with needs-context items for Jimbo to announce. |
-| Tasks read-write scope | READY | `google-auth.py` updated with `tasks.readonly`. Upgrade to `tasks` for mark-complete. |
+| Vault stats | `/api/health → vault` | Active/done counts, velocity, priority buckets |
+| vault_reader | `/api/health → tools.vault_reader` | Reads bookmarks and notes from vault |
+| vault_roulette | `/api/health → tools.vault_roulette` | Surfaces dormant notes for rediscovery |
+| vault_connector | `/api/health → tools.vault_connector` | BM25 search for cross-references between signals and vault |
+| Task prioritisation | manual | `prioritise-tasks.py` — Gemini Flash batch-scores. Cron at 04:30 UTC. (ADR-034) |
+| Daily ingest from Tasks API | manual | `tasks-helper.py` at 05:00 UTC. Sweeps My Tasks → vault inbox. |
+| Tasks triage session | manual | `tasks-triage` skill — interactive Telegram triage. (ADR-038) |
+| Mobile triage UI | manual | `/app/jimbo/notes-triage` on site. jimbo-api serves manifest. |
+| Google Tasks dump | manual | `tasks-dump.py` via Tasks API |
+| Keep ingest | manual | `ingest-keep.py` — Google Takeout JSON → vault inbox |
+| LLM batch classification | manual | `process-inbox.py` — Haiku classifies inbox → notes/needs-context/archive |
 
 ## Recommendations
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Recommendations store | WORKING | SQLite-backed via `recommendations-helper.py` (ADR-025) |
-| Recommendation logging (email) | WORKING | Sift-digest skill logs findings with scores + urgency |
-| Recommendation expiry tracking | WORKING | Briefing auto-expires past-due time-sensitive items |
-| Recommendation review queue | NOT STARTED | ADR-024 Phase 3 — mobile UI alongside vault review |
+| Recommendations store | manual | SQLite via `recommendations-helper.py` (ADR-025) |
+| Recommendation logging | manual | Briefing logs finds with scores + urgency |
+| Recommendation expiry | manual | Briefing auto-expires past-due time-sensitive items |
+| Recommendation review queue | n/a | Not started — ADR-024 Phase 3 |
 
 ## Cost & Activity Tracking
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Cost tracking | WORKING | `cost-tracker.py` — logs every API interaction with token counts + estimated USD (ADR-028) |
-| Activity logging | WORKING | `activity-log.py` — logs every task with description, outcome, satisfaction scores (ADR-028) |
-| Budget monitoring | WORKING | Monthly budget with alert threshold. `cost-tracker.py budget --check` |
-| Dashboard (personal site) | WORKING | `/app/jimbo/` on `site.marvinbarretto.workers.dev` — costs, activity feed (ADR-028) |
-| Dashboard data export | WORKING | JSON exports via heartbeat auto-commit, consumed by dashboard at build time |
-| Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. SQLite. (ADR-029) |
+| Cost tracking | `/api/health → costs` | `cost-tracker.py` — tokens + estimated USD per API call. (ADR-028) |
+| Activity logging | `/api/health → activity` | `activity-log.py` — task type, description, outcome, satisfaction. (ADR-028) |
+| Budget monitoring | `/api/health → costs.budget_pct` | Monthly budget with alert threshold |
+| Dashboard (site) | manual | `/app/jimbo/` on site — costs, activity, emails, vault, status |
+| Experiment tracking | `/api/health → experiments` | `experiment-tracker.py` — worker runs, config hashes, ratings. (ADR-029) |
 
 ## Autonomy
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Self-publish blog posts | STALE | Mechanism works but last post was Feb 23. Agent not self-initiating. (ADR-027) |
-| Update own diary | WORKING | JIMBO_DIARY.md in workspace |
-| Automated briefing pipeline | WORKING | VPS root cron → briefing-prep.py at 06:15 + 14:15 UTC. Mac launchd → opus-briefing.sh. No manual dependency. (ADR-042) |
-| Heartbeat / self-monitoring | WORKING | 7-42 activities/day since Mar 18. Gym, Spanish, cooking nudges. Email check-ins. vault_reader/roulette called (but broken). (ADR-028) |
-| Proactive day planning | READY | Suggests activities for free gaps, morning negotiation, heartbeat nudges (ADR-019) |
-| Install packages (npm/pip) | WORKING | Fixed 2026-02-20 (ADR-016). npm install works; pip needs venv in /workspace |
+| Self-publish blog posts | `/api/health → activity.blog_recent` | Astro blog at `jimbo.pages.dev`. (ADR-027) |
+| Update own diary | manual | JIMBO_DIARY.md in workspace |
+| Automated briefing pipeline | `/api/health → pipeline` | VPS cron → briefing-prep.py. (ADR-042) |
+| Heartbeat / self-monitoring | `/api/health → activity` | HEARTBEAT.md tasks, nudges, email check-ins. (ADR-028) |
+| Proactive day planning | manual | Day-planner skill for free gap suggestions. (ADR-019) |
 
 ## VPS Model
 
-| Model | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| `stepfun/step-3.5-flash:free` | ACTIVE | Current daily driver (via OpenRouter). Check `/api/health` for live model status. |
-| `anthropic/claude-sonnet-4.6` | AVAILABLE | Used for briefing windows when model swap cron is enabled. Currently DISABLED since Mar 8. |
-| Opus 4.6 (Mac, via Max plan) | BROKEN | `claude -p` erroring since Mar 16. Analysis file stale. Mac launchd dependency. |
-| Automated model switching | DISABLED | `model-swap-local.sh` cron entries disabled since 2026-03-08. Jimbo uses same model all day. |
-| Experiment tracking | WORKING | `experiment-tracker.py` — logs worker runs, config hashes, conductor ratings. (ADR-029) |
+| Current active model | `/api/health → model` | Read from openclaw.json `agents.defaults.model.primary` |
+| Model switching | manual | `model-swap.sh` / `model-swap-local.sh`. Cron entries exist but may be disabled. |
+| Opus analysis (Mac) | `/api/health → files.briefing_analysis` | `opus-briefing.sh` via launchd. Free with Max plan. |
 
 ## Native Features (v2026.3.1)
 
-| Feature | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Native cron | WORKING | Morning briefing at 07:00 London. Managed via `openclaw cron`. (ADR-039) |
-| Sub-agents | WORKING | `maxConcurrent: 8`. Used by sift-digest for email triage + newsletter reading. (ADR-039) |
-| Memory (memory-core) | WORKING | FTS5 + vector search. Auto-loaded. Wired into SOUL.md, daily-briefing, HEARTBEAT.md. (ADR-039) |
-| Health endpoint | WORKING | `openclaw health` — shows channel status, agents, sessions. TCP probe from sandbox via alert-check.py. (ADR-039) |
-| Secrets management | AVAILABLE | `openclaw secrets audit/configure/reload`. 1 plaintext key found. Not yet migrated. (ADR-039) |
-| Plugins | WORKING | 5/38 loaded: device-pair, memory-core, phone-control, talk-voice, telegram. |
+| Native cron | manual | Morning briefing at 07:00 London. `openclaw cron`. (ADR-039) |
+| Sub-agents | manual | `maxConcurrent: 8`. (ADR-039) |
+| Memory (memory-core) | manual | FTS5 + vector search. Auto-loaded. (ADR-039) |
+| OpenClaw health | manual | `openclaw health` — channel status, agents, sessions. (ADR-039) |
+| Secrets management | manual | `openclaw secrets audit/configure/reload`. (ADR-039) |
+| Plugins | manual | 5/38 loaded: device-pair, memory-core, phone-control, talk-voice, telegram. |
 
 ## MCP Servers
 
-| Server | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Native MCP support | BLOCKED | Still not available in v2026.3.1. No CLI command, no config key. (ADR-017) |
-| Community MCP plugins | REJECTED | Violates ADR-008 (no community plugins, supply chain risk) |
+| Native MCP support | n/a | Not available in v2026.3.1. (ADR-017) |
+| Community MCP plugins | n/a | Rejected — supply chain risk (ADR-008) |
 
 ## Alerting & Monitoring
 
-| Capability | Status | Notes |
+| Capability | Check | Notes |
 |---|---|---|
-| Telegram failure alerts | WORKING | `alert.py` sends via Bot API. Workers catch exceptions. Cron wrappers alert on exit code. (ADR-030) |
-| Digest volume check | WORKING | `alert-check.py digest` — reports email count and new emails since last fetch. Hourly at :30. |
-| Briefing run check | WORKING | `alert-check.py briefing` — queries experiment-tracker.db with `session` column. Reports morning + afternoon separately. Time-aware grace windows: morning before 08:00, afternoon before 16:00. (ADR-040) |
-| Positive heartbeat | WORKING | All checks send combined status hourly. Silence = broken checker. |
-| OpenRouter usage report | WORKING | `alert-check.py credits` — reports usage (not balance, as OpenRouter API returns stale limits). Hourly at :30. (ADR-031) |
-| Gateway health check | WORKING | `alert-check.py openclaw` — TCP probe to gateway port from sandbox. Included in hourly status. (ADR-039) |
-| Current model report | WORKING | `alert-check.py model` — reads openclaw.json, reports active model. Included in hourly status. (ADR-039) |
-| Daily accountability | WORKING | `accountability-check.py` — checks 6 dimensions at 20:00 UTC, sends Telegram summary. (ADR-039) |
-| Settings API | WORKING | jimbo-api serves `/api/settings/*`. Key-value store for config (e.g. email fetch interval). |
-| Settings UI | WORKING | `/app/jimbo/settings` on personal site. Configurable email fetch interval. |
-| OpenRouter usage checker | WORKING | `openrouter-usage.py` — balance + usage queries. Available to Jimbo in heartbeat + briefing. (ADR-031) |
-| Model identification | WORKING | SOUL.md instructs Jimbo to tag first message with [Flash]/[Haiku]/etc. (ADR-031) |
-| Docker/host-level alerts | COVERED | Gateway TCP probe from sandbox detects service crash. (ADR-039) |
-| OpenClaw service crash | COVERED | `alert-check.py openclaw` detects gateway down. Hourly at :30. (ADR-039) |
-| Phone call escalation | WORKING | `alert-call.py` — Twilio voice API for critical failures (both briefings failed, gateway down, budget exceeded). 60-min cooldown. (ADR-043) |
+| System health | `/api/health` | Comprehensive health endpoint with auto-snapshots. History at `/api/health/history`. |
+| Telegram failure alerts | manual | `alert.py` via Bot API. Workers + cron wrappers. (ADR-030) |
+| Digest volume check | manual | `alert-check.py digest` — email count + delta. |
+| Briefing run check | manual | `alert-check.py briefing` — queries experiment tracker. Time-aware. (ADR-040) |
+| Positive heartbeat | manual | Combined hourly status. Silence = broken checker. |
+| OpenRouter usage | manual | `alert-check.py credits` / `openrouter-usage.py`. (ADR-031) |
+| Gateway health check | manual | `alert-check.py openclaw` — TCP probe. (ADR-039) |
+| Current model report | `/api/health → model` | Also via `alert-check.py model`. (ADR-039) |
+| Daily accountability | manual | `accountability-check.py` at 20:00 UTC. 6 dimensions. (ADR-039) |
+| Token expiry | `/api/health → tokens` | Warns when tokens expire within 30 days |
+| Duplicate detection | `/api/health → duplicates` | Detects messages sent 3+ times in a day |
+| Phone call escalation | manual | `alert-call.py` — Twilio voice for critical failures. 60-min cooldown. (ADR-043) |
 
 ## Security Boundaries
 
@@ -172,6 +159,8 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ## Token Expiry
 
+> Also available live: `/api/health → tokens.warnings`
+
 | Token | Expires | Purpose |
 |---|---|---|
 | `jimbo-vps` (fine-grained PAT) | 2026-05-18 | Read+write jimbo-workspace |
@@ -181,15 +170,5 @@ Quick reference for what Jimbo can and can't do. Updated as capabilities change.
 
 ---
 
-*Last updated: 2026-03-22*
-*Session 12: Fixed newsletter (WORKING), heartbeat (WORKING), model swap (DISABLED), Opus (still BROKEN), added health endpoint*
-*Twilio phone call alerts (ADR-043): 2026-03-12*
-*Context structured fields (ADR-041): 2026-03-06*
-*Briefing pipeline redesign (ADR-042): 2026-03-05*
-*Twice-daily briefing (ADR-040): 2026-03-04*
-*OpenClaw v2026.3.1 upgrade + native features (ADR-039): 2026-03-02*
-*Tasks triage session (ADR-038): 2026-03-02*
-*Vault task prioritisation (ADR-034): 2026-03-02*
-*VPS vault source of truth (ADR-035): 2026-03-02*
-*Haiku conductor model (ADR-036): 2026-03-02*
-*Context API + editor (ADR-033): 2026-03-01*
+*Converted to capability catalogue: 2026-03-22 (session 12)*
+*Status claims removed — use `GET /api/health` for live status*

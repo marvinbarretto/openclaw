@@ -19,47 +19,58 @@ Read these before starting:
 
 Parse the date from `$ARGUMENTS` (default: today, format YYYY-MM-DD).
 
-Pull pipeline data from two sources:
+Pull data from three sources. Read the API key from project memory (MEMORY.md).
 
-**jimbo-api (structured data):** Use `curl` via Bash. Read the API key from project memory (MEMORY.md). WebFetch cannot set auth headers — always use curl for these.
+### 1. Health endpoint (primary — one call gets everything)
 
 ```bash
 API_KEY="<read from MEMORY.md>"
 BASE="https://167.99.206.214/api"
 
-curl -s -H "X-API-Key: $API_KEY" "$BASE/experiments?task=briefing-synthesis&last=5"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/activity?days=1"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/costs/summary?days=1"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/emails/reports?limit=20"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/vault/stats"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/settings"
-curl -s -H "X-API-Key: $API_KEY" "$BASE/context/files"
+# This single call returns: overall status, issues, pipeline stats, tool health,
+# email quality, vault stats, costs, activity, experiments, file ages, model, tokens, duplicates
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/health"
+
+# Trends — shows streaks and recurring issues across days
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/health/trends?days=7"
 ```
 
-Run these in parallel where possible to save time.
-
-**VPS files (still on disk, no API):** Use `ssh jimbo` to cat these files. Parse locally with python or jq.
+### 2. VPS files (content not available via API — only file ages are in health)
 
 ```bash
-# Pipeline assembly — the main data source
+# Pipeline assembly — the detailed gem/calendar/vault data
 ssh jimbo 'cat /home/openclaw/.openclaw/workspace/briefing-input.json'
 
-# Opus analysis (optional — missing is normal, means Mac was asleep or launchd didn't fire)
+# Opus analysis (optional — missing is normal, means Mac was asleep)
 ssh jimbo 'cat /home/openclaw/.openclaw/workspace/briefing-analysis.json 2>/dev/null'
+```
+
+### 3. Fallback (only if health endpoint fails)
+
+```bash
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/activity?days=1"
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/costs/summary?days=1"
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/emails/reports?limit=20"
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/vault/stats"
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/settings"
+curl -sk -H "X-API-Key: $API_KEY" "$BASE/context/files"
 ```
 
 If any call fails, note it and move on. Partial data is fine.
 
-**Present a structured summary:**
-- **Pipeline:** Did briefing-prep.py run? When? (check experiment tracker for today's runs)
-- **Email:** How many fetched → shortlisted → gems? Any deep-read reports?
-- **Calendar:** How many events in briefing-input.json?
-- **Vault:** How many tasks selected? What's the overall vault state? (vault stats)
-- **Opus:** Did the analysis layer run? (briefing-analysis.json present = yes)
-- **Cost:** What did today's pipeline cost? (cost summary)
-- **Context:** What are the current priorities/interests? (context files — helps evaluate whether the briefing connected to what matters)
-- **Settings:** Any relevant config changes? (triage thresholds, worker models, schedule)
-- **Failures:** Any 401s, empty responses, missing data?
+**Present a structured summary (mapped to health endpoint fields):**
+- **Overall:** `health.overall` + `health.issues[]` — start with what's broken
+- **Pipeline:** `health.pipeline.morning/afternoon` — ran?, delivered?, email/gem/insight/calendar/vault counts
+- **Email:** `health.email` — reports today, insight quality (how many have actual content vs null fields)
+- **Tools:** `health.tools` — vault_reader/roulette/connector success rates and last outcomes
+- **Vault:** `health.vault` — active/done/velocity/priority buckets
+- **Opus:** `health.files.briefing_analysis` — age + stale flag
+- **Costs:** `health.costs` — today, month, budget %
+- **Model:** `health.model` — what model is running right now
+- **Tokens:** `health.tokens.warnings` — any expiring soon?
+- **Duplicates:** `health.duplicates` — any repeated messages today?
+- **Trends:** `trends.streaks` — how many days has vault_reader been critical? Top recurring issues?
+- **Context:** Check `$BASE/context/files` for priorities/interests if needed for briefing evaluation
 
 ## Phase 2: Get the Briefing
 
