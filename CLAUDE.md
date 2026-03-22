@@ -36,8 +36,10 @@ VPS (DigitalOcean $12/mo, London, 167.99.206.214)
   │     ├── tasks/ — task registry JSON configs (email-triage, newsletter-deep-read, briefing-synthesis, heartbeat)
   │     └── tests/ — worker test suite
   ├── jimbo-api (Hono/Node, port 3100, systemd)
-  │     ├── /home/openclaw/.openclaw/workspace/triage/ — manifest.json + decisions.json
-  │     └── data/context.db — SQLite context store (ADR-033)
+  │     ├── data/context.db — SQLite (activity, costs, vault, emails, experiments, settings, context, briefing)
+  │     ├── GET /api/health — comprehensive system health (pipeline, tools, email, vault, costs, files, model)
+  │     ├── Repo: ~/development/jimbo/jimbo-api (deploy via git push → git pull on VPS)
+  │     └── See jimbo-api README.md for full API routes
   └── Caddy (auto TLS, routes /api/* → jimbo-api)
 ```
 
@@ -51,8 +53,8 @@ SSH alias: `ssh jimbo` connects to VPS. SSH connection multiplexing is configure
 
 ```
 context/          Marvin's prose context files (taste, preferences, patterns) + API fallback
-decisions/        ADRs (001-036) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API, vault task prioritisation, VPS vault source of truth, Haiku conductor model
-docs/             Design docs and implementation plans
+decisions/        ADRs (001-043) — sandbox, email triage, prompt injection, models, plugins, automation, git deployment, feedback insights, model upgrades, Node build tools, Gemini direct, MCP, calendar, day planner, multi-model routing, architecture review, Gmail API migration, notes vault, notes review queue, recommendations store, Cloudflare Pages, Astro blog migration, active heartbeat + cost tracking, orchestrator-conductor pattern, failure alerting, cost visibility + model fallback, heartbeat rationalisation, context API, vault task prioritisation, VPS vault source of truth, Haiku conductor model, tasks triage session, twice-daily briefing, Twilio phone alerts
+docs/             Design docs, implementation plans, and briefing reviews (docs/reviews/HISTORY.md)
 scripts/          sift-classify.py, sift-sample.py, sift-push.sh, skills-push.sh, workspace-push.sh, model-swap.sh, sift-cron.sh, ingest-tasks.py, ingest-keep.py, process-inbox.py, tasks-dump.py, push-manifest.sh, pull-decisions.sh, apply-decisions.py
 skills/           Custom OpenClaw skills (sift-digest, daily-briefing, calendar, day-planner, blog-publisher, rss-feed, web-style-guide, cost-tracker, activity-log)
 workspace/        Jimbo's brain files (SOUL.md, HEARTBEAT.md) + blog source (blog-src/) + workers/ + tasks/ + tests/. Deploy via workspace-push.sh + rsync.
@@ -122,7 +124,7 @@ notes/            Brain dumps
 - `workspace/alert-call.py` — Twilio phone call alert for critical failures. TTS via REST API, 60-min cooldown, exits silently if env vars missing. Stdlib only. (ADR-043)
 - `workspace/alert-check.py` — Pipeline health checker. Subcommands: `digest` (reports email volume), `briefing` (checks experiment-tracker.db, time-aware), `credits` (reports OpenRouter usage), `model` (reports current VPS model from openclaw.json), `status` (combined). Positive heartbeat on success. Stdlib only. (ADR-030, ADR-031)
 - `workspace/accountability-check.py` — Daily accountability checker. Queries activity-log.db + experiment-tracker.db for today. Checks: briefing ran, gems produced, surprise game played, vault tasks surfaced, activity count, cost. Sends Telegram summary. Runs at 20:00 UTC via cron. Stdlib only.
-- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Used by cron for automated Sonnet/Kimi switching around both briefing windows (morning 06:45-07:30, afternoon 14:45-15:30).
+- `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Cron model swaps currently DISABLED since 2026-03-08.
 - `workspace/email-fetch-cron.py` — Interval-aware email fetch wrapper. Reads `email_fetch_interval_hours` from settings API, checks digest age, runs gmail-helper.py if stale. Injects `previous_count` for delta tracking. Stdlib only.
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
 - `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
@@ -215,14 +217,13 @@ VPS root crontab runs the daily pipeline, with per-pipeline Telegram alerts (ADR
 # 04:30 — vault task scoring (Gemini Flash)
 # 05:00 — Google Tasks sweep (vault intake)
 # 06:15 — morning briefing pipeline (briefing-prep.py)
-# 06:45 — model swap to Sonnet for briefing delivery
 # 07:00 — Jimbo morning briefing (OpenClaw cron)
-# 07:30 — model swap back to Kimi K2
 # 14:15 — afternoon briefing pipeline (briefing-prep.py)
-# 14:45 — model swap to Sonnet for briefing delivery
 # 15:00 — Jimbo afternoon briefing
-# 15:30 — model swap back to Kimi K2
 # 20:00 — daily accountability report
+#
+# Model swaps (Sonnet for briefing, Kimi for between) — DISABLED since 2026-03-08.
+# Current daily driver model visible via /api/health → model field.
 ```
 
 ### Sandbox API keys
@@ -238,9 +239,9 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_TO_NUMBER` — Twilio voice API for critical failure phone calls (ADR-043)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → model swap to Sonnet (06:45) → Jimbo's morning briefing (07:00) → model swap to Kimi K2 (07:30) → afternoon briefing-prep pipeline (14:15) → model swap to Sonnet (14:45) → Jimbo's afternoon briefing (15:00) → model swap to Kimi K2 (15:30) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → Jimbo's morning briefing (07:00) → afternoon briefing-prep pipeline (14:15) → Jimbo's afternoon briefing (15:00) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
-No laptop dependency for core pipeline. Optional Opus analysis layer runs on Mac via launchd (opus-briefing.sh).
+No laptop dependency for core pipeline. Optional Opus analysis layer runs on Mac via launchd (opus-briefing.sh) — currently broken/stale since Mar 16 2026. Model swaps disabled since Mar 8 — Jimbo uses the same model all day (currently stepfun/step-3.5-flash:free via OpenRouter between briefings, Sonnet via OpenClaw cron for briefing windows).
 
 ## Notes Vault Pipeline (ADR-023, ADR-024)
 
@@ -269,9 +270,9 @@ data/vault/
 ```
 
 ### Triage UI stack
-- **jimbo-api** — Hono/Node API on VPS (port 3100, systemd). Repo: github.com/marvinbarretto/jimbo-api (private)
-- **site** — React triage UI at `/app/jimbo/notes-triage`. Deployed to Cloudflare Workers.
-- **Caddy** routes `/api/triage/*` to the API, everything else to OpenClaw.
+- **jimbo-api** — Hono/Node API on VPS (port 3100, systemd). Repo: `~/development/jimbo/jimbo-api` (github.com/marvinbarretto/jimbo-api, private). Deploy via `git push` then `git pull` on VPS.
+- **site** — Astro site with Jimbo admin screens at `/app/jimbo/` (vault, emails, costs, activity, status, settings, context, triage). Repo: `~/development/site`. Deployed to Cloudflare Workers.
+- **Caddy** routes `/api/*` to jimbo-api, everything else to OpenClaw.
 - See `notes/triage-deploy.md` for full deployment and operations guide.
 
 ### Key details
@@ -313,9 +314,22 @@ Context is split between the API and the repo:
 - `data/export/` — Google Takeout exports (Keep, etc.)
 - `~/Mail/gmail/INBOX` — full Gmail Maildir (on laptop, not in repo)
 
+## Related Repos
+
+| Repo | Local path | Deploy method | Purpose |
+|------|-----------|---------------|---------|
+| **jimbo-api** | `~/development/jimbo/jimbo-api` | `git push` → `git pull` on VPS, `npm run build`, `cp -r dist/* .`, restart service | Central API + SQLite DB for all Jimbo data |
+| **site** | `~/development/site` | `git push` → Cloudflare Workers auto-deploy | Astro site with Jimbo admin screens at `/app/jimbo/` |
+| **openclaw** (this repo) | `~/development/openclaw` | `workspace-push.sh` (rsync) for workspace files, `skills-push.sh` for skills | Config, scripts, skills, ADRs, brain files |
+
+**Deploy rules:**
+- jimbo-api: always use `git push/pull` — has its own repo, systemd runs from repo root
+- Workspace files (SOUL.md, workers, helpers, context): always use `rsync` via `workspace-push.sh` — no git repo on VPS for these
+- Never use per-file `scp` — VPS rate-limits SSH connections
+
 ## Conventions
 
-- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 038).
+- **ADRs:** Follow template in `decisions/_template.md`. Numbered sequentially (currently at 043).
 - **Scripts:** Bash scripts use `set -euo pipefail`. Python scripts use stdlib only (no pip dependencies).
 - **Deploy scripts:** Follow `sift-push.sh` pattern — check prerequisites, rsync to VPS via `jimbo` SSH alias. **Never use per-file `scp` loops** — use rsync to batch into a single SSH connection (VPS rate-limits after ~5 connections).
 - **Skills:** AgentSkills-compatible `SKILL.md` with YAML frontmatter. Deploy via `skills-push.sh`.
@@ -325,10 +339,18 @@ Context is split between the API and the repo:
 
 ```bash
 ssh jimbo                              # connect to VPS
-systemctl status openclaw              # check service
-journalctl -u openclaw -f              # tail logs
+systemctl status openclaw              # check OpenClaw service
+systemctl status jimbo-api             # check jimbo-api service
+journalctl -u openclaw -f              # tail OpenClaw logs
+journalctl -u jimbo-api -f             # tail jimbo-api logs
 systemctl restart openclaw             # restart after config changes
+systemctl restart jimbo-api            # restart after API deploy
 nano /home/openclaw/.openclaw/openclaw.json  # edit config
+```
+
+```bash
+# Health check (comprehensive — replaces manual API calls during briefing reviews)
+curl -sk -H "X-API-Key: $API_KEY" "https://167.99.206.214/api/health"
 ```
 
 Config changes require service restart. Workspace file changes (skills, brain files, digest) take effect on next Jimbo session — no restart needed.

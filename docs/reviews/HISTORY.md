@@ -126,7 +126,19 @@ Reviewing March 21 morning data. Pipeline healthy — 28 gems from 16 shortliste
 
 **Updated maturity ladder:** plumbing → heartbeat → **vault as shared task system** (designing now) → source data → useful outputs → autonomous actions → sub-agents.
 
-## Current Architecture (as of 2026-03-21)
+### Session 12 — 2026-03-22 (Rate Limit, Then Planning)
+
+Pipeline ran fine but Sonnet hit an API rate limit at compose time. No briefing delivered. Activity log falsely recorded success. No alert fired. Marvin: "today's output was pretty bad, nothing of value." One useful nudge (Outdooraholics Snowdonia trip) slipped through via heartbeat mode.
+
+New failure mode: silent briefing failure with false success reporting. No mechanism to detect externally that the briefing wasn't composed.
+
+Gem count dropped from 28 (Mar 21) to 5 — heavily operational (3x Sentry, 1x Airbnb, 1x NZ job). Email insights have scores but all other fields null. vault_reader 401 on 4th consecutive day.
+
+Session pivoted to planning: (1) `/health` endpoint for comprehensive monitoring, (2) vault-as-task-system design for Jimbo autonomy.
+
+**Pattern:** False success reporting is worse than no reporting. The system should never claim a briefing was delivered when the model hit a rate limit.
+
+## Current Architecture (as of 2026-03-22)
 
 ```
 VPS (always on):
@@ -208,6 +220,8 @@ Jimbo (OpenClaw on Telegram):
 | Nudge rate-limiting missing | **DESIGN GAP.** 10 Airbnb reminders in one day. No awareness of whether item was actioned. Session 10. |
 | Morning gem drought | ~~Resolved~~ — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
 | Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
+| False success on rate limit | **NEW BUG.** Model hit rate limit, no briefing composed, but activity log recorded "briefing delivered: success." No alert. Session 12. |
+| Email insight fields null | **BUG.** 27 insights have relevance scores (7-10) but category, action, reason, insight all null. Scoring runs, content doesn't. Session 12. |
 | No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
 | marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
 | Email cherry-picking poor | 4 items surfaced from 28 gems. Claude Code 1M update (0.95 confidence) missed entirely. Session 11. |
@@ -235,3 +249,4 @@ Jimbo (OpenClaw on Telegram):
 - **The user won't engage until they trust the system can respond.** Marvin didn't interact with Jimbo because he wasn't sure the platform supported it. Trust gates adoption.
 - **The briefing isn't the product.** After 11 sessions optimising briefing output, the real problem is purpose. The vault-as-task-system is the product; the briefing is one interface to it. Optimising output without operational context has a ceiling.
 - **Purpose > polish.** A structurally competent briefing that doesn't connect to shared task state feels flat. "Not landing" isn't about quality — it's about relevance to what's actually happening.
+- **False success is worse than visible failure.** A rate limit that logs "briefing delivered: success" is worse than an error that triggers an alert. Self-reported success without verification is unreliable.
