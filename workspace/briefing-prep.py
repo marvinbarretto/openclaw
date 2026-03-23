@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +28,26 @@ ALERT_SCRIPT = os.path.join(_script_dir, "alert.py")
 TRACKER_SCRIPT = os.path.join(_script_dir, "experiment-tracker.py")
 ACTIVITY_LOG_SCRIPT = os.path.join(_script_dir, "activity-log.py")
 OUTPUT_PATH = os.path.join(_script_dir, "briefing-input.json")
+
+
+def put_setting(key, value_str):
+    """PUT a string value to jimbo-api settings. value_str must be a string."""
+    api_url = os.environ.get("JIMBO_API_URL")
+    api_key = os.environ.get("JIMBO_API_KEY")
+    if not api_url or not api_key:
+        return False
+    try:
+        body = json.dumps({"value": value_str}).encode()
+        req = urllib.request.Request(
+            f"{api_url}/api/settings/{key}",
+            data=body, method="PUT",
+            headers={"Content-Type": "application/json", "X-API-Key": api_key},
+        )
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        print(f"WARNING: Failed to PUT setting {key}: {e}", file=sys.stderr)
+        return False
 
 
 def now_utc():
@@ -198,11 +219,27 @@ def run_pipeline(session, dry_run=False):
     else:
         pipeline_status["email_insights"] = {"status": "skipped (dry-run)"}
 
+    # --- Step 0: Sync calendar list to API ---
+    if not dry_run:
+        result = subprocess.run(
+            [sys.executable, os.path.join(_script_dir, "calendar-helper.py"), "list-calendars"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            if put_setting("calendar_available", result.stdout.strip()):
+                pipeline_status["calendar_sync"] = {"status": "ok"}
+            else:
+                pipeline_status["calendar_sync"] = {"status": "failed", "error": "API PUT failed"}
+        else:
+            pipeline_status["calendar_sync"] = {"status": "failed", "error": result.stderr.strip()[:200]}
+    else:
+        pipeline_status["calendar_sync"] = {"status": "skipped (dry-run)"}
+
     # --- Step 4: Calendar ---
     if not dry_run:
         result = subprocess.run(
             [sys.executable, os.path.join(_script_dir, "calendar-helper.py"),
-             "list-events", "--days", "1", "--primary-only"],
+             "list-events", "--days", "1", "--whitelist"],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
