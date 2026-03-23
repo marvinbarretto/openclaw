@@ -170,6 +170,33 @@ def check_activity_count():
     return True, f"{total} activities ({breakdown})"
 
 
+def check_devlog():
+    """Were any devlog entries created recently?"""
+    try:
+        result = api_request("GET", "/api/vault/notes?type=devlog&limit=10")
+        notes = result.get("notes", [])
+    except Exception:
+        return True, "devlog: API unreachable"
+
+    if not notes:
+        return None, "no devlog entries yet — sessions not generating content"
+
+    # Count entries from today and this week
+    today = today_str()
+    week_ago = (now_utc() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    today_notes = [n for n in notes if (n.get("created_at") or "").startswith(today)]
+    week_notes = [n for n in notes if (n.get("created_at") or "") >= week_ago]
+
+    if today_notes:
+        titles = [n.get("title", "untitled") for n in today_notes[:3]]
+        return True, f"devlog: {len(today_notes)} today — {'; '.join(titles)}"
+
+    if week_notes:
+        return True, f"devlog: {len(week_notes)} this week (none today)"
+
+    return None, f"devlog: {len(notes)} total, none this week"
+
+
 def check_cost_today():
     """What did today cost?"""
     try:
@@ -194,6 +221,7 @@ def main():
         ("vault", check_vault_tasks_surfaced),
         ("activity", check_activity_count),
         ("cost", check_cost_today),
+        ("devlog", check_devlog),
     ]
 
     results = []

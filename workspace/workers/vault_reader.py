@@ -120,11 +120,17 @@ class VaultReader(BaseWorker):
                 continue
         return bookmarks
 
-    def find_next(self):
-        """Find the oldest unread bookmark. Returns filepath or None."""
+    def find_next(self, exclude=None):
+        """Find the oldest unread bookmark. Returns filepath or None.
+
+        Args:
+            exclude: set of filepaths to skip (e.g. previously failed fetches).
+        """
+        exclude = exclude or set()
         bookmarks = self._scan_bookmarks()
         unread = [(fp, m) for fp, m in bookmarks
-                  if not (self.skip_enriched and m.get("enriched") == "true")]
+                  if not (self.skip_enriched and m.get("enriched") == "true")
+                  and fp not in exclude]
         if not unread:
             return None
         # Sort by file mtime (oldest first)
@@ -271,12 +277,29 @@ def main():
         result = worker.read(args.file, dry_run=args.dry_run)
         print(json.dumps(result, indent=2))
     elif args.command == "next":
-        path = worker.find_next()
-        if path is None:
-            print(json.dumps({"status": "no_unread_bookmarks"}))
-        else:
+        max_attempts = 5
+        skipped = set()
+        for attempt in range(max_attempts):
+            path = worker.find_next(exclude=skipped)
+            if path is None:
+                print(json.dumps({"status": "no_unread_bookmarks", "skipped": len(skipped)}))
+                break
             result = worker.read(path, dry_run=args.dry_run)
+            if result.get("status") in ("fetch_failed", "no_url"):
+                skipped.add(path)
+                sys.stderr.write(
+                    f"[vault-reader] skipping {os.path.basename(path)} "
+                    f"({result['status']}), trying next...\n"
+                )
+                continue
             print(json.dumps(result, indent=2))
+            break
+        else:
+            print(json.dumps({
+                "status": "all_failed",
+                "attempted": max_attempts,
+                "skipped_files": [os.path.basename(p) for p in skipped],
+            }, indent=2))
 
 
 if __name__ == "__main__":

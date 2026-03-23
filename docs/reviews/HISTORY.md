@@ -138,7 +138,7 @@ Session pivoted to planning: (1) `/health` endpoint for comprehensive monitoring
 
 **Pattern:** False success reporting is worse than no reporting. The system should never claim a briefing was delivered when the model hit a rate limit.
 
-### Session 13 — 2026-03-23 (Calendar Pollution, Then Building)
+### Session 13 — 2026-03-23a (Calendar Pollution, Then Building)
 
 Second consecutive morning delivery failure — Marvin had to prompt at 08:56. When briefing came, calendar was polluted with events from shared/subscribed calendars (Quiet Waters, Breaky, Zoom Prayer, Cookin!). Root cause: `--primary-only` still includes 16 owner calendars, many belonging to other people's schedules. Best gem missed — a podcast explicitly discussing OpenClaw at 0.95 confidence. No surprise section (3rd consecutive). Email insight null fields (3rd consecutive).
 
@@ -147,6 +147,16 @@ Marvin: "It was a disaster." Session pivoted immediately to infrastructure fixes
 **Pattern:** Source data quality gates output quality — again. No amount of model intelligence compensates for feeding 36 calendars when only 5 are wanted. Config UIs are infrastructure, not features.
 
 **Updated maturity ladder:** plumbing → heartbeat → **source data quality** (calendar config being built) → vault as shared task system → useful outputs → autonomous actions → sub-agents.
+
+### Session 14 — 2026-03-23b (Telegram Output Discipline)
+
+Afternoon briefing solid — best email curation yet. 5 highlights all with clear "why", 4 gems curated from 24. Pipeline healthy (79 emails → 15 shortlisted → 24 gems). But after the briefing, Jimbo dumped ~8 blocks of internal heartbeat reasoning into Telegram — each one narrating the decision to stay silent, then staying silent. Pages of text for zero actionable output.
+
+Marvin: "I'm happy and excited that it's more active, it's thinking a lot more, but this shouldn't be leaking into the chat." Activity level correct. Output filter broken.
+
+Root cause: SOUL.md says "never show your working" and HEARTBEAT.md says "silence is free" but both were too subtle. Kimi K2 treats chain-of-thought as output. Fix: hard "Output discipline" rule at top of HEARTBEAT.md — action → short message, no action → ZERO output, specific anti-patterns called out ("Since:", "Assessment:", "Given that:").
+
+Morning delivery failed (3rd consecutive). vault_reader 401 (4 failures). vault_roulette no_candidates (8 failures). Surprise game missing (3rd consecutive). Calendar tags still null.
 
 ## Current Architecture (as of 2026-03-23)
 
@@ -238,7 +248,9 @@ Jimbo (OpenClaw on Telegram):
 | No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
 | marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
 | Email cherry-picking poor | 4 items surfaced from 28 gems. Claude Code 1M update (0.95 confidence) missed entirely. Session 11. |
-| vault_roulette always empty | Returns "no_candidates" on every call (4x today). 30-day dormancy threshold or data issue. Session 11. |
+| vault_roulette always empty | Returns "no_candidates" on every call (8 attempts, 0 successes). 30-day dormancy threshold or data issue. Session 11. |
+| Heartbeat reasoning leaks to Telegram | **FIXED (pending verification).** Kimi K2 narrates full chain-of-thought when deciding "no action needed." Output discipline rule added to HEARTBEAT.md. Session 14. |
+| Morning auto-delivery broken | **BROKEN.** 3rd consecutive morning failure. Afternoon delivers fine. Session 12→14. |
 
 ## Patterns (Across All Sessions)
 
@@ -263,3 +275,4 @@ Jimbo (OpenClaw on Telegram):
 - **The briefing isn't the product.** After 11 sessions optimising briefing output, the real problem is purpose. The vault-as-task-system is the product; the briefing is one interface to it. Optimising output without operational context has a ceiling.
 - **Purpose > polish.** A structurally competent briefing that doesn't connect to shared task state feels flat. "Not landing" isn't about quality — it's about relevance to what's actually happening.
 - **False success is worse than visible failure.** A rate limit that logs "briefing delivered: success" is worse than an error that triggers an alert. Self-reported success without verification is unreliable.
+- **Thinking is not output.** A model that narrates its decision to stay silent is noisier than one that acts. On a messaging surface, every word is a notification. "Silence is free" must be a UX rule, not a cost suggestion.

@@ -4,6 +4,16 @@ These tasks run during Jimbo's periodic heartbeat. They are intentionally few �
 
 Monitoring (digest freshness, OpenRouter balance, briefing health) is handled by the hourly cron `alert-check.py status` — not repeated here.
 
+## Output discipline (CRITICAL)
+
+**If a heartbeat check concludes "no action needed", produce ZERO output.** No reasoning, no assessment, no summary of what you checked, no "nothing to report." The user reads this on Telegram — every word you send is a notification on their phone.
+
+- **Action needed?** → Send a short, useful message (1-5 lines).
+- **No action needed?** → Send NOTHING. Not even a period. Complete silence.
+- **Never narrate your decision process.** "Let me check the calendar... no gaps... checking emails... nothing urgent... since all HEARTBEAT requirements are satisfied..." is exactly what must NOT appear in the chat. Think internally, act or stay silent.
+
+This applies to ALL heartbeat tasks below. If you catch yourself writing "Since:" or "Assessment:" or "Given that:", stop — you're narrating, not acting.
+
 ## Cost awareness (always applies)
 
 Before acting on any heartbeat task, consider whether the cost is justified:
@@ -78,7 +88,7 @@ Each heartbeat, pick ONE at random from this list. Don't repeat the same module 
 
 1. **Read a bookmark**: `python3 /workspace/workers/vault_reader.py next` — fetch and summarise the oldest unread bookmark. If it connects to something in today's email or your priorities, tell Marvin via Telegram. Example: "Just read your bookmark about agent architectures. Key themes: multi-agent coordination, tool use. Connects to your LocalShout priority."
 
-2. **Vault roulette**: `python3 /workspace/workers/vault_roulette.py spin --decaying` — surface a note dormant 30+ days. If it connects to today's email or calendar, share it. If not, note it in memory — it might connect later. Example: "Dormant note resurface: 'Gamifying habit tracking' (42 days). Songkick email about Romare + your interest in reward systems might connect."
+2. **Vault roulette**: `python3 /workspace/workers/vault_roulette.py spin` — surface a random note weighted by age, type, and priority. If it connects to today's email or calendar, share it. If not, note it in memory — it might connect later. Example: "Random note resurface: 'Gamifying habit tracking' (42 days). Songkick email about Romare + your interest in reward systems might connect."
 
 3. **Email × vault collision**: Pick an email insight from today's briefing-input.json. Run `python3 /workspace/workers/vault_connector.py match --query "<insight text>"`. If 2+ keyword hits, send the connection. Example: "Today's Seeking Alpha article about Fed rates connects to your SIPP timing task (priority 8) and your mortgage calculator bookmark."
 

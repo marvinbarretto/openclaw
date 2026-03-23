@@ -44,8 +44,8 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
 - Skip sections with nothing to report. Don't say "no emails today" — just don't send that message.
 
 1. **Day plan** — present today's calendar events as a timeline. Identify free gaps. Flag anything in the next 2 hours. If you have Opus analysis, use its suggestions. If working from raw calendar data, propose how to use free blocks based on priorities.
-2. **Email highlights** — present interesting emails with WHY each matters. If working from `briefing-input.json`, use the `email_insights` array (sorted by relevance_score) and the `gems` array. Skip if both are empty.
-3. **Surprise** — present a genuinely non-obvious connection or find. Skip if you can't find one worth sharing.
+2. **Email highlights** — present interesting emails with WHY each matters. If working from `briefing-input.json`, read ALL entries in the `gems` array AND the `email_insights` array (sorted by relevance_score). Present the top 3-4 by confidence/relevance score. Never skip a gem with confidence >= 0.9. Include URLs directly from the gem data — say "Check it out: [URL]" not "link in the email".
+3. **Surprise** — REQUIRED: always include a surprise. Find a genuinely non-obvious connection between two different data sources (email × vault, calendar × priorities, gem × old bookmark). If nothing connects, pick the single most unexpected thing from today's data and frame it as a discovery.
 4. **Task status** — Call `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"` and report:
    - Done since last briefing (with titles if ≤5, count if more)
    - Currently in progress (by owner)
@@ -67,6 +67,8 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
 After delivering, ask: "Anything you'd swap or skip?"
 
 ## Step 3: Log delivery
+
+Only log success if you actually delivered briefing content above. If the briefing failed (no data, rate limit, error), log outcome as "failed" with a description of what went wrong. Do NOT log success for a briefing you didn't deliver.
 
 Run both in the sandbox:
 

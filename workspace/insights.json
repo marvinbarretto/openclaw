@@ -1,0 +1,30 @@
+{
+  "entries": [
+    {
+      "id": "ins_7bacb69c",
+      "source_module": "vault-reader",
+      "source_run": "run_a86bec1a",
+      "timestamp": 1773766086,
+      "type": "connection",
+      "text": "Bookmark 'Test Bookmark' themes [agents, tool-use] connect to: LocalShout AI pipeline",
+      "tags": [
+        "agents",
+        "tool-use"
+      ],
+      "confidence": 0.6
+    },
+    {
+      "id": "ins_4281e087",
+      "source_module": "vault-roulette",
+      "source_run": "run_6fd69afd",
+      "timestamp": 1773766086,
+      "type": "reflection",
+      "text": "Dormant idea note 'Old idea' surfaced after 45 days",
+      "tags": [
+        "idea"
+      ],
+      "confidence": 0.5
+    }
+  ],
+  "max_entries": 100
+}
