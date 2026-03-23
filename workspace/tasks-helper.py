@@ -709,6 +709,130 @@ def cmd_pipeline(access_token, args):
 
 
 # ---------------------------------------------------------------------------
+# API-based sweep (vault task system — replaces pipeline for daily cron)
+# ---------------------------------------------------------------------------
+
+def api_request(method, path, body=None):
+    """Make an authenticated request to jimbo-api."""
+    api_url = os.environ.get("JIMBO_API_URL", "")
+    api_key = os.environ.get("JIMBO_API_KEY", "")
+    if not api_url or not api_key:
+        log("ERROR: JIMBO_API_URL and JIMBO_API_KEY must be set for sweep command")
+        sys.exit(1)
+
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if body:
+        req.add_header("Content-Type", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode()
+        log(f"  API error ({e.code}): {err_body}")
+        return None
+    except (urllib.error.URLError, TimeoutError) as e:
+        log(f"  API connection error: {e}")
+        return None
+
+
+def check_exists_in_api(source_signal):
+    """Check if a task with this source_signal already exists in the DB."""
+    encoded = urllib.parse.quote(source_signal, safe='')
+    result = api_request("GET", f"/api/vault/notes?search={encoded}&limit=1")
+    if result and result.get("notes"):
+        for note in result["notes"]:
+            if note.get("source_signal") == source_signal:
+                return True
+    return False
+
+
+def cmd_sweep(access_token, args):
+    """Sweep Google Tasks → jimbo-api. Replaces pipeline for daily cron.
+
+    Fetches incomplete tasks from My Tasks, POSTs new ones to the vault API
+    as inbox items. Deduplicates on source_signal. Completed tasks in Google
+    are matched and marked done in the API.
+    """
+    log("=== Google Tasks sweep → jimbo-api ===")
+
+    # Fetch from Google Tasks
+    updated_min = None
+    if not args.all:
+        updated_min = load_last_fetch_time()
+        if updated_min:
+            log(f"Fetching tasks updated since {updated_min}")
+
+    tasks = fetch_all_tasks(access_token, "@default", updated_min=updated_min)
+    log(f"Fetched {len(tasks)} tasks from My Tasks")
+
+    stats = {"created": 0, "skipped_exists": 0, "skipped_empty": 0, "completed": 0, "errors": 0}
+
+    for task in tasks:
+        title = (task.get("title") or "").strip()
+        notes = (task.get("notes") or "").strip()
+        source_id = task["id"]
+        source_signal = f"google-tasks:{source_id}"
+
+        if not title and not notes:
+            stats["skipped_empty"] += 1
+            continue
+
+        # Check if already in the API
+        if check_exists_in_api(source_signal):
+            # If task is completed in Google, mark it done in the API
+            if task.get("status") == "completed":
+                # Find the note and mark done
+                result = api_request("GET", f"/api/vault/notes?search={urllib.parse.quote(source_signal, safe='')}&limit=1")
+                if result and result.get("notes"):
+                    for note in result["notes"]:
+                        if note.get("source_signal") == source_signal and note.get("status") != "done":
+                            api_request("PATCH", f"/api/vault/notes/{note['id']}", {"status": "done"})
+                            stats["completed"] += 1
+                            log(f"  Completed: {title[:60]}")
+            else:
+                stats["skipped_exists"] += 1
+            continue
+
+        if args.dry_run:
+            log(f"  Would create: {title[:60]}")
+            stats["created"] += 1
+            continue
+
+        # POST to API
+        body = {
+            "title": title[:200],
+            "body": notes if notes else None,
+            "type": "task",
+            "status": "inbox",
+            "source": "google-tasks",
+            "source_signal": source_signal,
+        }
+
+        result = api_request("POST", "/api/vault/notes", body)
+        if result and result.get("id"):
+            stats["created"] += 1
+            log(f"  Created: {title[:60]} → {result['id']}")
+        else:
+            stats["errors"] += 1
+            log(f"  ERROR creating: {title[:60]}")
+
+    save_last_fetch_time()
+
+    log(f"Sweep complete: {stats['created']} created, {stats['completed']} completed, "
+        f"{stats['skipped_exists']} already existed, {stats['skipped_empty']} empty, "
+        f"{stats['errors']} errors")
+
+    if args.dry_run:
+        log("(Dry run — no API calls made)")
+
+    print(json.dumps({"status": "ok", **stats}))
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -730,12 +854,17 @@ def main():
     classify_parser.add_argument("--threshold", type=int, default=8, help="Auto-accept confidence threshold (default: 8)")
     classify_parser.add_argument("--limit", type=int, default=None, help="Max items to classify")
 
-    # pipeline (fetch + ingest + classify)
+    # pipeline (fetch + ingest + classify) — legacy, writes markdown
     pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline: fetch + ingest + classify")
     pipeline_parser.add_argument("--all", action="store_true", help="Fetch all tasks, not just since last run")
     pipeline_parser.add_argument("--dry-run", action="store_true", help="Preview without writing/moving files")
     pipeline_parser.add_argument("--threshold", type=int, default=8, help="Auto-accept confidence threshold (default: 8)")
     pipeline_parser.add_argument("--limit", type=int, default=None, help="Max items to classify")
+
+    # sweep — API-based intake (vault task system, replaces pipeline for daily cron)
+    sweep_parser = subparsers.add_parser("sweep", help="Sweep Google Tasks → jimbo-api (API-based, replaces pipeline)")
+    sweep_parser.add_argument("--all", action="store_true", help="Fetch all tasks, not just since last run")
+    sweep_parser.add_argument("--dry-run", action="store_true", help="Preview without making API calls")
 
     args = parser.parse_args()
 
@@ -754,6 +883,8 @@ def main():
         cmd_classify(args)
     elif args.command == "pipeline":
         cmd_pipeline(access_token, args)
+    elif args.command == "sweep":
+        cmd_sweep(access_token, args)
 
 
 if __name__ == "__main__":

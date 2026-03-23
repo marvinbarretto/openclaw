@@ -575,6 +575,174 @@ def cmd_score(args):
                        "skipped": len(tasks) - len(to_score)}))
 
 
+
+
+# ---------------------------------------------------------------------------
+# API-based scoring (vault task system — replaces file-based scoring)
+# ---------------------------------------------------------------------------
+
+def _api_request(method, path, body=None):
+    """Make an authenticated request to jimbo-api."""
+    api_url = os.environ.get("JIMBO_API_URL", "")
+    api_key = os.environ.get("JIMBO_API_KEY", "")
+    if not api_url or not api_key:
+        log("ERROR: JIMBO_API_URL and JIMBO_API_KEY must be set for --api mode")
+        sys.exit(1)
+
+    url = f"{api_url}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-Key", api_key)
+    if body:
+        req.add_header("Content-Type", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode()
+        log(f"  API error ({e.code}): {err_body[:200]}")
+        return None
+    except (urllib.error.URLError, TimeoutError) as e:
+        log(f"  API connection error: {e}")
+        return None
+
+
+def cmd_score_api(args):
+    """Score vault tasks via jimbo-api instead of files."""
+    gemini_key = get_env("GOOGLE_AI_API_KEY")
+
+    # Load context (same as file-based mode)
+    context = load_context()
+    if not context:
+        log("ERROR: No context available")
+        sys.exit(1)
+
+    system_prompt = SCORING_SYSTEM_PROMPT
+
+    # Fetch tasks from API — active and inbox, excluding subtasks
+    result = _api_request("GET", "/api/vault/notes?status=active,inbox&has_parent=false&limit=200&sort=updated_at&order=asc")
+    if not result or not result.get("notes"):
+        log("No tasks found in API")
+        print(json.dumps({"status": "ok", "scored": 0}))
+        return
+
+    all_tasks = result["notes"]
+    log(f"Fetched {len(all_tasks)} tasks from API")
+
+    # Filter to those needing scoring (no ai_priority, or force)
+    if args.force:
+        to_score = all_tasks
+    else:
+        ctx_cutoff = context_mtime()
+        to_score = []
+        for t in all_tasks:
+            if t.get("ai_priority") is None:
+                to_score.append(t)
+            elif ctx_cutoff and (t.get("updated_at") or "") < ctx_cutoff:
+                to_score.append(t)
+            # Skip freshly scored tasks
+        log(f"{len(to_score)} need scoring ({len(all_tasks) - len(to_score)} skipped as fresh)")
+
+    if args.limit:
+        to_score = to_score[:args.limit]
+
+    if not to_score:
+        log("Nothing to score.")
+        # Still do deferred resurfacing
+        _resurface_deferred()
+        print(json.dumps({"status": "ok", "scored": 0, "skipped": len(all_tasks)}))
+        return
+
+    # Build batches using task data from API
+    scored = 0
+    errors = 0
+    batches = [to_score[i:i + BATCH_SIZE] for i in range(0, len(to_score), BATCH_SIZE)]
+    log(f"Processing {len(to_score)} tasks in {len(batches)} batches...")
+
+    for batch_idx, batch in enumerate(batches):
+        if batch_idx > 0:
+            time.sleep(1)
+        log(f"\nBatch {batch_idx + 1}/{len(batches)} ({len(batch)} tasks)")
+
+        # Build prompt from API task data
+        prompt_parts = [f"## Marvin's current context\n\n{context}\n\n## Tasks to score\n"]
+        for t in batch:
+            prompt_parts.append(f"### {t['id']}")
+            prompt_parts.append(f"Title: {t['title']}")
+            prompt_parts.append(f"Created: {t.get('created_at', 'unknown')}")
+            if t.get('tags'):
+                prompt_parts.append(f"Tags: {t['tags']}")
+            if t.get('body'):
+                prompt_parts.append(f"Body: {t['body'][:200]}")
+            prompt_parts.append("")
+
+        user_prompt = '\n'.join(prompt_parts)
+        results = call_gemini(gemini_key, system_prompt, user_prompt)
+
+        if results is None:
+            log("  FAILED — skipping batch")
+            errors += len(batch)
+            continue
+
+        if isinstance(results, dict):
+            results = [results]
+
+        results_by_id = {r.get('id', ''): r for r in results if isinstance(r, dict)}
+
+        for t in batch:
+            score_result = results_by_id.get(t['id'])
+            if score_result is None:
+                log(f"  WARNING: No score for {t['id']}")
+                errors += 1
+                continue
+
+            priority = score_result.get('priority', 5)
+            actionability = score_result.get('actionability', 'vague')
+            reason = score_result.get('priority_reason', '')[:200]
+
+            if args.dry_run:
+                log(f"  {t['id']}: priority={priority} actionability={actionability} reason=\"{reason[:60]}\"")
+            else:
+                patch = {
+                    "ai_priority": priority,
+                    "ai_rationale": reason,
+                    "actionability": actionability,
+                }
+                _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
+
+            scored += 1
+
+    # Resurface deferred tasks
+    if not args.dry_run:
+        _resurface_deferred()
+
+    log(f"\nScored: {scored}, Errors: {errors}, Skipped: {len(all_tasks) - len(to_score)}")
+    if args.dry_run:
+        log("(Dry run — no API calls made)")
+
+    print(json.dumps({"status": "ok", "scored": scored, "errors": errors,
+                       "skipped": len(all_tasks) - len(to_score)}))
+
+
+def _resurface_deferred():
+    """Move deferred tasks with past due_date back to active."""
+    today = datetime.date.today().isoformat()
+    result = _api_request("GET", f"/api/vault/notes?status=deferred&due_before={today}&limit=50")
+    if not result or not result.get("notes"):
+        return
+
+    count = 0
+    for t in result["notes"]:
+        if t.get("due_date") and t["due_date"] <= today:
+            _api_request("PATCH", f"/api/vault/notes/{t['id']}", {"status": "active", "due_date": None})
+            log(f"  Resurfaced deferred task: {t['title'][:60]}")
+            count += 1
+
+    if count:
+        log(f"Resurfaced {count} deferred tasks")
+
+
 def cmd_stats(args):
     """Show scoring distribution across vault tasks."""
     tasks = load_vault_tasks(VAULT_NOTES)
@@ -645,11 +813,14 @@ def main():
     parser.add_argument("--force", action="store_true", help="Re-score everything")
     parser.add_argument("--limit", type=int, default=None, help="Max tasks to score")
     parser.add_argument("--stats", action="store_true", help="Show scoring distribution")
+    parser.add_argument("--api", action="store_true", help="Score via jimbo-api (vault task system)")
 
     args = parser.parse_args()
 
     if args.stats:
         cmd_stats(args)
+    elif args.api:
+        cmd_score_api(args)
     else:
         cmd_score(args)
 
