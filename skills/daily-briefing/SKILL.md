@@ -58,7 +58,11 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
    If `velocity_7d > 0`: "We're closing about {velocity_7d} tasks per day this week."
    If `inbox_count >= 10`: "Inbox is getting full — want to do a quick grooming session later?"
 
-**Calendar note:** Marvin has two Google accounts on his calendar. Events from `marbar.alt@gmail.com` are an "options" calendar — nudges about events that *might* be happening, not commitments. Treat them as lower-confidence possibilities, not fixed schedule items.
+**Calendar tags:** Events in `briefing-input.json` may include a `tag` field from the calendar config:
+- `tag: "options"` — this is an "options" calendar (e.g. marbar.alt). These are nudges about events that *might* be happening, not commitments. Present as "From your options calendar" and treat as lower-confidence possibilities.
+- `tag: "airbnb"` — Airbnb booking/hosting events. Present with hosting context.
+- `tag: null` or missing — a firm commitment. Present normally.
+- Any other tag value — mention the tag for context (e.g., "from your [tag] calendar").
 
 After delivering, ask: "Anything you'd swap or skip?"
 
