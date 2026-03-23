@@ -50,6 +50,8 @@ Build a draft note:
   - `## Context` — where it came from (conversation topic, repo, branch, problem being solved). Omit if no meaningful context exists.
   - `## Notes` — any additional detail, links, or next steps. Omit if empty.
 
+Keep the total body under ~500 words. This is a quick capture, not a document.
+
 Show the draft to Marvin like this:
 
 > **Title:** [title]
