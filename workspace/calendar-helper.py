@@ -112,6 +112,26 @@ def api_request(access_token, path, method="GET", body=None):
         sys.exit(1)
 
 
+def get_setting_from_api(key):
+    """Read a single setting from jimbo-api. Returns the value string, or None on failure."""
+    api_url = os.environ.get("JIMBO_API_URL")
+    api_key = os.environ.get("JIMBO_API_KEY")
+    if not api_url or not api_key:
+        print(f"WARNING: JIMBO_API_URL or JIMBO_API_KEY not set, cannot read {key}", file=sys.stderr)
+        return None
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/api/settings/{key}",
+            headers={"X-API-Key": api_key},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("value")
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as e:
+        print(f"WARNING: Failed to read {key} from API: {e}", file=sys.stderr)
+        return None
+
+
 def cmd_list_calendars(access_token, _args):
     """List all visible calendars."""
     result = api_request(access_token, "users/me/calendarList")
@@ -136,16 +156,36 @@ def cmd_list_events(access_token, args):
 
     calendar_ids = [args.calendar_id] if args.calendar_id else None
 
-    # If no calendar specified, get calendars (optionally filtered)
+    # Track tags for each calendar (from whitelist config)
+    calendar_tags = {}
+
     if calendar_ids is None:
-        cal_list = api_request(access_token, "users/me/calendarList")
-        if args.primary_only:
-            calendar_ids = [
-                c["id"] for c in cal_list.get("items", [])
-                if c.get("primary") or c.get("accessRole") == "owner"
-            ]
-        else:
-            calendar_ids = [c["id"] for c in cal_list.get("items", [])]
+        if args.whitelist:
+            # Read whitelist from jimbo-api
+            config_str = get_setting_from_api("calendar_config")
+            if config_str:
+                try:
+                    config = json.loads(config_str)
+                    calendars = config.get("calendars", {})
+                    calendar_ids = [cid for cid, cfg in calendars.items() if cfg.get("enabled")]
+                    calendar_tags = {cid: cfg.get("tag") for cid, cfg in calendars.items() if cfg.get("enabled")}
+                except (json.JSONDecodeError, AttributeError):
+                    print("WARNING: calendar_config is invalid JSON, falling back to --primary-only", file=sys.stderr)
+                    calendar_ids = None
+
+        if calendar_ids is None:
+            # Fallback: fetch from Google API
+            cal_list = api_request(access_token, "users/me/calendarList")
+            if args.primary_only or args.whitelist:
+                # --whitelist falls back here if config missing/invalid
+                calendar_ids = [
+                    c["id"] for c in cal_list.get("items", [])
+                    if c.get("primary") or c.get("accessRole") == "owner"
+                ]
+                if args.whitelist:
+                    print("WARNING: No calendar_config found, using --primary-only fallback", file=sys.stderr)
+            else:
+                calendar_ids = [c["id"] for c in cal_list.get("items", [])]
 
     all_events = []
     for cal_id in calendar_ids:
@@ -192,6 +232,7 @@ def cmd_list_events(access_token, args):
                 "location": event.get("location", ""),
                 "status": event.get("status", ""),
                 "html_link": event.get("htmlLink", ""),
+                "tag": calendar_tags.get(cal_id),
             })
 
     # Sort by start time
@@ -345,6 +386,8 @@ def main():
     le.add_argument("--days", type=int, default=1, help="Number of days ahead (default: 1)")
     le.add_argument("--calendar-id", default=None, help="Specific calendar ID (default: all)")
     le.add_argument("--primary-only", action="store_true", help="Only owner/primary calendars (skip subscribed feeds)")
+    le.add_argument("--whitelist", action="store_true",
+        help="Read enabled calendars from jimbo-api settings (requires JIMBO_API_URL and JIMBO_API_KEY)")
 
     # check-conflicts
     cc = subparsers.add_parser("check-conflicts", help="Check for scheduling conflicts")
