@@ -218,7 +218,7 @@ Jimbo (OpenClaw on Telegram):
 | ~~March 19 pipeline missing~~ | Resolved — pipelines ran on both Mar 19 and Mar 20. Transient issue. | 9→10 |
 | No inline links in briefing | Gem data has URLs but briefing says "link in the email" instead of including them. Skill fix needed. Session 9. |
 | Message format (wall of text) | Briefing sent as one long message. Should split by section for Telegram UX. Skill fix needed. Session 9. |
-| Calendar pollution | **DESIGNING FIX.** 36 calendars fetched, only ~5 wanted. `--primary-only` insufficient (16 owner calendars). Config UI spec written. Session 13. |
+| ~~Calendar pollution~~ | **FIXED.** Whitelist + tags deployed. 12 calendars selected (down from 36). Config UI at `/app/jimbo/calendar`. Session 13. |
 | Briefing auto-delivery broken | **BROKEN.** 2 consecutive mornings failed to auto-deliver. Session 12 was rate limit; session 13 cause unknown. |
 | Email insight fields null | **BUG.** Insights have relevance scores but category/action/reason/insight all null. 3rd consecutive session. Replaces "scores all 0" (session 8). |
 | Stale files throughout repo | HEARTBEAT.md refs retired skills, skills/ has 4-5 retired entries, TODO.md outdated, CAPABILITIES.md inaccurate. Session 8. |
