@@ -138,7 +138,17 @@ Session pivoted to planning: (1) `/health` endpoint for comprehensive monitoring
 
 **Pattern:** False success reporting is worse than no reporting. The system should never claim a briefing was delivered when the model hit a rate limit.
 
-## Current Architecture (as of 2026-03-22)
+### Session 13 — 2026-03-23 (Calendar Pollution, Then Building)
+
+Second consecutive morning delivery failure — Marvin had to prompt at 08:56. When briefing came, calendar was polluted with events from shared/subscribed calendars (Quiet Waters, Breaky, Zoom Prayer, Cookin!). Root cause: `--primary-only` still includes 16 owner calendars, many belonging to other people's schedules. Best gem missed — a podcast explicitly discussing OpenClaw at 0.95 confidence. No surprise section (3rd consecutive). Email insight null fields (3rd consecutive).
+
+Marvin: "It was a disaster." Session pivoted immediately to infrastructure fixes. Identified calendar pollution as highest-impact issue. Designed a calendar configuration system: whitelist + tags stored in settings API, new admin page at `/app/jimbo/calendar` with checkboxes and tag dropdowns (e.g., marbar.alt tagged "options"). Tags are freeform — briefing skill uses them for presentation context. Spec written.
+
+**Pattern:** Source data quality gates output quality — again. No amount of model intelligence compensates for feeding 36 calendars when only 5 are wanted. Config UIs are infrastructure, not features.
+
+**Updated maturity ladder:** plumbing → heartbeat → **source data quality** (calendar config being built) → vault as shared task system → useful outputs → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-03-23)
 
 ```
 VPS (always on):
@@ -147,10 +157,11 @@ VPS (always on):
     - email_triage.py (Flash) — WORKING (16-18 shortlisted, drought broken)
     - newsletter_reader.py (Haiku) — WORKING (28 gems Mar 21 morning, 1 gem anomaly on Mar 20 was transient)
     - email_decision.py (Flash) — running, costs $0.04/day
-    - calendar-helper.py — WORKING (16 events)
+    - calendar-helper.py — WORKING but POLLUTED (18 events from 36 calendars, needs whitelist)
     - vault task selection — WORKING morning, skipped afternoon
-  jimbo-api → dashboard, context, settings, activity, costs, experiments
+  jimbo-api → dashboard, context, settings, activity, costs, experiments, health
     POST /api/briefing/analysis — deployed but unused (Opus broken)
+    GET /api/health — comprehensive monitoring (deployed session 12)
   Autonomous mind tools (Phase 1):
     - vault_connector.py — WORKING (BM25 search, found Airbnb match)
     - vault_roulette.py — NO CANDIDATES (every call, 30d threshold issue?)
@@ -207,7 +218,9 @@ Jimbo (OpenClaw on Telegram):
 | ~~March 19 pipeline missing~~ | Resolved — pipelines ran on both Mar 19 and Mar 20. Transient issue. | 9→10 |
 | No inline links in briefing | Gem data has URLs but briefing says "link in the email" instead of including them. Skill fix needed. Session 9. |
 | Message format (wall of text) | Briefing sent as one long message. Should split by section for Telegram UX. Skill fix needed. Session 9. |
-| Email insight scores all 0 | email_decision.py produces insights but all scored 0. No signal for briefing. Session 8. |
+| Calendar pollution | **DESIGNING FIX.** 36 calendars fetched, only ~5 wanted. `--primary-only` insufficient (16 owner calendars). Config UI spec written. Session 13. |
+| Briefing auto-delivery broken | **BROKEN.** 2 consecutive mornings failed to auto-deliver. Session 12 was rate limit; session 13 cause unknown. |
+| Email insight fields null | **BUG.** Insights have relevance scores but category/action/reason/insight all null. 3rd consecutive session. Replaces "scores all 0" (session 8). |
 | Stale files throughout repo | HEARTBEAT.md refs retired skills, skills/ has 4-5 retired entries, TODO.md outdated, CAPABILITIES.md inaccurate. Session 8. |
 | No surprise game definition | Only a vague "non-obvious connection" instruction. Needs proper doc defining what delight means. Session 8. |
 | Calendar write not used | Jimbo has write access but only narrates, never proposes+creates. Session 8. |
@@ -218,7 +231,7 @@ Jimbo (OpenClaw on Telegram):
 | No task creation from signals | **DESIGN GAP.** Jimbo surfaces actionable items but doesn't create trackable tasks. Session 10. |
 | No conversational task handoff | **DESIGN GAP.** No protocol for "I'll take this" / "you do it" / "done." Vault velocity 0. Session 10. |
 | Nudge rate-limiting missing | **DESIGN GAP.** 10 Airbnb reminders in one day. No awareness of whether item was actioned. Session 10. |
-| Morning gem drought | ~~Resolved~~ — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
+| ~~Morning gem drought~~ | Resolved — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
 | Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
 | False success on rate limit | **NEW BUG.** Model hit rate limit, no briefing composed, but activity log recorded "briefing delivered: success." No alert. Session 12. |
 | Email insight fields null | **BUG.** 27 insights have relevance scores (7-10) but category, action, reason, insight all null. Scoring runs, content doesn't. Session 12. |
