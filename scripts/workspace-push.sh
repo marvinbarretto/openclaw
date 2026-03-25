@@ -67,7 +67,7 @@ else
 fi
 
 # --- Worker directories (workers/, tasks/, tests/) ---
-WORKER_DIRS=(workers tasks tests)
+WORKER_DIRS=(workers tasks tests dispatch)
 WORKER_DIR_COUNT=0
 echo ""
 echo "Worker directories:"
