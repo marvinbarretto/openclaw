@@ -197,6 +197,35 @@ def check_devlog():
     return None, f"devlog: {len(notes)} total, none this week"
 
 
+def check_dispatch_today():
+    """Check dispatch activity for today."""
+    try:
+        result = api_request('GET', '/api/dispatch/queue')
+        if not result:
+            return True, 'dispatch: API unreachable'
+
+        items = result.get('items', [])
+        today = today_str()
+
+        completed = [i for i in items if i.get('status') == 'completed' and (i.get('completed_at') or '').startswith(today)]
+        failed = [i for i in items if i.get('status') == 'failed' and (i.get('completed_at') or '').startswith(today)]
+        running = [i for i in items if i.get('status') == 'running']
+
+        parts = []
+        if completed:
+            parts.append(f'{len(completed)} completed')
+        if failed:
+            parts.append(f'{len(failed)} failed')
+        if running:
+            parts.append(f'{len(running)} running')
+
+        if not parts:
+            return True, 'dispatch: no activity today'
+        return True, f'dispatch: {", ".join(parts)}'
+    except Exception as e:
+        return True, f'dispatch: error ({e})'
+
+
 def check_cost_today():
     """What did today cost?"""
     try:
@@ -221,6 +250,7 @@ def main():
         ("vault", check_vault_tasks_surfaced),
         ("activity", check_activity_count),
         ("cost", check_cost_today),
+        ("dispatch", check_dispatch_today),
         ("devlog", check_devlog),
     ]
 
