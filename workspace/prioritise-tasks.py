@@ -77,19 +77,43 @@ Score each task on how relevant and actionable it is RIGHT NOW.
 4. `suggested_status` is advisory — the script never auto-applies it.
 5. Be calibrated: most tasks should score 3-6. Reserve 9-10 for things Marvin should do THIS WEEK.
 
+## Dispatch suggestions
+
+For tasks with actionability `clear` and priority >= 5, also suggest dispatch fields:
+
+### agent_type
+- `coder` — software tasks: tags mention repos/code/tech, title implies building/fixing/adding features
+- `researcher` — comparison, evaluation, investigation: "compare X vs Y", "find", "evaluate", "research"
+- `drafter` — writing tasks: "write", "draft", "blog post", "document", content creation
+- `null` — unclear, skip suggestion
+
+### route
+- `claude_code` — can be done by an AI agent on a computer (coding, research, writing)
+- `marvin` — requires Marvin personally (physical actions, personal decisions, phone calls, meetings)
+- `jimbo_vps` — VPS configuration, sandbox work, server admin
+- `unrouted` — can't tell
+
+### acceptance_criteria
+For tasks where you suggest an agent_type, draft concise acceptance criteria — concrete, verifiable conditions.
+Keep it to 1-3 short sentences. Focus on WHAT must be true when done, not HOW to do it.
+If the task is too vague to write AC for, leave it null.
+
 ## Response format
 
 IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY task.
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null}},
-  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null}},
-  {{"id": "note_ghi789", "priority": 1, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale"}}
+  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "claude_code", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}},
+  {{"id": "note_ghi789", "priority": 1, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}}
 ]
 ```
 
 `suggested_status` should be `"stale"` or `null`. Nothing else.
+`suggested_agent_type` should be `"coder"`, `"researcher"`, `"drafter"`, or `null`.
+`suggested_route` should be `"claude_code"`, `"marvin"`, `"jimbo_vps"`, `"unrouted"`, or `null`.
+`suggested_ac` should be a short string or `null`.
 The array MUST contain exactly one entry per task in the input. Do not skip any.
 """
 
@@ -701,14 +725,30 @@ def cmd_score_api(args):
             actionability = score_result.get('actionability', 'vague')
             reason = score_result.get('priority_reason', '')[:200]
 
+            # Dispatch suggestions (only for dispatchable tasks)
+            s_agent = score_result.get('suggested_agent_type')
+            s_route = score_result.get('suggested_route')
+            s_ac = score_result.get('suggested_ac')
+
             if args.dry_run:
-                log(f"  {t['id']}: priority={priority} actionability={actionability} reason=\"{reason[:60]}\"")
+                line = f"  {t['id']}: priority={priority} actionability={actionability} reason=\"{reason[:60]}\""
+                if s_agent:
+                    line += f" → {s_agent}/{s_route}"
+                    if s_ac:
+                        line += f" AC: \"{s_ac[:50]}...\""
+                log(line)
             else:
                 patch = {
                     "ai_priority": priority,
                     "ai_rationale": reason,
                     "actionability": actionability,
                 }
+                if s_agent:
+                    patch["suggested_agent_type"] = s_agent
+                if s_route:
+                    patch["suggested_route"] = s_route
+                if s_ac:
+                    patch["suggested_ac"] = s_ac
                 _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
 
             scored += 1
