@@ -239,6 +239,21 @@ The Docker sandbox receives these env vars (set in `/opt/openclaw.env`, passed v
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — LangFuse observability for worker API calls (trace_to_langfuse in base_worker.py)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_TO_NUMBER` — Twilio voice API for critical failure phone calls (ADR-043)
 
+### M2 Dispatch Env Vars
+
+The M2 dispatch worker needs these env vars for visual evidence upload:
+- `R2_DISPATCH_ACCOUNT_ID` — Cloudflare account ID
+- `R2_DISPATCH_ACCESS_KEY_ID` — R2 API token key ID
+- `R2_DISPATCH_SECRET_ACCESS_KEY` — R2 API token secret
+- `R2_DISPATCH_BUCKET_NAME` — Bucket name (e.g. `dispatch-evidence`)
+- `R2_DISPATCH_PUBLIC_URL` — Public URL prefix for the bucket
+
+### VPS Webhook Env Vars
+
+jimbo-api needs these for the GitHub PR feedback loop:
+- `GITHUB_WEBHOOK_SECRET` — shared secret for GitHub webhook HMAC validation
+- `GITHUB_TOKEN` — PAT for fetching PR comments on rejection (needs `repo` scope or fine-grained read on target repos)
+
 Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → Jimbo's morning briefing (07:00) → afternoon briefing-prep pipeline (14:15) → Jimbo's afternoon briefing (15:00) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency for core pipeline. Optional Opus analysis layer runs on Mac via launchd (opus-briefing.sh) — currently broken/stale since Mar 16 2026. Model swaps disabled since Mar 8 — Jimbo uses the same model all day (currently stepfun/step-3.5-flash:free via OpenRouter between briefings, Sonnet via OpenClaw cron for briefing windows).
