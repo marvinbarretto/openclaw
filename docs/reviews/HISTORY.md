@@ -158,7 +158,77 @@ Root cause: SOUL.md says "never show your working" and HEARTBEAT.md says "silenc
 
 Morning delivery failed (3rd consecutive). vault_reader 401 (4 failures). vault_roulette no_candidates (8 failures). Surprise game missing (3rd consecutive). Calendar tags still null.
 
-## Current Architecture (as of 2026-03-23)
+### Session 15 — 2026-03-24 (The Tiered Architecture)
+
+Best structured briefing yet — all sections present, real data, inline links, no fabrication. But Marvin questioned the entire approach: "Could it be possible that we're asking it to do too much?"
+
+Upgraded OpenClaw 2026.3.1 → 2026.3.23-2. Created 6 distributed cron jobs to replace monolithic briefing. First test run: email-scanner worked but used 491K input tokens ($0.15/run). Second run: 2M tokens (persistent session accumulated). Root cause: OpenClaw's 100-150K token bootstrap overhead per agent turn.
+
+**The oscillation pattern crystallised:** We keep swinging between "use OpenClaw for everything" (expensive, unreliable) and "bypass with Python" (cheap, no personality). Session 15 accepts both are right — for different jobs.
+
+**Decision:** Tiered automation. Tier 1: Python + Bot API for mechanical jobs (zero cost). Tier 2: OpenClaw + free Kimi for conversation. Tier 3: Opus on dedicated always-on Mac for creative work (free via Max plan). Tier 4: Dashboard on-demand for manual triggers.
+
+All 6 new cron jobs disabled pending Tier 1 Python replacement. Old monolithic briefings disabled. Model swaps removed. Skills kept on VPS for later.
+
+Also discovered: voice-call plugin has native Twilio support. Email insight null fields appear fixed. Morning auto-delivery restored.
+
+**Updated maturity ladder:** plumbing → heartbeat → source data quality → **tiered automation** (building now) → vault as shared task system → useful outputs → autonomous actions → sub-agents.
+
+### Session 16 — 2026-03-26 (Jimbo Dead, Dispatch Alive)
+
+No briefing — Jimbo dead for 28 hours. OpenRouter 403: $50.61 spent against $10 weekly key limit. Kimi K2 "free" didn't mean free key limits. 62 consecutive heartbeat failures. Pipeline data healthiest ever (26 gems, full insights, vault velocity 1.29/day) but nothing delivered.
+
+The real story was elsewhere. Between sessions 15 and 16, the autonomous dispatch system was built: queue in jimbo-api, M2 dispatch worker (Claude Code on always-on Mac), dashboard at `/app/jimbo/dispatch`, agent templates, PR feedback loop with GitHub webhooks, R2 evidence upload. Infrastructure exists but no work flowing through it yet.
+
+Today's design: dispatch flow split into three flows. **Commissions** (GitHub Issues labeled `ralph` → M2 agent → PR), **Quests** (vault tasks only Marvin can do, never dispatched), **Recon** (research tasks → M2 agent → artifact committed + Telegram notification). GitHub becomes the source of truth for code tasks. Vault becomes quests + recon + ideas.
+
+Marvin: "My immediate priority is getting this dispatch flow right. Once this is working, we can wake Jimbo up." Clear deprioritisation of briefings and Jimbo himself in favour of the dispatch system. "We might have to go backwards to go forwards."
+
+**Key insight:** The system has evolved past briefings. After 15 sessions optimising what Jimbo says, the focus is now on what agents *do*. The dispatch system is the product; Jimbo becomes one interface to it.
+
+**Updated maturity ladder:** plumbing → ~~heartbeat~~ → source data quality → **dispatch infrastructure** (built) → **dispatch flow** (designing) → briefings as dispatch view → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-03-26)
+
+```
+VPS (always on):
+  System cron (data processing):
+    04:30  prioritise-tasks.py (Flash)
+    05:00  tasks-helper.py sweep
+    06:15  briefing-prep.py morning (feeds data pipeline)
+    14:15  briefing-prep.py afternoon
+    */30   email_decision.py (Flash, $0.005/run)
+
+  OpenClaw heartbeat (30min, Kimi K2 via OpenRouter):
+    - DEAD since Mar 25 18:18 — OpenRouter 403 (weekly key limit exceeded)
+    - $50.61 spent against $10 weekly limit
+
+  OpenClaw cron (ALL DISABLED):
+    - All 6 new skills + old monolithic briefings disabled since session 15
+
+  jimbo-api:
+    - Dashboard, health, context, settings, activity, costs
+    - Dispatch service: queue, propose, approve, complete lifecycle
+    - GitHub webhooks: PR merge/close → dispatch status updates
+    - NEW: dispatch flow split designed (commissions, quests, recon)
+
+M2 Mac (always on, 24h Claude Code):
+  - Dispatch worker: polls jimbo-api for approved tasks
+  - Agent templates: coder, researcher, drafter
+  - PR output contract + R2 evidence upload
+  - PENDING: commission flow (GitHub Issues as source)
+  - PENDING: recon flow (direct commit + Telegram notification)
+
+Site dashboard:
+  - /app/jimbo/dispatch — queue UI, worker status, proposal cards, history
+  - Other admin pages: vault, emails, costs, activity, status, settings, context, calendar
+```
+
+**Jimbo:** Dead. OpenRouter 403. Not a priority — dispatch is.
+**Briefings:** Disabled. Pipeline data still runs. Will become a dispatch view later.
+**Model swaps:** Removed since session 15.
+
+## Previous Architecture (as of 2026-03-23, replaced)
 
 ```
 VPS (always on):
@@ -249,8 +319,13 @@ Jimbo (OpenClaw on Telegram):
 | marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
 | Email cherry-picking poor | 4 items surfaced from 28 gems. Claude Code 1M update (0.95 confidence) missed entirely. Session 11. |
 | vault_roulette always empty | Returns "no_candidates" on every call (8 attempts, 0 successes). 30-day dormancy threshold or data issue. Session 11. |
-| Heartbeat reasoning leaks to Telegram | **FIXED (pending verification).** Kimi K2 narrates full chain-of-thought when deciding "no action needed." Output discipline rule added to HEARTBEAT.md. Session 14. |
-| Morning auto-delivery broken | **BROKEN.** 3rd consecutive morning failure. Afternoon delivers fine. Session 12→14. |
+| Heartbeat reasoning leaks to Telegram | **MOOT.** Jimbo dead (OpenRouter 403). Was not fixed for Kimi K2. Session 14→15. |
+| ~~Morning auto-delivery broken~~ | **FIXED.** Delivered at 07:01 on Mar 24 — first success in 4 sessions. Session 12→15. |
+| OpenClaw bootstrap token overhead | **BY DESIGN.** 100-150K tokens per agent turn for bootstrap context. Makes lightweight cron jobs expensive. Accepted — use Python for mechanical jobs instead. Session 15. |
+| ~~Email insight fields null~~ | **FIXED.** 147/147 recent insights have content. Health endpoint confirms. Session 11→15. |
+| OpenRouter key limit exceeded | **BLOCKING.** $50.61 against $10 weekly limit. Jimbo dead since Mar 25 18:18. Kimi K2 "free" ≠ free key limits. Deprioritised — dispatch is focus. Session 16. |
+| Dispatch flow not wired | **IN PROGRESS.** Infrastructure built (queue, worker, dashboard, PR feedback). Flow split designed. No work flowing through yet. Session 16. |
+| Vault code tasks mixed with life tasks | **DESIGN GAP.** 1,491 active tasks, many code-related. Design says move code tasks to GitHub Issues, vault becomes quests + recon. Not yet started. Session 16. |
 
 ## Patterns (Across All Sessions)
 
@@ -276,3 +351,10 @@ Jimbo (OpenClaw on Telegram):
 - **Purpose > polish.** A structurally competent briefing that doesn't connect to shared task state feels flat. "Not landing" isn't about quality — it's about relevance to what's actually happening.
 - **False success is worse than visible failure.** A rate limit that logs "briefing delivered: success" is worse than an error that triggers an alert. Self-reported success without verification is unreliable.
 - **Thinking is not output.** A model that narrates its decision to stay silent is noisier than one that acts. On a messaging surface, every word is a notification. "Silence is free" must be a UX rule, not a cost suggestion.
+- **OpenClaw agent turns have a high fixed cost.** 100-150K tokens of bootstrap context per turn is by design — rich context is the feature. But this means many small cron jobs cost MORE than one big job. The platform is built for conversation, not lightweight automation.
+- **Most automation doesn't need an LLM.** Checking if `relevance_score >= 9` is an `if` statement. Formatting calendar events is string concatenation. Only creative, cross-referencing, editorial work justifies LLM token cost. Accept this and tier accordingly.
+- **The oscillation is the learning.** We've swung between "OpenClaw for everything" and "Python for everything" four times. Each swing taught us where the boundary is. The tiered model is the synthesis — not a compromise, but the correct assignment of tools to jobs.
+- **Free models change the economics.** Kimi K2 (free daily driver), Opus on Max plan (free creative work), Flash for data processing ($0.005/run) — the cost structure is: free for conversation + creativity, near-free for data processing, expensive for many small agent turns.
+- **"Free" isn't always free.** Kimi K2 is free on OpenRouter's pricing page, but the API key has a weekly spending limit that tracks all usage. Free model pricing ≠ free key limits. Measure what the provider measures, not what you think they measure.
+- **Build the system, wake the agent later.** After 15 sessions optimising what Jimbo *says*, session 16 deprioritised Jimbo entirely in favour of what agents *do*. The dispatch system is the product; Jimbo becomes one interface to it. Infrastructure before personality.
+- **The maturity ladder isn't linear.** We jumped from "source data quality" to "dispatch infrastructure" while skipping heartbeat completion and briefing polish. The ladder is a dependency graph, not a sequence — you can leapfrog steps that turn out to be less important than originally thought.

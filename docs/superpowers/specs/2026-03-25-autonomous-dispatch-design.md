@@ -440,7 +440,7 @@ Cost tracking: Claude Code on M2 via Max plan = $0 tokens, but duration and task
 
 ## Open Questions
 
-1. **M2 repo state:** Does M2 have all target repos cloned and up to date? Need a pre-flight check in dispatch.py that verifies the repo exists and is on a clean main branch before dispatching a coder task.
+1. ~~**M2 repo state:**~~ Confirmed — M2 has all repos cloned and up to date. Pre-flight check in dispatch.py should still verify clean branch state before dispatching coder tasks.
 
 2. **Prompt length limits:** `claude -p` reads from stdin or a quoted argument. Very long prompts may need file-based input. Test the limits during Phase 3.
 
