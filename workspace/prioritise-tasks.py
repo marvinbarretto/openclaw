@@ -88,10 +88,8 @@ For tasks with actionability `clear` and priority >= 5, also suggest dispatch fi
 - `null` — unclear, skip suggestion
 
 ### route
-- `claude_code` — can be done by an AI agent on a computer (coding, research, writing)
+- `jimbo` — can be done by automation (any AI agent/model — coding, research, writing, server admin)
 - `marvin` — requires Marvin personally (physical actions, personal decisions, phone calls, meetings)
-- `jimbo_vps` — VPS configuration, sandbox work, server admin
-- `unrouted` — can't tell
 
 ### acceptance_criteria
 For tasks where you suggest an agent_type, draft concise acceptance criteria — concrete, verifiable conditions.
@@ -104,7 +102,7 @@ IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY ta
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "claude_code", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
   {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}},
   {{"id": "note_ghi789", "priority": 1, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}}
 ]
@@ -112,7 +110,7 @@ Return ONLY valid JSON — a JSON array containing one object per task. Example 
 
 `suggested_status` should be `"stale"` or `null`. Nothing else.
 `suggested_agent_type` should be `"coder"`, `"researcher"`, `"drafter"`, or `null`.
-`suggested_route` should be `"claude_code"`, `"marvin"`, `"jimbo_vps"`, `"unrouted"`, or `null`.
+`suggested_route` should be `"jimbo"`, `"marvin"`, or `null`.
 `suggested_ac` should be a short string or `null`.
 The array MUST contain exactly one entry per task in the input. Do not skip any.
 """
