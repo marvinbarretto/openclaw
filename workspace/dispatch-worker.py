@@ -16,6 +16,7 @@ North Star: Approach 3 upgrades this to a persistent daemon with
 worker pool, concurrent execution, and capability registration.
 """
 
+import datetime
 import fcntl
 import json
 import os
@@ -284,7 +285,7 @@ class WorkerStats:
     """Tracks worker health and performance for monitoring and dashboards."""
 
     def __init__(self):
-        self.started_at = datetime.datetime.utcnow()
+        self.started_at = datetime.datetime.now(datetime.UTC)
         self.loop_count = 0
         self.tasks_completed = 0
         self.tasks_failed = 0
@@ -305,26 +306,26 @@ class WorkerStats:
     def record_task_complete(self, duration_s):
         self.tasks_completed += 1
         self.total_task_time_s += duration_s
-        self.last_task_at = datetime.datetime.utcnow()
+        self.last_task_at = datetime.datetime.now(datetime.UTC)
         self.consecutive_idle = 0
         self.consecutive_errors = 0
 
     def record_task_failed(self, duration_s):
         self.tasks_failed += 1
         self.total_task_time_s += duration_s
-        self.last_task_at = datetime.datetime.utcnow()
+        self.last_task_at = datetime.datetime.now(datetime.UTC)
         self.consecutive_idle = 0
 
     def record_task_blocked(self):
         self.tasks_blocked += 1
-        self.last_task_at = datetime.datetime.utcnow()
+        self.last_task_at = datetime.datetime.now(datetime.UTC)
         self.consecutive_idle = 0
 
     def record_error(self, error):
         self.consecutive_errors += 1
         self.total_errors += 1
         self.last_error = str(error)
-        self.last_error_at = datetime.datetime.utcnow()
+        self.last_error_at = datetime.datetime.now(datetime.UTC)
 
     def record_api_ok(self):
         self.api_reachable = True
@@ -335,7 +336,7 @@ class WorkerStats:
 
     @property
     def uptime_s(self):
-        return (datetime.datetime.utcnow() - self.started_at).total_seconds()
+        return (datetime.datetime.now(datetime.UTC) - self.started_at).total_seconds()
 
     @property
     def uptime_human(self):
