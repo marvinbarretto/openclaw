@@ -37,11 +37,22 @@ curl -sf -X POST -H "X-API-Key: $JIMBO_API_KEY" -H "Content-Type: application/js
 curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/notes/TASK_ID"
 ```
 
+3b. If `task_source` is `github`, fetch the issue body for richer context:
+    ```bash
+    curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/{issue_repo}/issues/{issue_number}"
+    ```
+    Use the issue body as the task context (replaces vault task body for commissions).
+    The issue body contains Problem, Expected behaviour, Acceptance criteria, Context, and Scope sections.
+
 4. Read the prompt template from `~/development/openclaw/workspace/dispatch/templates/{agent_type}.md`
 
-5. Read the output contract from `~/development/openclaw/workspace/dispatch/templates/_output-contract.md`
+5. Select the output contract based on the task's `flow` field:
+   - If `flow` is `commission`: Read `~/development/openclaw/workspace/dispatch/templates/_output-contract.md`
+   - If `flow` is `recon`: Read `~/development/openclaw/workspace/dispatch/templates/_recon-contract.md`
 
-6. Fill in the template variables: `{title}`, `{definition_of_done}`, `{task_id}`, `{dispatch_repo}`, `{output_path}`, `{seq}`, `{agent_type}`
+6. Fill in the template variables: `{title}`, `{definition_of_done}`, `{task_id}`, `{dispatch_repo}`, `{output_path}`, `{seq}`, `{agent_type}`, `{issue_close_line}`
+   - `{issue_close_line}`: For commissions with an issue_number: `Closes {issue_repo}#{issue_number}`. Otherwise: empty string.
 
 7. **Check for previous rejections.** Query dispatch history for this task:
 ```bash
@@ -78,6 +89,12 @@ If the subagent fails or gets blocked:
 ```bash
 curl -sf -X POST -H "X-API-Key: $JIMBO_API_KEY" -H "Content-Type: application/json" "$JIMBO_API_URL/api/dispatch/fail" -d '{"id": DISPATCH_ID, "error_message": "REASON"}'
 ```
+
+10b. If `flow` is `recon`, send a Telegram notification:
+     ```bash
+     curl -sf -X POST -H "X-API-Key: $JIMBO_API_KEY" -H "Content-Type: application/json" \
+       "$JIMBO_API_URL/api/dispatch/notify-recon" -d '{"id": DISPATCH_ID}'
+     ```
 
 ## Rules
 
