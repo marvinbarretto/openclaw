@@ -41,6 +41,7 @@ What you ran and the results.
 
 ---
 Dispatched by Jimbo · Task #{seq} · Agent: {agent_type}
+{issue_close_line}
 
 ## Visual Evidence (when applicable)
 
@@ -90,6 +91,13 @@ Write your result to `/tmp/dispatch-{task_id}.result` as JSON:
   "files_changed": ["any files touched before blocking"]
 }
 ```
+
+## Template Variables
+
+- `{task_id}` — unique vault task identifier
+- `{seq}` — dispatch sequence number
+- `{agent_type}` — the agent type (coder, researcher, drafter)
+- `{issue_close_line}` — For commissions: `Closes owner/repo#N`. For non-commission tasks: empty string.
 
 ## Rules
 
