@@ -124,25 +124,56 @@ def check_timeouts(dry_run=False):
 
 
 def propose_batch(dry_run=False):
-    """Propose a new batch of tasks for approval."""
-    result = api_request('POST', '/api/dispatch/propose', {
+    """Propose a new batch of tasks for approval.
+
+    Tries GitHub commissions first, then vault recon tasks.
+    Combines both into a single Telegram notification.
+    """
+    all_items = []
+    batch_id = None
+    approve_url = ''
+    reject_url = ''
+
+    # 1. Propose commissions from GitHub Issues (ralph label)
+    gh_result = api_request('POST', '/api/dispatch/propose/github', {
+        'repos': ['marvinbarretto/localshout-next'],
         'batch_size': DEFAULT_BATCH_SIZE,
     })
-    if not result or not result.get('items'):
+    if gh_result and gh_result.get('items'):
+        all_items.extend(gh_result['items'])
+        batch_id = gh_result['batch_id']
+        approve_url = gh_result.get('approve_url', '')
+        reject_url = gh_result.get('reject_url', '')
+
+    # 2. Propose recon/vault tasks if we have room in the batch
+    remaining = DEFAULT_BATCH_SIZE - len(all_items)
+    if remaining > 0:
+        vault_result = api_request('POST', '/api/dispatch/propose', {
+            'batch_size': remaining,
+        })
+        if vault_result and vault_result.get('items'):
+            all_items.extend(vault_result['items'])
+            if not batch_id:
+                batch_id = vault_result['batch_id']
+                approve_url = vault_result.get('approve_url', '')
+                reject_url = vault_result.get('reject_url', '')
+
+    if not all_items:
         log('No tasks ready for dispatch')
         return False
 
-    items = result['items']
-    batch_id = result['batch_id']
-    approve_url = result.get('approve_url', '')
-    reject_url = result.get('reject_url', '')
-
     # Build Telegram message
-    lines = [f'[Dispatch] Batch {batch_id} -- {len(items)} tasks ready:\n']
-    for i, item in enumerate(items, 1):
-        vault_task = api_request('GET', f'/api/vault/notes/{item["task_id"]}')
-        title = vault_task.get('title', item['task_id']) if vault_task else item['task_id']
-        lines.append(f'{i}. {item["agent_type"]} -- {title}')
+    lines = [f'[Dispatch] Batch {batch_id} -- {len(all_items)} tasks ready:\n']
+    for i, item in enumerate(all_items, 1):
+        flow = item.get('flow', 'commission')
+        if item.get('task_source') == 'github':
+            # GitHub-sourced: task_id is "repo#number", use it directly
+            lines.append(f'{i}. [{flow}] {item["agent_type"]} -- {item["task_id"]}')
+        else:
+            # Vault-sourced: look up the vault note for the title
+            vault_task = api_request('GET', f'/api/vault/notes/{item["task_id"]}')
+            title = vault_task.get('title', item['task_id']) if vault_task else item['task_id']
+            lines.append(f'{i}. [{flow}] {item["agent_type"]} -- {title}')
 
     lines.append(f'\n<a href="{approve_url}">Approve all</a>')
     lines.append(f'<a href="{reject_url}">Reject</a>')
@@ -154,7 +185,7 @@ def propose_batch(dry_run=False):
         return True
 
     send_telegram(message)
-    log(f'Proposed batch {batch_id} with {len(items)} tasks')
+    log(f'Proposed batch {batch_id} with {len(all_items)} tasks')
     return True
 
 
