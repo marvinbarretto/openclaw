@@ -95,6 +95,8 @@ def log_to_activity(session, pipeline_status):
     insight_count = insights_info.get("count", 0)
     event_count = cal.get("events", 0)
     task_count = vault.get("tasks", 0)
+    dispatch_info = pipeline_status.get("dispatch", {})
+    dispatch_prs = dispatch_info.get("prs_for_review", 0)
 
     label = "Morning" if session == "morning" else "Afternoon"
     any_failed = any(
@@ -107,7 +109,7 @@ def log_to_activity(session, pipeline_status):
         subprocess.run([
             sys.executable, ACTIVITY_LOG_SCRIPT, "log",
             "--task", "briefing",
-            "--description", f"{label} pipeline: {email_count} emails, {gem_count} gems, {insight_count} insights, {event_count} events, {task_count} vault tasks",
+            "--description", f"{label} pipeline: {email_count} emails, {gem_count} gems, {insight_count} insights, {event_count} events, {task_count} vault tasks, {dispatch_prs} PRs to review",
             "--outcome", outcome,
             "--rationale", f"session={session}, pipeline-driven (ADR-042)",
         ], timeout=10)
@@ -262,6 +264,14 @@ def run_pipeline(session, dry_run=False):
     else:
         pipeline_status["vault"] = {"status": "skipped"}
 
+    # --- Step 5b: Dispatch status ---
+    dispatch_data = {}
+    if not dry_run:
+        dispatch_data, dispatch_status = fetch_dispatch_summary()
+        pipeline_status["dispatch"] = dispatch_status
+    else:
+        pipeline_status["dispatch"] = {"status": "skipped (dry-run)"}
+
     # --- Step 6: Triage pending ---
     if session == "morning":
         try:
@@ -286,6 +296,7 @@ def run_pipeline(session, dry_run=False):
         "email_insights": email_insights,
         "shortlist_reasons": shortlist_reasons,
         "vault_tasks": vault_tasks,
+        "dispatch": dispatch_data,
         "context_summary": context_summary,
         "triage_pending": triage_pending,
     }
@@ -419,6 +430,51 @@ def fetch_email_insights(hours=14, min_relevance=5):
         return [], {"status": "failed", "error": str(e)[:200]}
 
 
+def fetch_dispatch_summary():
+    """Fetch dispatch briefing summary from jimbo-api.
+
+    Returns (dispatch_dict, status_dict).
+    """
+    api_url = os.environ.get("JIMBO_API_URL", "")
+    api_key = os.environ.get("JIMBO_API_KEY", "")
+
+    if not api_url or not api_key:
+        return {}, {"status": "skipped", "error": "no API credentials"}
+
+    try:
+        url = f"{api_url}/api/dispatch/briefing-summary"
+        req = urllib.request.Request(url, headers={
+            "X-API-Key": api_key,
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+
+        # Count items for pipeline status
+        prs = len(data.get("commissions", {}).get("prs_for_review", []))
+        running = len(data.get("commissions", {}).get("in_progress", []))
+        awaiting = data.get("commissions", {}).get("awaiting_dispatch")
+        recon = len(data.get("recon", {}).get("recently_completed", []))
+        grooming = data.get("needs_grooming", 0)
+
+        sys.stderr.write(
+            f"[briefing-prep] dispatch: {prs} PRs for review, {running} running, "
+            f"awaiting={awaiting}, {recon} recon completed, {grooming} needs grooming\n"
+        )
+        return data, {
+            "status": "ok",
+            "prs_for_review": prs,
+            "in_progress": running,
+            "awaiting_dispatch": awaiting,
+            "recon_completed": recon,
+            "needs_grooming": grooming,
+        }
+
+    except Exception as e:
+        sys.stderr.write(f"[briefing-prep] failed to fetch dispatch summary: {e}\n")
+        return {}, {"status": "failed", "error": str(e)[:200]}
+
+
 def build_context_summary():
     """Build a context summary from jimbo-api, falling back to local files."""
     summary = {}
@@ -495,6 +551,17 @@ def send_status_alert(session, pipeline_status, duration_ms):
     vault = pipeline_status.get("vault", {})
     if vault.get("status") == "ok":
         parts.append(f"vault: {vault.get('tasks', 0)} tasks")
+
+    # Dispatch
+    dispatch = pipeline_status.get("dispatch", {})
+    if dispatch.get("status") == "ok":
+        dispatch_parts = []
+        prs = dispatch.get("prs_for_review", 0)
+        running = dispatch.get("in_progress", 0)
+        if prs: dispatch_parts.append(f"{prs} PRs to review")
+        if running: dispatch_parts.append(f"{running} running")
+        if dispatch_parts:
+            parts.append(f"dispatch: {', '.join(dispatch_parts)}")
 
     # Check for Opus analysis
     analysis_path = os.path.join(_script_dir, "briefing-analysis.json")
