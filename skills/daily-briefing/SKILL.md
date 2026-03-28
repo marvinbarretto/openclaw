@@ -31,6 +31,7 @@ If neither source has fresh data, gather it yourself:
 - Calendar: `python3 /workspace/calendar-helper.py list-events --days 1`
 - Context: `python3 /workspace/context-helper.py priorities`
 - Task status: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"`
+- Dispatch: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
 
 ## Step 2: Deliver the briefing
 
@@ -57,6 +58,17 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
 
    If `velocity_7d > 0`: "We're closing about {velocity_7d} tasks per day this week."
    If `inbox_count >= 10`: "Inbox is getting full — want to do a quick grooming session later?"
+
+5. **Dispatch status** — If `briefing-input.json` has a `dispatch` key with data, report agent work status. If the key is missing or empty, call the API directly as fallback: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
+
+   Present what's relevant, skip what's empty:
+   - **PRs for review:** "You've got N PRs ready for review" + one line per PR: "{task_id}: {result_summary}" with PR URL. This is your highest-priority dispatch item — these need human eyes.
+   - **In progress:** "N commissions running" + one line each with task_id. Only mention if > 0.
+   - **Awaiting dispatch:** "N ralph issues ready to dispatch" — only if > 0. If `null`, skip (means GitHub was unreachable).
+   - **Recon landed:** "Recon on {task_id} landed — {result_summary}" for each recently completed recon task.
+   - **Needs grooming:** "N tasks need grooming before dispatch" — only if > 0.
+
+   Skip the entire section if everything is zero/empty. Don't say "no dispatch activity."
 
 **Calendar tags:** Events in `briefing-input.json` may include a `tag` field from the calendar config:
 - `tag: "options"` — this is an "options" calendar (e.g. marbar.alt). These are nudges about events that *might* be happening, not commitments. Present as "From your options calendar" and treat as lower-confidence possibilities.
