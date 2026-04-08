@@ -50,6 +50,9 @@ workspace/blog-src/.astro/
 # Claude Code worktrees
 .claude/worktrees/
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # Editor
 .vscode/
 

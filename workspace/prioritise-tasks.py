@@ -29,6 +29,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # ---------------------------------------------------------------------------
@@ -611,7 +612,7 @@ def _api_request(method, path, body=None):
         log("ERROR: JIMBO_API_URL and JIMBO_API_KEY must be set for --api mode")
         sys.exit(1)
 
-    url = f"{api_url}{path}"
+    url = f"{api_url}{urllib.parse.quote(path, safe='/:?=&')}"
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("X-API-Key", api_key)
