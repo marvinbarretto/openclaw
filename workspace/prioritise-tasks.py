@@ -56,13 +56,14 @@ Score each task on how relevant and actionable it is RIGHT NOW.
 
 ## Scoring rubric
 
-| Score | Meaning |
-|-------|---------|
-| 9-10  | Urgent + directly aligned with an active project or goal |
-| 7-8   | Clearly relevant to a current priority or goal |
-| 5-6   | Vaguely relevant or useful but not pressing |
-| 3-4   | Low relevance to current priorities |
-| 1-2   | Stale, trivial, or completely unrelated |
+| Bucket | Meaning |
+|--------|---------|
+| 0 (P0) | Do today / blocking. Due this week AND blocks a current project. Requires immediate action. |
+| 1 (P1) | This week. Important, clearly actionable, connects to active priorities. |
+| 2 (P2) | This month. Useful but not urgent, worth doing. |
+| 3 (P3) | Backlog / someday. Nice to have, no time pressure, or unclear value. |
+
+Output the number only (0, 1, 2, or 3).
 
 ## Actionability
 
@@ -76,11 +77,11 @@ Score each task on how relevant and actionable it is RIGHT NOW.
 2. `source_list` is historical context only — "Immediate" means it was urgent when saved, not now.
 3. Only suggest `stale` status if ALL of: >18 months old AND no alignment with any priority/goal AND no inherent time-sensitivity.
 4. `suggested_status` is advisory — the script never auto-applies it.
-5. Be calibrated: most tasks should score 3-6. Reserve 9-10 for things Marvin should do THIS WEEK.
+5. Be calibrated: most tasks should be P2 or P3. Reserve P0 for things that are blocking right now, P1 for things Marvin should do THIS WEEK.
 
 ## Dispatch suggestions
 
-For tasks with actionability `clear` and priority >= 5, also suggest dispatch fields:
+For tasks with actionability `clear` and priority <= 2 (P0, P1, or P2), also suggest dispatch fields:
 
 ### agent_type
 - `coder` — software tasks: tags mention repos/code/tech, title implies building/fixing/adding features
@@ -103,9 +104,9 @@ IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY ta
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 7, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
   {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}},
-  {{"id": "note_ghi789", "priority": 1, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}}
+  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}}
 ]
 ```
 
@@ -478,7 +479,7 @@ def build_batch_prompt(tasks_batch, context):
 
 def apply_scores(filepath, fm, body, score_result):
     """Write scoring fields into frontmatter and save file."""
-    fm['priority'] = score_result.get('priority', 5)
+    fm['priority'] = score_result.get('priority', 2)
     fm['priority_reason'] = score_result.get('priority_reason', '')
     fm['actionability'] = score_result.get('actionability', 'vague')
     fm['scored'] = datetime.date.today().isoformat()
@@ -576,7 +577,7 @@ def cmd_score(args):
                 errors += 1
                 continue
 
-            priority = score_result.get('priority', 5)
+            priority = score_result.get('priority', 2)
             actionability = score_result.get('actionability', 'vague')
             reason = score_result.get('priority_reason', '')[:80]
             suggested = score_result.get('suggested_status')
@@ -720,7 +721,7 @@ def cmd_score_api(args):
                 errors += 1
                 continue
 
-            priority = score_result.get('priority', 5)
+            priority = score_result.get('priority', 2)
             actionability = score_result.get('actionability', 'vague')
             reason = score_result.get('priority_reason', '')[:200]
 
