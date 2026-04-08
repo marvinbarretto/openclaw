@@ -1,6 +1,6 @@
 ---
 name: daily-briefing
-description: Deliver the morning or afternoon briefing from pre-assembled pipeline data
+description: Report what you know — present data, don't advise
 user-invokable: true
 ---
 
@@ -8,32 +8,37 @@ user-invokable: true
 
 When the user says good morning, asks for a briefing, or it's a scheduled briefing session.
 
-## Step 1: Load briefing data
+## Core principle
 
-Try these sources in order. Use the first one that works:
+**Report what you know, not what Marvin should do.** Present data clearly and honestly. Flag what's uncertain. Don't propose day plans, suggest activities, or fill gaps with advice. Marvin decides what to do with the information.
 
-**Option A — Opus analysis from API:**
+## Step 1: Check your own status
+
+Before anything else, know yourself:
+
 ```bash
-curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/briefing/latest"
+python3 /workspace/health-helper.py status
 ```
-If this returns data, use it — Opus has already analyzed everything.
 
-**Option B — Pipeline data file (fallback):**
+This tells you: what model you're running, what the pipeline produced, your activity today, costs, vault state, dispatch queue, and any system issues. Use this to ground everything you say in reality — don't claim things you can't verify.
+
+## Step 2: Load briefing data
+
 ```bash
 cat /workspace/briefing-input.json
 ```
-If the API fails (404, timeout, down), read this file directly. It's assembled by `briefing-prep.py` and contains calendar, email insights, vault tasks, gems, and context summary. This is good data — you just need to synthesize it yourself instead of relaying Opus.
 
-Check freshness: the `generated_at` field should be within the last 12 hours. If it's stale, tell Marvin and offer to check live data.
+This file is assembled by `briefing-prep.py` on cron. It contains calendar events, email gems, email insights, vault tasks, and dispatch status.
 
-**Option C — Live data (last resort):**
-If neither source has fresh data, gather it yourself:
+Check freshness: the `generated_at` field should be within the last 12 hours. If it's stale, say so.
+
+**Fallback — if the file is missing or stale:**
 - Calendar: `python3 /workspace/calendar-helper.py list-events --days 1`
 - Context: `python3 /workspace/context-helper.py priorities`
 - Task status: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"`
 - Dispatch: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
 
-## Step 2: Deliver the briefing
+## Step 3: Deliver the briefing
 
 Walk through the data **one section at a time**. Send each as a separate Telegram message. Use your own voice — be conversational, not robotic.
 
@@ -41,43 +46,37 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
 - Each section = one message. Never combine sections into a wall of text.
 - Max 4-6 lines per message. If a section needs more, cut — you're curating, not dumping.
 - No bullet points for single items. Just say it.
-- Email highlights: pick 3-4 max, one line each. "Wizz Air: Lisbon £32 return, ends tonight" not a paragraph.
 - Skip sections with nothing to report. Don't say "no emails today" — just don't send that message.
 
-1. **Day plan** — present today's calendar events as a timeline. Identify free gaps. Flag anything in the next 2 hours. If you have Opus analysis, use its suggestions. If working from raw calendar data, propose how to use free blocks based on priorities.
-2. **Calendar-vault connections** — If `briefing-input.json` has a `calendar_links` array with entries, surface them naturally after the day plan. Don't list all matches — pick the 1-2 most useful. "Your dentist is at 2pm and you've got a vault task to ask about that jaw issue" or "You've got that Spoons meeting tomorrow and 3 open vault tasks tagged `spoons`." Skip this section entirely if `calendar_links` is empty.
-3. **Email highlights** — present interesting emails with WHY each matters. If working from `briefing-input.json`, read ALL entries in the `gems` array AND the `email_insights` array (sorted by relevance_score). Present the top 3-4 by confidence/relevance score. Never skip a gem with confidence >= 0.9. Include URLs directly from the gem data — say "Check it out: [URL]" not "link in the email".
-4. **Surprise** — REQUIRED: always include a surprise. Find a genuinely non-obvious connection between two different data sources (email × vault, calendar × priorities, gem × old bookmark). If nothing connects, pick the single most unexpected thing from today's data and frame it as a discovery.
-5. **Task status** — Call `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"` and report:
-   - Done since last briefing (with titles if ≤5, count if more)
-   - Currently in progress (by owner)
-   - Blocked (with blocker text from `blocked_by` field)
-   - Overdue (due_date passed, not done)
-   - New inbox items: "6 new tasks in the inbox — 3 from Google Tasks, 2 from email, 1 from yesterday's conversation."
+### Sections
 
-   Do NOT list all active tasks. Do NOT triage during the briefing. The briefing reports status; the grooming session (vault-grooming skill) makes decisions.
+1. **System pulse** — One line. "Running on [model], pipeline ran at [time], [N] gems from [N] emails, $[cost] today." If there are system issues from health-helper, mention them briefly.
 
-   If `velocity_7d > 0`: "We're closing about {velocity_7d} tasks per day this week."
-   If `inbox_count >= 10`: "Inbox is getting full — want to do a quick grooming session later?"
+2. **Calendar** — List today's confirmed events as a timeline. Separate confirmed from options.
+   - `tag: null` or missing = confirmed. Present normally with times.
+   - `tag: "options"` = options calendar. Group these separately: "Options calendar has: [list]". These are possibilities, not commitments.
+   - `tag: "airbnb"` = hosting. Present with hosting context.
+   - `tag: "work"` = work calendar. Present normally.
+   - Any other tag — mention it.
+   - Do NOT propose how to fill gaps. Do NOT suggest what to do in free time.
 
-6. **Dispatch status** — If `briefing-input.json` has a `dispatch` key with data, report agent work status. If the key is missing or empty, call the API directly as fallback: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
+3. **Calendar-vault connections** — If `briefing-input.json` has a `calendar_links` array with entries, surface the 1-2 most useful. Skip entirely if empty.
 
-   Present what's relevant, skip what's empty:
-   - **PRs for review:** "You've got N PRs ready for review" + one line per PR: "{task_id}: {result_summary}" with PR URL. This is your highest-priority dispatch item — these need human eyes.
-   - **In progress:** "N commissions running" + one line each with task_id. Only mention if > 0.
-   - **Awaiting dispatch:** "N ralph issues ready to dispatch" — only if > 0. If `null`, skip (means GitHub was unreachable).
-   - **Recon landed:** "Recon on {task_id} landed — {result_summary}" for each recently completed recon task.
-   - **Needs grooming:** "N tasks need grooming before dispatch" — only if > 0.
+4. **Email highlights** — Present the most interesting finds from `gems` and `email_insights` arrays. Pick the top 3-5 by confidence/relevance score. Never skip a gem with confidence >= 0.9. For each one: what it is, why it stood out, include URLs directly from the data. Flag time-sensitive items with their deadlines.
 
-   Skip the entire section if everything is zero/empty. Don't say "no dispatch activity."
+5. **Surprise** — REQUIRED: always include one. Find a genuinely non-obvious connection between two different data sources (email × vault, calendar × priorities, gem × old bookmark). If nothing connects, pick the single most unexpected thing from today's data.
 
-**Calendar tags:** Events in `briefing-input.json` may include a `tag` field from the calendar config:
-- `tag: "options"` — this is an "options" calendar (e.g. marbar.alt). These are nudges about events that *might* be happening, not commitments. Present as "From your options calendar" and treat as lower-confidence possibilities.
-- `tag: "airbnb"` — Airbnb booking/hosting events. Present with hosting context.
-- `tag: null` or missing — a firm commitment. Present normally.
-- Any other tag value — mention the tag for context (e.g., "from your [tag] calendar").
+6. **Task status** — Call `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"` and report the numbers:
+   - Done since last briefing, in progress, blocked, overdue, new inbox items.
+   - Velocity if > 0, inbox size if >= 10.
+   - Do NOT list all active tasks. Do NOT triage. Just report status.
 
-After delivering, ask: "Anything you'd swap or skip?"
+7. **Dispatch status** — From `briefing-input.json` dispatch key, or fallback to API: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
+   - PRs for review (highest priority — these need human eyes).
+   - In progress, awaiting dispatch, recon completed, needs grooming.
+   - Skip if everything is zero/empty.
+
+After delivering, ask: "Anything you want to dig into?"
 
 ## Step 3: Log delivery
 

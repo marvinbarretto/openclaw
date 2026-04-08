@@ -188,7 +188,56 @@ Marvin: "My immediate priority is getting this dispatch flow right. Once this is
 
 **Updated maturity ladder:** plumbing → ~~heartbeat~~ → source data quality → **dispatch infrastructure** (built) → **dispatch flow** (designing) → briefings as dispatch view → autonomous actions → sub-agents.
 
-## Current Architecture (as of 2026-03-26)
+### Session 17 — 2026-04-08 (Report, Don't Advise)
+
+13-day gap. Jimbo alive again on Gemma4 (free model rotation). Pipeline healthiest ever — both ran, 11-12 gems, 22-24 events, 173/173 insights complete, dispatch queue has 17 items. But Gemma4 missed it all: 5 vault tasks → "I don't have any", 11 gems → "nothing to report", calendar timezone bug, no surprise. 6+ blocks of chain-of-thought reasoning leaked into Telegram.
+
+Marvin's directional shift: "I want it to tell me what it knows, not what to do." Briefings should present data, not advise. Fix accuracy first, then layer on intelligence. "Data centric. Once its good at its core job, then we abstract and finetune."
+
+**Built:** `health-helper.py` — self-awareness tool so Jimbo can check his own health, activity, costs, dispatch, model. Follows existing helper pattern.
+
+**Rewrote:** briefing skill from advisor to reporter. New "system pulse" section, health check before loading data, removed all prescriptive language (no day plans, no gap-filling suggestions). Core principle: "Report what you know, not what Marvin should do."
+
+**Key insight:** Free model rotation changes the quality contract. Prescriptive skills requiring judgment break on weaker models. Reporter skills presenting data work regardless of model capability.
+
+**Updated maturity ladder:** plumbing → ~~heartbeat~~ → source data quality → **accurate data presentation** (building now) → dispatch flow → briefings as dispatch view → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-04-08)
+
+```
+VPS (always on):
+  System cron (data processing):
+    04:15  vault-triage.py (auto-classify, archive stale)
+    04:30  prioritise-tasks.py (Flash)
+    05:00  tasks-helper.py sweep
+    06:15  briefing-prep.py morning
+    14:15  briefing-prep.py afternoon
+    */30   email_decision.py (Flash, ~$0.003/run)
+    20:00  accountability-check.py
+
+  OpenClaw (Gemma4 via OpenRouter, free model rotation):
+    - Heartbeat polling every 30 min
+    - Hourly email scans (7 today, flagging 2-3 items each)
+    - Morning/afternoon briefings from briefing-input.json
+
+  jimbo-api:
+    - Dashboard, health, context, settings, activity, costs
+    - Dispatch service: 17 awaiting, 1 PR for review, 3 needs grooming
+
+  Sandbox tools:
+    - health-helper.py (NEW) — self-awareness via /api/health
+    - context-helper.py, activity-helper.py, settings-helper.py
+    - calendar-helper.py, gmail-helper.py, tasks-helper.py
+
+M2 Mac (always on):
+  - Dispatch worker (idle — queue populated but flow not wired)
+  - Opus briefing (stale since Mar 16, not a priority)
+
+Site dashboard:
+  - /app/jimbo/dispatch, vault, emails, costs, activity, status, settings, context, calendar
+```
+
+## Previous Architecture (as of 2026-03-26, replaced)
 
 ```
 VPS (always on):
@@ -314,18 +363,22 @@ Jimbo (OpenClaw on Telegram):
 | ~~Morning gem drought~~ | Resolved — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
 | Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
 | False success on rate limit | **NEW BUG.** Model hit rate limit, no briefing composed, but activity log recorded "briefing delivered: success." No alert. Session 12. |
-| Email insight fields null | **BUG.** 27 insights have relevance scores (7-10) but category, action, reason, insight all null. Scoring runs, content doesn't. Session 12. |
+| ~~Email insight fields null~~ | **RESOLVED.** 173/173 insights complete. Session 12→17. |
 | No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
 | marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
 | Email cherry-picking poor | 4 items surfaced from 28 gems. Claude Code 1M update (0.95 confidence) missed entirely. Session 11. |
 | vault_roulette always empty | Returns "no_candidates" on every call (8 attempts, 0 successes). 30-day dormancy threshold or data issue. Session 11. |
-| Heartbeat reasoning leaks to Telegram | **MOOT.** Jimbo dead (OpenRouter 403). Was not fixed for Kimi K2. Session 14→15. |
+| Heartbeat reasoning leaks to Telegram | **BACK.** Gemma4 dumps 6+ blocks of chain-of-thought into Telegram. Output discipline rule not followed. Session 14→17. |
 | ~~Morning auto-delivery broken~~ | **FIXED.** Delivered at 07:01 on Mar 24 — first success in 4 sessions. Session 12→15. |
 | OpenClaw bootstrap token overhead | **BY DESIGN.** 100-150K tokens per agent turn for bootstrap context. Makes lightweight cron jobs expensive. Accepted — use Python for mechanical jobs instead. Session 15. |
 | ~~Email insight fields null~~ | **FIXED.** 147/147 recent insights have content. Health endpoint confirms. Session 11→15. |
-| OpenRouter key limit exceeded | **BLOCKING.** $50.61 against $10 weekly limit. Jimbo dead since Mar 25 18:18. Kimi K2 "free" ≠ free key limits. Deprioritised — dispatch is focus. Session 16. |
+| ~~OpenRouter key limit exceeded~~ | **RESOLVED.** Switched to free model rotation (Gemma4 etc). Jimbo alive again. Session 16→17. |
 | Dispatch flow not wired | **IN PROGRESS.** Infrastructure built (queue, worker, dashboard, PR feedback). Flow split designed. No work flowing through yet. Session 16. |
 | Vault code tasks mixed with life tasks | **DESIGN GAP.** 1,491 active tasks, many code-related. Design says move code tasks to GitHub Issues, vault becomes quests + recon. Not yet started. Session 16. |
+| Briefing ignores pipeline data | **MODEL GAP.** Gemma4 said "no vault tasks" (pipeline had 5) and "no email highlights" (pipeline had 11 gems). Data present, model doesn't use it. Session 17. |
+| Calendar timezone bug | **BUG.** Mission 1 Standup shown as 2:30 PM, actual 3:30 PM BST. Model may be using UTC instead of BST. Session 17. |
+| Accountability skill path broken | **BUG.** Tries `/usr/lib/node_modules/openclaw/skills/accountability/SKILL.md`, gets sandboxing error. Should use `/workspace/skills/`. Session 17. |
+| Too many calendars in briefing | Calendar whitelist still includes unwhitelisted/options events mixed with confirmed. Needs tightening. Session 17. |
 
 ## Patterns (Across All Sessions)
 
@@ -356,5 +409,8 @@ Jimbo (OpenClaw on Telegram):
 - **The oscillation is the learning.** We've swung between "OpenClaw for everything" and "Python for everything" four times. Each swing taught us where the boundary is. The tiered model is the synthesis — not a compromise, but the correct assignment of tools to jobs.
 - **Free models change the economics.** Kimi K2 (free daily driver), Opus on Max plan (free creative work), Flash for data processing ($0.005/run) — the cost structure is: free for conversation + creativity, near-free for data processing, expensive for many small agent turns.
 - **"Free" isn't always free.** Kimi K2 is free on OpenRouter's pricing page, but the API key has a weekly spending limit that tracks all usage. Free model pricing ≠ free key limits. Measure what the provider measures, not what you think they measure.
+- **Present, don't prescribe.** A briefing that tells Marvin what to do with his free gaps is less useful than one that accurately reports what's happening. "Here's what I see" > "here's what you should do." Accuracy before intelligence.
+- **Free models change the skill contract.** A prescriptive skill requiring editorial judgment breaks on weaker models. A reporter skill that presents data works regardless of model capability. Design skills for the worst model in the rotation, not the best.
+- **Self-awareness enables self-correction.** Without the ability to check his own health, activity log, or dispatch queue, Jimbo reasons from nothing during heartbeat polls — pages of chain-of-thought about whether to nudge, grounded in rules not data. Give the agent access to its own telemetry.
 - **Build the system, wake the agent later.** After 15 sessions optimising what Jimbo *says*, session 16 deprioritised Jimbo entirely in favour of what agents *do*. The dispatch system is the product; Jimbo becomes one interface to it. Infrastructure before personality.
 - **The maturity ladder isn't linear.** We jumped from "source data quality" to "dispatch infrastructure" while skipping heartbeat completion and briefing polish. The ladder is a dependency graph, not a sequence — you can leapfrog steps that turn out to be less important than originally thought.
