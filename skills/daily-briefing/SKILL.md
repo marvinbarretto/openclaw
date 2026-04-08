@@ -45,9 +45,10 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
 - Skip sections with nothing to report. Don't say "no emails today" — just don't send that message.
 
 1. **Day plan** — present today's calendar events as a timeline. Identify free gaps. Flag anything in the next 2 hours. If you have Opus analysis, use its suggestions. If working from raw calendar data, propose how to use free blocks based on priorities.
-2. **Email highlights** — present interesting emails with WHY each matters. If working from `briefing-input.json`, read ALL entries in the `gems` array AND the `email_insights` array (sorted by relevance_score). Present the top 3-4 by confidence/relevance score. Never skip a gem with confidence >= 0.9. Include URLs directly from the gem data — say "Check it out: [URL]" not "link in the email".
-3. **Surprise** — REQUIRED: always include a surprise. Find a genuinely non-obvious connection between two different data sources (email × vault, calendar × priorities, gem × old bookmark). If nothing connects, pick the single most unexpected thing from today's data and frame it as a discovery.
-4. **Task status** — Call `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"` and report:
+2. **Calendar-vault connections** — If `briefing-input.json` has a `calendar_links` array with entries, surface them naturally after the day plan. Don't list all matches — pick the 1-2 most useful. "Your dentist is at 2pm and you've got a vault task to ask about that jaw issue" or "You've got that Spoons meeting tomorrow and 3 open vault tasks tagged `spoons`." Skip this section entirely if `calendar_links` is empty.
+3. **Email highlights** — present interesting emails with WHY each matters. If working from `briefing-input.json`, read ALL entries in the `gems` array AND the `email_insights` array (sorted by relevance_score). Present the top 3-4 by confidence/relevance score. Never skip a gem with confidence >= 0.9. Include URLs directly from the gem data — say "Check it out: [URL]" not "link in the email".
+4. **Surprise** — REQUIRED: always include a surprise. Find a genuinely non-obvious connection between two different data sources (email × vault, calendar × priorities, gem × old bookmark). If nothing connects, pick the single most unexpected thing from today's data and frame it as a discovery.
+5. **Task status** — Call `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/vault/tasks/summary"` and report:
    - Done since last briefing (with titles if ≤5, count if more)
    - Currently in progress (by owner)
    - Blocked (with blocker text from `blocked_by` field)
@@ -59,7 +60,7 @@ Walk through the data **one section at a time**. Send each as a separate Telegra
    If `velocity_7d > 0`: "We're closing about {velocity_7d} tasks per day this week."
    If `inbox_count >= 10`: "Inbox is getting full — want to do a quick grooming session later?"
 
-5. **Dispatch status** — If `briefing-input.json` has a `dispatch` key with data, report agent work status. If the key is missing or empty, call the API directly as fallback: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
+6. **Dispatch status** — If `briefing-input.json` has a `dispatch` key with data, report agent work status. If the key is missing or empty, call the API directly as fallback: `curl -sf -H "X-API-Key: $JIMBO_API_KEY" "$JIMBO_API_URL/api/dispatch/briefing-summary"`
 
    Present what's relevant, skip what's empty:
    - **PRs for review:** "You've got N PRs ready for review" + one line per PR: "{task_id}: {result_summary}" with PR URL. This is your highest-priority dispatch item — these need human eyes.

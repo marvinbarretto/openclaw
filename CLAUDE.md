@@ -127,6 +127,8 @@ notes/            Brain dumps
 - `scripts/model-swap-local.sh` — VPS-local model swap (runs directly on VPS, unlike model-swap.sh which SSHes in). Cron model swaps currently DISABLED since 2026-03-08.
 - `workspace/email-fetch-cron.py` — Interval-aware email fetch wrapper. Reads `email_fetch_interval_hours` from settings API, checks digest age, runs gmail-helper.py if stale. Injects `previous_count` for delta tracking. Stdlib only.
 - `workspace/openrouter-usage.py` — OpenRouter API balance/usage checker. Subcommands: `balance`, `usage --days N`. Uses `OPENROUTER_API_KEY` env var. Stdlib only. (ADR-031)
+- `workspace/vault-triage.py` — Autonomous vault inbox triage and stale note cleanup. Auto-classifies obvious types (URLs → bookmark, lists → checklist), archives stale inbox items (>30 days, no tags), marks done tasks. Runs daily at 04:15 UTC via cron. Flags: `--live`, `--quiet`, `--json`. Subcommands: `stats`. Stdlib only.
+- `workspace/calendar-vault-linker.py` — Cross-references calendar events with vault tasks by tag/project/keyword match. Output included in briefing-input.json for calendar-vault connections section. Flags: `--days N`, `--json`. Stdlib only.
 - `workspace/prioritise-tasks.py` — Gemini Flash batch scorer for vault tasks. Reads PRIORITIES.md + GOALS.md, scores all active tasks with `priority` (1-10), `actionability` (clear/vague/needs-breakdown), writes back into frontmatter. Runs daily at 04:30 UTC. Subcommands: `score` (default), `stats`. Flags: `--dry-run`, `--force`, `--limit N`. Stdlib only.
 - `workspace/workers/base_worker.py` — Base worker class with API clients for Google AI (Flash) + Anthropic (Haiku). Includes LangFuse tracing via `trace_to_langfuse()` (fire-and-forget POST to ingestion API, env vars: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST).
 - `workspace/workers/email_triage.py` — Flash-powered email triage worker. Reads digest, scores/triages emails, outputs shortlist.
@@ -214,6 +216,7 @@ To grow the blacklist: edit the `SENDER_BLACKLIST` and `SUBJECT_BLACKLIST` lists
 
 VPS root crontab runs the daily pipeline, with per-pipeline Telegram alerts (ADR-030, ADR-042):
 ```
+# 04:15 — vault inbox triage (auto-classify, archive stale)
 # 04:30 — vault task scoring (Gemini Flash)
 # 05:00 — Google Tasks sweep (vault intake)
 # 06:15 — morning briefing pipeline (briefing-prep.py)
@@ -254,7 +257,7 @@ jimbo-api needs these for the GitHub PR feedback loop:
 - `GITHUB_WEBHOOK_SECRET` — shared secret for GitHub webhook HMAC validation
 - `GITHUB_TOKEN` — PAT for fetching PR comments on rejection (needs `repo` scope or fine-grained read on target repos)
 
-Daily sequence: task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → Jimbo's morning briefing (07:00) → afternoon briefing-prep pipeline (14:15) → Jimbo's afternoon briefing (15:00) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
+Daily sequence: vault triage (04:15) → task scoring (04:30) → tasks sweep (05:00) → morning briefing-prep pipeline (06:15) → Jimbo's morning briefing (07:00) → afternoon briefing-prep pipeline (14:15) → Jimbo's afternoon briefing (15:00) → accountability report (20:00). Tasks are scored against PRIORITIES.md + GOALS.md before the sweep, so newly vaulted tasks from the previous day have priority scores ready for the briefing.
 
 No laptop dependency for core pipeline. Optional Opus analysis layer runs on Mac via launchd (opus-briefing.sh) — currently broken/stale since Mar 16 2026. Model swaps disabled since Mar 8 — Jimbo uses the same model all day (currently stepfun/step-3.5-flash:free via OpenRouter between briefings, Sonnet via OpenClaw cron for briefing windows).
 
@@ -333,7 +336,7 @@ Context is split between the API and the repo:
 
 | Repo | Local path | Deploy method | Purpose |
 |------|-----------|---------------|---------|
-| **jimbo-api** | `~/development/jimbo/jimbo-api` | `git push` → `git pull` on VPS, `npm run build`, `cp -r dist/* .`, restart service | Central API + SQLite DB for all Jimbo data |
+| **jimbo-api** | `~/development/jimbo/jimbo-api` | See jimbo-api deploy command below | Central API + SQLite DB for all Jimbo data |
 | **site** | `~/development/site` | `git push` → Cloudflare Workers auto-deploy | Astro site with Jimbo admin screens at `/app/jimbo/` |
 | **openclaw** (this repo) | `~/development/openclaw` | `workspace-push.sh` (rsync) for workspace files, `skills-push.sh` for skills | Config, scripts, skills, ADRs, brain files |
 
@@ -366,6 +369,16 @@ nano /home/openclaw/.openclaw/openclaw.json  # edit config
 ```bash
 # Health check (comprehensive — replaces manual API calls during briefing reviews)
 curl -sk -H "X-API-Key: $API_KEY" "https://167.99.206.214/api/health"
+```
+
+### Deploying jimbo-api
+
+**IMPORTANT:** The VPS path is `/home/openclaw/jimbo-api` — NOT `~/jimbo-api` (which resolves to `/root/jimbo-api` when SSH'd as root and has no git repo).
+
+```bash
+# Full deploy from laptop:
+cd ~/development/jimbo/jimbo-api && npm run build && git push
+ssh jimbo 'cd /home/openclaw/jimbo-api && git pull && npm run build && cp -r dist/* . && sudo systemctl restart jimbo-api'
 ```
 
 Config changes require service restart. Workspace file changes (skills, brain files, digest) take effect on next Jimbo session — no restart needed.

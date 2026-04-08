@@ -264,6 +264,23 @@ def run_pipeline(session, dry_run=False):
     else:
         pipeline_status["vault"] = {"status": "skipped"}
 
+    # --- Step 5a: Calendar-vault links ---
+    calendar_links = []
+    if calendar and not dry_run:
+        try:
+            result = subprocess.run(
+                ["python3", os.path.join(_script_dir, "calendar-vault-linker.py"), "--days", "1", "--json"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                link_data = json.loads(result.stdout)
+                calendar_links = link_data.get("links", [])
+                pipeline_status["calendar_links"] = {"status": "ok", "links": len(calendar_links)}
+        except (subprocess.SubprocessError, json.JSONDecodeError) as e:
+            pipeline_status["calendar_links"] = {"status": "failed", "error": str(e)[:100]}
+    else:
+        pipeline_status["calendar_links"] = {"status": "skipped"}
+
     # --- Step 5b: Dispatch status ---
     dispatch_data = {}
     if not dry_run:
@@ -296,6 +313,7 @@ def run_pipeline(session, dry_run=False):
         "email_insights": email_insights,
         "shortlist_reasons": shortlist_reasons,
         "vault_tasks": vault_tasks,
+        "calendar_links": calendar_links,
         "dispatch": dispatch_data,
         "context_summary": context_summary,
         "triage_pending": triage_pending,
