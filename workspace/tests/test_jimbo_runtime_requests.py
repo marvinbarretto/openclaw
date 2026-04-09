@@ -93,3 +93,20 @@ class TestJimboRuntimeRequests(unittest.TestCase):
                 "intake_json": "{}",
             })
 
+    def test_iter_runtime_requests_reads_newline_delimited_json(self):
+        runtime_requests = load_runtime_requests()
+
+        with tempfile.NamedTemporaryFile("w+", delete=False) as tmp:
+            tmp.write('{"command":"emit","producer":"dispatch-proposal"}\n')
+            tmp.write('\n')
+            tmp.write('{"command":"summary","producer":"vault-triage"}\n')
+            tmp_path = tmp.name
+
+        try:
+            loaded = list(runtime_requests.iter_runtime_requests(request_file=tmp_path))
+        finally:
+            os.unlink(tmp_path)
+
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(loaded[0]["command"], "emit")
+        self.assertEqual(loaded[1]["producer"], "vault-triage")

@@ -269,3 +269,12 @@ python3 workspace/jimbo_runtime_tool.py \
   request \
   --request-file /tmp/runtime-request.json
 ```
+
+For a stream-oriented control-plane loop, the tool can also consume
+newline-delimited runtime requests and emit one JSON response per line:
+
+```bash
+python3 workspace/jimbo_runtime_tool.py \
+  serve \
+  --request-file /tmp/runtime-requests.ndjson
+```

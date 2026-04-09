@@ -7,7 +7,11 @@ import sys
 
 from jimbo_runtime_engine import load_intake_payload, run_intake_batch
 from jimbo_runtime_producers import PRODUCER_COMMANDS
-from jimbo_runtime_requests import load_runtime_request, normalize_runtime_request
+from jimbo_runtime_requests import (
+    iter_runtime_requests,
+    load_runtime_request,
+    normalize_runtime_request,
+)
 from jimbo_runtime_ops import (
     emit_producer_output,
     load_producer_payloads,
@@ -37,21 +41,54 @@ def build_request_namespace(request):
     ), request["command"]
 
 
+def build_emit_output(args):
+    return load_producer_payloads(args.producer)
+
+
+def build_resolve_output(args):
+    payload = load_command_payload(args)
+    return run_intake_batch(payload, live=args.live)
+
+
+def build_report_output(args):
+    return build_summary_output(args, include_producer=True)
+
+
+def run_runtime_request(request):
+    delegated_args, command = build_request_namespace(request)
+    if command == "emit":
+        result = build_emit_output(delegated_args)
+    elif command == "resolve":
+        result = build_resolve_output(delegated_args)
+    elif command == "summary":
+        result = build_summary_output(delegated_args)
+    elif command == "report":
+        result = build_report_output(delegated_args)
+    else:
+        raise ValueError(f"Unsupported runtime request command: {command}")
+    return {
+        "command": command,
+        "result": result,
+    }
+
+
 def cmd_request(args):
     request = load_runtime_request(
         request_json=args.request_json,
         request_file=args.request_file,
     )
-    delegated_args, command = build_request_namespace(request)
-    if command == "emit":
-        return cmd_emit(delegated_args)
-    if command == "resolve":
-        return cmd_resolve(delegated_args)
-    if command == "summary":
-        return cmd_summary(delegated_args)
-    if command == "report":
-        return cmd_report(delegated_args)
-    raise ValueError(f"Unsupported runtime request command: {command}")
+    response = run_runtime_request(request)
+    json.dump(response, sys.stdout, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_serve(args):
+    for request in iter_runtime_requests(request_file=args.request_file):
+        response = run_runtime_request(request)
+        json.dump(response, sys.stdout, sort_keys=True)
+        sys.stdout.write("\n")
+    return 0
 
 
 def load_command_payload(args):
@@ -64,8 +101,7 @@ def load_command_payload(args):
 
 
 def cmd_resolve(args):
-    payload = load_command_payload(args)
-    result = run_intake_batch(payload, live=args.live)
+    result = build_resolve_output(args)
     json.dump(result, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
@@ -116,7 +152,7 @@ def cmd_roundtrip(args):
 
 
 def cmd_report(args):
-    summary = build_summary_output(args, include_producer=True)
+    summary = build_report_output(args)
     json.dump(summary, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
@@ -141,6 +177,10 @@ def build_parser():
     request_source.add_argument("--request-json", help="Raw runtime request JSON")
     request_source.add_argument("--request-file", help="Path to a JSON file containing one runtime request object")
     request_parser.set_defaults(handler=cmd_request)
+
+    serve_parser = subparsers.add_parser("serve", help="Execute newline-delimited runtime request objects")
+    serve_parser.add_argument("--request-file", required=True, help="Path to a newline-delimited JSON request stream, or - for stdin")
+    serve_parser.set_defaults(handler=cmd_serve)
 
     resolve_parser = subparsers.add_parser("resolve", help="Resolve or execute runtime intake payloads")
     add_payload_source_args(resolve_parser)

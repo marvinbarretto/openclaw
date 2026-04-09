@@ -68,3 +68,20 @@ def normalize_runtime_request(request):
         raise ValueError("summary requests do not support live execution")
 
     return normalized
+
+
+def iter_runtime_requests(*, request_file):
+    """Yield newline-delimited runtime request objects from a file or stdin."""
+    if not request_file:
+        raise ValueError("request_file is required")
+
+    stream = sys.stdin if request_file == "-" else open(request_file)
+    try:
+        for line in stream:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+    finally:
+        if stream is not sys.stdin:
+            stream.close()
