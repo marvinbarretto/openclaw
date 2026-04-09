@@ -27,26 +27,29 @@ def run_subprocess(cmd, *, stdin_text=None):
     return proc.stdout
 
 
-def build_runtime_cli_command(*, live=False):
+def build_runtime_cli_command(*, live=False, summary=False):
+    script_name = "jimbo_runtime_summary.py" if summary else "jimbo_runtime_cli.py"
     cmd = [
         sys.executable,
-        os.path.join(SCRIPT_DIR, "jimbo_runtime_cli.py"),
+        os.path.join(SCRIPT_DIR, script_name),
         "--intake-file",
         "-",
     ]
-    if live:
+    if live and not summary:
         cmd.append("--live")
     return cmd
 
 
-def run_roundtrip(producer, *, live=False):
+def run_roundtrip(producer, *, live=False, summary=False):
     """Emit intake payloads from a producer and pass them to the runtime CLI."""
     if producer not in PRODUCER_COMMANDS:
         raise ValueError(f"Unknown producer: {producer}")
+    if live and summary:
+        raise ValueError("summary mode does not support live execution")
 
     producer_output = run_subprocess(PRODUCER_COMMANDS[producer])
     runtime_output = run_subprocess(
-        build_runtime_cli_command(live=live),
+        build_runtime_cli_command(live=live, summary=summary),
         stdin_text=producer_output,
     )
     return runtime_output
@@ -65,13 +68,18 @@ def parse_args(argv=None):
         action="store_true",
         help="Execute the runtime CLI in live mode",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Send the producer payloads to the runtime summary command",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
     try:
-        output = run_roundtrip(args.producer, live=args.live)
+        output = run_roundtrip(args.producer, live=args.live, summary=args.summary)
     except Exception as exc:
         sys.stderr.write(f"[jimbo-roundtrip] {exc}\n")
         return 1

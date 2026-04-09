@@ -38,6 +38,7 @@ def run_intake(payload, *, live=False, runtime=None):
         "title": selection.task.title,
         "source": envelope.source,
         "trigger": envelope.trigger,
+        "route_decision": (payload.get("route") or {}).get("decision"),
         "live": bool(live),
     }
 

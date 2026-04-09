@@ -160,3 +160,16 @@ Live runtime execution is also supported:
 ```bash
 python3 workspace/jimbo_runtime_roundtrip.py --producer dispatch-proposal --live
 ```
+
+To get a control-plane summary instead of raw resolved items:
+
+```bash
+python3 workspace/jimbo_runtime_roundtrip.py --producer dispatch-proposal --summary
+```
+
+There is also a direct summary command for one payload or a batch:
+
+```bash
+python3 workspace/jimbo_runtime_summary.py --intake-file /tmp/intake.json
+python3 workspace/jimbo_runtime_summary.py --intake-file -
+```
