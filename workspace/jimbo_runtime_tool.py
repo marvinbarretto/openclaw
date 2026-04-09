@@ -10,15 +10,15 @@ from jimbo_runtime_executor import (
     build_resolve_output,
     build_summary_output,
 )
-from jimbo_runtime_request_service import execute_runtime_request, stream_runtime_requests
+from jimbo_runtime_request_service import execute_runtime_request
 from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_requests import (
-    iter_runtime_requests,
     load_runtime_request,
 )
 from jimbo_runtime_ops import (
     emit_producer_output,
 )
+from jimbo_runtime_server import serve_request_stream
 
 
 def cmd_producers(_args):
@@ -38,12 +38,11 @@ def cmd_request(args):
 
 
 def cmd_serve(args):
-    for response in stream_runtime_requests(
-        iter_runtime_requests(request_file=args.request_file),
+    serve_request_stream(
+        request_file=args.request_file,
         continue_on_error=True,
-    ):
-        json.dump(response, sys.stdout, sort_keys=True)
-        sys.stdout.write("\n")
+        output_stream=sys.stdout,
+    )
     return 0
 
 

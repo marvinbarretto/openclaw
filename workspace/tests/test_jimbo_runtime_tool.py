@@ -148,21 +148,15 @@ class TestJimboRuntimeTool(unittest.TestCase):
     def test_serve_command_streams_request_responses(self):
         runtime_tool = load_runtime_tool()
 
-        with mock.patch.object(runtime_tool, 'iter_runtime_requests', return_value=[
-            {'request_id': 'req-1', 'command': 'emit', 'producer': 'dispatch-proposal'},
-            {'request_id': 'req-2', 'command': 'summary', 'producer': 'vault-triage'},
-        ]) as iter_runtime_requests, \
-             mock.patch.object(runtime_tool, 'stream_runtime_requests', return_value=[
-                 {'request_id': 'req-1', 'command': 'emit', 'result': [{'task_id': 'note_1'}]},
-                 {'request_id': 'req-2', 'command': 'summary', 'result': {'mode': 'summary'}},
-             ]) as stream_runtime_requests, \
-             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
+        with mock.patch.object(runtime_tool, 'serve_request_stream', return_value={'responses': 2, 'errors': 0}) as serve_request_stream:
             exit_code = runtime_tool.main(['serve', '--request-file', '-'])
 
         self.assertEqual(exit_code, 0)
-        iter_runtime_requests.assert_called_once_with(request_file='-')
-        stream_runtime_requests.assert_called_once()
-        self.assertEqual(dump_mock.call_count, 2)
+        serve_request_stream.assert_called_once_with(
+            request_file='-',
+            continue_on_error=True,
+            output_stream=runtime_tool.sys.stdout,
+        )
 
 
 if __name__ == '__main__':
