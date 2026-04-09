@@ -145,3 +145,18 @@ You can also pipe directly over stdin:
 python3 workspace/dispatch.py --emit-intake \
   | python3 workspace/jimbo_runtime_cli.py --intake-file -
 ```
+
+## Roundtrip helper
+
+To avoid composing the producer and runtime commands manually, use:
+
+```bash
+python3 workspace/jimbo_runtime_roundtrip.py --producer dispatch-proposal
+python3 workspace/jimbo_runtime_roundtrip.py --producer dispatch-worker
+```
+
+Live runtime execution is also supported:
+
+```bash
+python3 workspace/jimbo_runtime_roundtrip.py --producer dispatch-proposal --live
+```
