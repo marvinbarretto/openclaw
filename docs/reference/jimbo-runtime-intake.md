@@ -181,3 +181,20 @@ python3 workspace/jimbo_runtime_summary.py \
   --intake-file /tmp/intake.json \
   --output-file /tmp/jimbo-runtime-summary.json
 ```
+
+To also write the summary into the orchestration activity trail:
+
+```bash
+python3 workspace/jimbo_runtime_summary.py \
+  --intake-file /tmp/intake.json \
+  --log-activity
+```
+
+You can provide an explicit activity task id when logging:
+
+```bash
+python3 workspace/jimbo_runtime_summary.py \
+  --intake-file /tmp/intake.json \
+  --log-activity \
+  --summary-id runtime-summary-2026-04-09
+```

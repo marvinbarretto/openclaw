@@ -7,6 +7,7 @@ import json
 import os
 import sys
 
+import orchestration_helper
 from jimbo_runtime_cli import load_intake_payload, run_intake_batch
 
 
@@ -54,6 +55,40 @@ def run_summary(payloads, *, runtime=None):
     return summarize_results(results)
 
 
+def log_summary_activity(summary, *, summary_id=None, logger=None):
+    """Record a runtime summary as an orchestration activity."""
+    logger = logger or orchestration_helper.log_decision
+    summary_id = summary_id or f"runtime-summary-{summary['generated_at']}"
+
+    workflow_counts = summary.get("workflows") or {}
+    workflow_label = ", ".join(
+        f"{name}={count}" for name, count in sorted(workflow_counts.items())
+    ) or "no workflows"
+    title = f"{summary['total']} intake items ({workflow_label})"
+
+    return logger(
+        "report",
+        summary_id,
+        title=title,
+        task_source="runtime-summary",
+        reason="Aggregated runtime intake decisions",
+        report={
+            "status": "summarized",
+            "summary": title,
+        },
+        changed={
+            "total": summary["total"],
+            "workflows": summary.get("workflows"),
+            "sources": summary.get("sources"),
+            "triggers": summary.get("triggers"),
+            "route_decisions": summary.get("route_decisions"),
+        },
+        metadata={
+            "summary": summary,
+        },
+    )
+
+
 def write_summary_artifact(summary, output_file):
     """Write a machine-readable summary artifact to disk."""
     output_dir = os.path.dirname(os.path.abspath(output_file))
@@ -69,6 +104,15 @@ def parse_args(argv=None):
     parser.add_argument("--intake-json", help="Raw normalized intake JSON")
     parser.add_argument("--intake-file", help="Path to a JSON file containing one or more intake payloads")
     parser.add_argument("--output-file", help="Optional path to write the summary JSON artifact")
+    parser.add_argument(
+        "--log-activity",
+        action="store_true",
+        help="Record the generated summary via the orchestration activity API",
+    )
+    parser.add_argument(
+        "--summary-id",
+        help="Optional explicit activity task_id when using --log-activity",
+    )
     return parser.parse_args(argv)
 
 
@@ -82,6 +126,11 @@ def main(argv=None):
         summary = run_summary(payload)
         if args.output_file:
             write_summary_artifact(summary, args.output_file)
+        if args.log_activity:
+            summary["activity_id"] = log_summary_activity(
+                summary,
+                summary_id=args.summary_id,
+            )
     except Exception as exc:
         sys.stderr.write(f"[jimbo-summary] {exc}\n")
         return 1

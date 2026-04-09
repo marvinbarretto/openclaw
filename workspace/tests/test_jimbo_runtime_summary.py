@@ -94,6 +94,36 @@ class TestJimboRuntimeSummary(unittest.TestCase):
         self.assertEqual(written["total"], 1)
         self.assertEqual(written["items"][0]["task_id"], "note_1")
 
+    def test_log_summary_activity_records_orchestration_report(self):
+        runtime_summary = load_runtime_summary()
+        logger = mock.Mock(return_value="act_123")
+        summary = {
+            "mode": "summary",
+            "generated_at": "2026-04-09T12:00:00Z",
+            "total": 2,
+            "workflows": {"dispatch": 2},
+            "sources": {"dispatch": 2},
+            "triggers": {"dispatch-propose": 1, "dispatch-next": 1},
+            "route_decisions": {"proposed": 1, "commission": 1},
+            "items": [{"task_id": "note_1"}, {"task_id": "note_2"}],
+        }
+
+        activity_id = runtime_summary.log_summary_activity(
+            summary,
+            summary_id="summary-1",
+            logger=logger,
+        )
+
+        self.assertEqual(activity_id, "act_123")
+        logger.assert_called_once()
+        args, kwargs = logger.call_args
+        self.assertEqual(args[0], "report")
+        self.assertEqual(args[1], "summary-1")
+        self.assertEqual(kwargs["task_source"], "runtime-summary")
+        self.assertEqual(kwargs["report"]["status"], "summarized")
+        self.assertEqual(kwargs["changed"]["total"], 2)
+        self.assertEqual(kwargs["metadata"]["summary"]["generated_at"], "2026-04-09T12:00:00Z")
+
 
 if __name__ == '__main__':
     unittest.main()
