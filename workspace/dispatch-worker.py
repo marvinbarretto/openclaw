@@ -26,6 +26,13 @@ import time
 import urllib.request
 import urllib.error
 
+from dispatch_batch_memory import (
+    batch_report_status,
+    load_batch_state,
+    record_item_status,
+    save_batch_state,
+    summarize_batch,
+)
 from dispatch_intake import hydrate_task
 from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
@@ -39,6 +46,7 @@ API_KEY = os.environ.get('JIMBO_API_KEY', '')
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dispatch', 'templates')
 WORK_DIR = os.path.expanduser('~/development')
 LOCK_FILE = '/tmp/dispatch-worker.lock'
+BATCH_STATE_FILE = '/tmp/dispatch-batch-state.json'
 DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 # Approach 3: configurable per-task or via settings API
@@ -83,6 +91,35 @@ def load_template(agent_type):
 
 def fetch_vault_note(task_id):
     return api_request('GET', f'/api/vault/notes/{task_id}')
+
+
+def emit_batch_report(batch_id, batch):
+    summary = summarize_batch(batch)
+    report_status = batch_report_status(batch)
+    orchestration_helper.log_decision(
+        'report',
+        batch_id,
+        title=summary,
+        task_source='dispatch-batch',
+        report={
+            'status': report_status,
+            'batch_id': batch_id,
+            'summary': summary,
+        },
+        changed={
+            'items': len(batch.get('items', {})),
+        },
+        metadata={
+            'batch': batch,
+        },
+    )
+    send_telegram(build_result_summary(
+        {'task_id': batch_id, 'flow': 'batch', 'agent_type': 'orchestrator'},
+        title=f'batch {batch_id}',
+        report_status=report_status,
+        summary=summary,
+        review_reason='Batch state updated',
+    ))
 
 
 # --- Core worker logic ---
@@ -182,6 +219,12 @@ def execute_task(task, dry_run=False):
         summary='Task picked up by dispatch worker',
         review_reason='Execution started on the dispatch worker',
     ))
+    batch_id = normalized_task.get('batch_id')
+    if batch_id:
+        batch_state = load_batch_state(BATCH_STATE_FILE)
+        batch_state = record_item_status(batch_state, batch_id, normalized_task, 'picked_up')
+        save_batch_state(BATCH_STATE_FILE, batch_state)
+        emit_batch_report(batch_id, batch_state[batch_id])
 
     # Write prompt to temp file
     prompt_path = f'/tmp/dispatch-{task_id}.prompt'
@@ -370,6 +413,11 @@ def execute_task(task, dry_run=False):
         summary=result.get('summary', ''),
         review_reason=review_decision.get('reason'),
     ))
+    if batch_id:
+        batch_state = load_batch_state(BATCH_STATE_FILE)
+        batch_state = record_item_status(batch_state, batch_id, normalized_task, report_status)
+        save_batch_state(BATCH_STATE_FILE, batch_state)
+        emit_batch_report(batch_id, batch_state[batch_id])
 
     cleanup(task_id)
     return True

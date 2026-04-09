@@ -26,6 +26,14 @@ import sys
 import urllib.request
 import urllib.error
 
+from dispatch_batch_memory import (
+    batch_report_status,
+    initialize_batch,
+    load_batch_state,
+    record_item_status,
+    save_batch_state,
+    summarize_batch,
+)
 from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_transitions import collect_new_items, load_seen_state, save_seen_state
@@ -40,6 +48,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 LOCK_FILE = '/tmp/dispatch.lock'
 TRANSITION_STATE_FILE = '/tmp/dispatch-transition-state.json'
+BATCH_STATE_FILE = '/tmp/dispatch-batch-state.json'
 DEFAULT_BATCH_SIZE = 3
 
 # Timeout limits — if a task has been running longer than this, mark it failed
@@ -119,6 +128,36 @@ def fetch_queue_items(status):
     return queue.get('items', []) if queue else []
 
 
+def emit_batch_report(batch_id, batch, *, dry_run=False):
+    summary = summarize_batch(batch)
+    report_status = batch_report_status(batch)
+    orchestration_helper.log_decision(
+        'report',
+        batch_id,
+        title=summary,
+        task_source='dispatch-batch',
+        report={
+            'status': report_status,
+            'batch_id': batch_id,
+            'summary': summary,
+        },
+        changed={
+            'items': len(batch.get('items', {})),
+        },
+        metadata={
+            'batch': batch,
+        },
+    )
+    notify_terminal_outcome(
+        report_status,
+        {'task_id': batch_id, 'flow': 'batch', 'agent_type': 'orchestrator'},
+        title=f'batch {batch_id}',
+        summary=summary,
+        review_reason='Batch state updated',
+        dry_run=dry_run,
+    )
+
+
 def emit_transition(status, item, *, dry_run=False):
     hydrated = hydrate_batch([item], fetch_vault_note)
     if not hydrated:
@@ -159,6 +198,12 @@ def emit_transition(status, item, *, dry_run=False):
         title=title,
         dry_run=dry_run,
     )
+    batch_id = item.get('batch_id')
+    if batch_id:
+        batch_state = load_batch_state(BATCH_STATE_FILE)
+        batch_state = record_item_status(batch_state, batch_id, task, status)
+        save_batch_state(BATCH_STATE_FILE, batch_state)
+        emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
 
 
 def check_queue_transitions(dry_run=False):
@@ -268,6 +313,9 @@ def propose_batch(dry_run=False):
     if not hydrated_items:
         log('No dispatch items could be hydrated')
         return False
+    batch_state = load_batch_state(BATCH_STATE_FILE)
+    batch_state = initialize_batch(batch_state, batch_id, hydrated_items)
+    save_batch_state(BATCH_STATE_FILE, batch_state)
 
     titles = {item['task_id']: item.get('title', item['task_id']) for item in hydrated_items}
 
@@ -284,6 +332,7 @@ def propose_batch(dry_run=False):
         return True
 
     send_telegram(message)
+    emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
     for item in hydrated_items:
         orchestration_helper.log_decision(
             "route",
