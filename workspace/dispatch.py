@@ -28,6 +28,7 @@ import urllib.error
 
 from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
+from dispatch_transitions import collect_new_items, load_seen_state, save_seen_state
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
 import orchestration_helper
 
@@ -38,6 +39,7 @@ API_KEY = os.environ.get('JIMBO_API_KEY', os.environ.get('API_KEY', ''))
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 LOCK_FILE = '/tmp/dispatch.lock'
+TRANSITION_STATE_FILE = '/tmp/dispatch-transition-state.json'
 DEFAULT_BATCH_SIZE = 3
 
 # Timeout limits — if a task has been running longer than this, mark it failed
@@ -110,6 +112,70 @@ def notify_terminal_outcome(status, task, *, summary=None, review_reason=None,
 
 def fetch_vault_note(task_id):
     return api_request('GET', f'/api/vault/notes/{task_id}')
+
+
+def fetch_queue_items(status):
+    queue = api_request('GET', f'/api/dispatch/queue?status={status}&limit=20')
+    return queue.get('items', []) if queue else []
+
+
+def emit_transition(status, item, *, dry_run=False):
+    hydrated = hydrate_batch([item], fetch_vault_note)
+    if not hydrated:
+        return
+    task = hydrated[0]
+    title = task.get('title', task['task_id'])
+
+    if status == 'approved':
+        summary = 'Approved and waiting for worker pickup'
+        reason = 'Approval received from the dispatch queue'
+    elif status == 'rejected':
+        summary = item.get('error_message') or 'Rejected before execution'
+        reason = 'Proposal was rejected or expired before execution'
+    else:
+        summary = item.get('error_message') or status
+        reason = f'Dispatch queue entered {status}'
+
+    orchestration_helper.log_decision(
+        'report',
+        task['task_id'],
+        title=title,
+        task_source=task.get('task_source', 'vault'),
+        report={
+            'status': status,
+            'dispatch_id': item.get('id'),
+            'summary': summary,
+        },
+        changed={
+            'batch_id': item.get('batch_id'),
+            'queue_status': item.get('status'),
+        },
+    )
+    notify_terminal_outcome(
+        status,
+        task,
+        summary=summary,
+        review_reason=reason,
+        title=title,
+        dry_run=dry_run,
+    )
+
+
+def check_queue_transitions(dry_run=False):
+    """Detect newly-approved and newly-rejected queue items."""
+    seen_state = load_seen_state(TRANSITION_STATE_FILE)
+    approved_items = fetch_queue_items('approved')
+    rejected_items = fetch_queue_items('rejected')
+
+    new_approved, next_state = collect_new_items(seen_state, 'approved', approved_items)
+    new_rejected, next_state = collect_new_items(next_state, 'rejected', rejected_items)
+
+    for item in new_approved:
+        emit_transition('approved', item, dry_run=dry_run)
+    for item in new_rejected:
+        emit_transition('rejected', item, dry_run=dry_run)
+
+    save_seen_state(TRANSITION_STATE_FILE, next_state)
 
 
 # --- Core logic ---
@@ -288,6 +354,7 @@ def main():
 
     # 2. Check if there are approved tasks waiting for the worker to pick up
     status = api_request('GET', '/api/dispatch/status')
+    check_queue_transitions(dry_run)
     if status and status.get('next_approved'):
         log('Approved tasks waiting for M2 worker pickup')
         return

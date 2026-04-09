@@ -160,6 +160,28 @@ def execute_task(task, dry_run=False):
             'dispatch_id': dispatch_id,
         },
     )
+    orchestration_helper.log_decision(
+        'report',
+        task_id,
+        title=normalized_task.get('title', ''),
+        task_source=normalized_task.get('task_source', 'vault'),
+        report={
+            'status': 'picked_up',
+            'dispatch_id': dispatch_id,
+            'summary': 'Task picked up by dispatch worker',
+        },
+        changed={
+            'queue_status': 'running',
+            'repo': work_dir,
+        },
+    )
+    send_telegram(build_result_summary(
+        normalized_task,
+        title=normalized_task.get('title', ''),
+        report_status='picked_up',
+        summary='Task picked up by dispatch worker',
+        review_reason='Execution started on the dispatch worker',
+    ))
 
     # Write prompt to temp file
     prompt_path = f'/tmp/dispatch-{task_id}.prompt'
