@@ -288,4 +288,5 @@ For a dedicated long-lived process entrypoint, use:
 ```bash
 python3 workspace/jimbo_runtime_server.py --request-file /tmp/runtime-requests.ndjson
 python3 workspace/jimbo_runtime_server.py --request-file - --fail-fast
+python3 workspace/jimbo_runtime_server.py --request-file - --stats-file /tmp/jimbo-runtime-server.json
 ```

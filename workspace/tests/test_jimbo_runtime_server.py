@@ -5,6 +5,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -48,6 +49,9 @@ class TestJimboRuntimeServer(unittest.TestCase):
         self.assertEqual(lines[0]['request_id'], 'req-1')
         self.assertEqual(stats['responses'], 2)
         self.assertEqual(stats['errors'], 0)
+        self.assertTrue(stats['started_at'].endswith('Z'))
+        self.assertTrue(stats['completed_at'].endswith('Z'))
+        self.assertEqual(stats['request_file'], '-')
 
     def test_serve_request_stream_counts_error_responses(self):
         runtime_server = load_runtime_server()
@@ -66,6 +70,26 @@ class TestJimboRuntimeServer(unittest.TestCase):
         self.assertEqual(stats['responses'], 1)
         self.assertEqual(stats['errors'], 1)
 
+    def test_write_server_stats_persists_json_file(self):
+        runtime_server = load_runtime_server()
+        stats = {
+            'started_at': '2026-04-09T12:00:00Z',
+            'completed_at': '2026-04-09T12:00:01Z',
+            'request_file': '-',
+            'responses': 2,
+            'errors': 0,
+            'continue_on_error': True,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, 'runtime-server-stats.json')
+            runtime_server.write_server_stats(stats, output_path)
+            with open(output_path) as f:
+                written = json.load(f)
+
+        self.assertEqual(written['responses'], 2)
+        self.assertEqual(written['request_file'], '-')
+
     def test_main_returns_error_code_on_server_failure(self):
         runtime_server = load_runtime_server()
 
@@ -75,3 +99,31 @@ class TestJimboRuntimeServer(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         stderr.write.assert_called()
+
+    def test_main_can_write_stats_file(self):
+        runtime_server = load_runtime_server()
+
+        with mock.patch.object(runtime_server, 'serve_request_stream', return_value={
+            'started_at': '2026-04-09T12:00:00Z',
+            'completed_at': '2026-04-09T12:00:01Z',
+            'request_file': '-',
+            'responses': 1,
+            'errors': 0,
+            'continue_on_error': True,
+        }) as serve_request_stream, \
+             mock.patch.object(runtime_server, 'write_server_stats') as write_server_stats:
+            exit_code = runtime_server.main(['--request-file', '-', '--stats-file', '/tmp/server-stats.json'])
+
+        self.assertEqual(exit_code, 0)
+        serve_request_stream.assert_called_once()
+        write_server_stats.assert_called_once_with(
+            {
+                'started_at': '2026-04-09T12:00:00Z',
+                'completed_at': '2026-04-09T12:00:01Z',
+                'request_file': '-',
+                'responses': 1,
+                'errors': 0,
+                'continue_on_error': True,
+            },
+            '/tmp/server-stats.json',
+        )
