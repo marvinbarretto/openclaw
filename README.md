@@ -120,6 +120,9 @@ notes/         Brain dumps
 # Deploy workspace + skills to VPS
 ./scripts/workspace-push.sh && ./scripts/skills-push.sh
 
+# Sync OpenClaw cron prompts to explicit /workspace skill paths
+./scripts/openclaw-cron-sync.sh
+
 # Switch VPS model
 ./scripts/model-swap.sh {sonnet|kimi|haiku|flash|status}
 
@@ -181,6 +184,7 @@ All workspace/skill changes are picked up on Jimbo's next session (no restart ne
 | `skills/*/SKILL.md` | `/workspace/skills/` | `skills-push.sh` | No |
 | `workspace/blog-src/` | `/workspace/blog-src/` | `workspace-push.sh` | No |
 | `openclaw.json` changes | edit on VPS directly | — | Yes |
+| `setup/openclaw-cron-skills.json` | live cron prompts in `jobs.json` | `openclaw-cron-sync.sh` | Yes |
 
 ### Files Jimbo writes himself (NOT tracked here)
 

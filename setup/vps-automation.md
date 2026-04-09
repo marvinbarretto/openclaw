@@ -53,6 +53,17 @@ Daily at 06:00 UTC. Sources Google OAuth env vars from `/opt/openclaw.env` and p
 
 **Replaces** the old laptop launchd job (`com.openclaw.sift-cron.plist` → `sift-cron.sh`). Laptop no longer needs to be awake for email.
 
+### Cron prompt rule for custom skills
+
+For custom skills, do not rely on native skill lookup in cron prompts. Use the
+explicit workspace path instead:
+
+```text
+Read and follow /workspace/skills/<skill-name>/SKILL.md
+```
+
+This is the stable workaround for custom skills on Jimbo's VPS.
+
 ### Add the morning briefing (done 2026-02-18)
 
 ```bash
@@ -62,9 +73,19 @@ sudo -E -u openclaw HOME=/home/openclaw openclaw cron add \
   --cron "0 7 * * *" \
   --tz "Europe/London" \
   --session isolated \
-  --message "Read /workspace/email-digest.json and give Marvin his morning briefing. Use the daily-briefing skill format." \
+  --message "Read and follow /workspace/skills/daily-briefing/SKILL.md — this is the morning briefing." \
   --announce \
   --channel telegram
+```
+
+### Sync production cron prompts to explicit skill paths
+
+The repo keeps the expected custom-skill prompts in
+`setup/openclaw-cron-skills.json`.
+
+```bash
+./scripts/openclaw-cron-sync.sh
+./scripts/openclaw-cron-sync.sh --dry-run
 ```
 
 ### List cron jobs

@@ -1,0 +1,36 @@
+{
+  "jobs": [
+    {
+      "name": "Morning briefing",
+      "message": "Read and follow /workspace/skills/daily-briefing/SKILL.md — this is the morning briefing."
+    },
+    {
+      "name": "Afternoon briefing",
+      "message": "Read and follow /workspace/skills/daily-briefing/SKILL.md — this is the afternoon briefing."
+    },
+    {
+      "name": "Email Scanner",
+      "message": "Read and follow /workspace/skills/email-scanner/SKILL.md"
+    },
+    {
+      "name": "Calendar Briefing",
+      "message": "Read and follow /workspace/skills/calendar-briefing/SKILL.md"
+    },
+    {
+      "name": "Morning Summary",
+      "message": "Read and follow /workspace/skills/morning-summary/SKILL.md"
+    },
+    {
+      "name": "Vault Manager",
+      "message": "Read and follow /workspace/skills/vault-manager/SKILL.md"
+    },
+    {
+      "name": "Surprise Game",
+      "message": "Read and follow /workspace/skills/surprise-game/SKILL.md"
+    },
+    {
+      "name": "Accountability",
+      "message": "Read and follow /workspace/skills/accountability/SKILL.md"
+    }
+  ]
+}

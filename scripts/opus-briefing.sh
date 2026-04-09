@@ -7,6 +7,8 @@ set -euo pipefail
 SESSION="${1:-morning}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROMPT_DIR="$(dirname "$SCRIPT_DIR")/opus-prompts"
+MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-4200}"
+POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-120}"
 
 # Required env vars
 : "${JIMBO_API_KEY:?JIMBO_API_KEY not set}"
@@ -27,39 +29,57 @@ if [ ! -f "$PROMPT_DIR/${SESSION}.md" ]; then
     exit 1
 fi
 
-# Pull briefing-input.json from VPS
-echo "Pulling briefing-input.json for $SESSION..." >&2
-INPUT=$(ssh jimbo 'cat /home/openclaw/.openclaw/workspace/briefing-input.json' 2>/dev/null) || {
-    echo "ERROR: Failed to pull briefing-input.json" >&2
-    send_alert "Failed to pull briefing-input.json from VPS"
-    exit 1
-}
-[ -z "$INPUT" ] && { echo "ERROR: briefing-input.json is empty" >&2; send_alert "briefing-input.json is empty"; exit 1; }
+wait_deadline=$(( $(date +%s) + MAX_WAIT_SECONDS ))
+INPUT=""
 
-# Check it's for the right session
-INPUT_SESSION=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session',''))" 2>/dev/null) || {
-    echo "ERROR: Failed to parse session from input" >&2; exit 1
-}
-if [ "$INPUT_SESSION" != "$SESSION" ]; then
-    echo "Input session ($INPUT_SESSION) doesn't match requested ($SESSION), skipping" >&2
-    exit 0
-fi
+while true; do
+    echo "Pulling briefing-input.json for $SESSION..." >&2
+    INPUT=$(ssh jimbo 'cat /home/openclaw/.openclaw/workspace/briefing-input.json' 2>/dev/null || true)
 
-# Check it's fresh (less than 10 hours old)
-IS_FRESH=$(echo "$INPUT" | python3 -c "
+    if [ -n "$INPUT" ]; then
+        INPUT_STATE=$(echo "$INPUT" | python3 -c "
 import sys, json, datetime
-d = json.load(sys.stdin)
-gen = datetime.datetime.fromisoformat(d['generated_at'])
+target = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('invalid-json')
+    raise SystemExit(0)
+session = data.get('session', '')
+if session != target:
+    print(f'wrong-session:{session}')
+    raise SystemExit(0)
+generated_at = data.get('generated_at')
+if not generated_at:
+    print('missing-generated-at')
+    raise SystemExit(0)
+try:
+    gen = datetime.datetime.fromisoformat(generated_at)
+except Exception:
+    print('invalid-generated-at')
+    raise SystemExit(0)
 if gen.tzinfo is None:
     gen = gen.replace(tzinfo=datetime.timezone.utc)
 age = (datetime.datetime.now(datetime.timezone.utc) - gen).total_seconds()
-print('yes' if age < 36000 else 'no')
-" 2>/dev/null) || { echo "ERROR: Failed to check freshness" >&2; exit 1; }
+print('ok' if age < 36000 else 'stale')
+" "$SESSION" 2>/dev/null || true)
 
-if [ "$IS_FRESH" != "yes" ]; then
-    echo "briefing-input.json is stale, skipping" >&2
-    exit 0
-fi
+        if [ "$INPUT_STATE" = "ok" ]; then
+            break
+        fi
+        echo "Waiting for fresh $SESSION input ($INPUT_STATE)" >&2
+    else
+        echo "Waiting for briefing-input.json to appear" >&2
+    fi
+
+    if [ "$(date +%s)" -ge "$wait_deadline" ]; then
+        echo "ERROR: Timed out waiting for fresh $SESSION briefing-input.json" >&2
+        send_alert "Timed out waiting for fresh $SESSION briefing-input.json"
+        exit 1
+    fi
+
+    sleep "$POLL_INTERVAL_SECONDS"
+done
 
 # Run Opus analysis
 echo "Running Opus analysis for $SESSION..." >&2
@@ -90,7 +110,7 @@ HTTP_CODE=$(echo "$ANALYSIS" | curl -sk -o /dev/null -w '%{http_code}' \
     exit 1
 }
 
-if [ "$HTTP_CODE" != "201" ]; then
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
     echo "ERROR: jimbo-api returned $HTTP_CODE" >&2
     send_alert "jimbo-api returned HTTP $HTTP_CODE for $SESSION analysis POST"
     exit 1
