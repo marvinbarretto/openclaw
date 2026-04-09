@@ -7,7 +7,7 @@ import sys
 
 from jimbo_runtime_engine import load_intake_payload, run_intake_batch
 from jimbo_runtime_producers import PRODUCER_COMMANDS
-from jimbo_runtime_ops import run_report, run_roundtrip
+from jimbo_runtime_ops import emit_producer_output, run_report, run_roundtrip
 from jimbo_runtime_summary_core import (
     log_summary_activity,
     run_summary,
@@ -28,6 +28,11 @@ def cmd_resolve(args):
     result = run_intake_batch(payload, live=args.live)
     json.dump(result, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
+    return 0
+
+
+def cmd_emit(args):
+    sys.stdout.write(emit_producer_output(args.producer))
     return 0
 
 
@@ -80,6 +85,10 @@ def build_parser():
     resolve_parser.add_argument("--intake-file", help="Path to a JSON file containing one or more intake payloads")
     resolve_parser.add_argument("--live", action="store_true", help="Execute intake logging instead of dry-run resolution")
     resolve_parser.set_defaults(handler=cmd_resolve)
+
+    emit_parser = subparsers.add_parser("emit", help="Emit raw normalized intake JSON from a registered producer")
+    emit_parser.add_argument("--producer", choices=sorted(PRODUCER_COMMANDS), required=True)
+    emit_parser.set_defaults(handler=cmd_emit)
 
     summary_parser = subparsers.add_parser("summary", help="Summarize runtime intake payloads")
     summary_parser.add_argument("--intake-json", help="Raw normalized intake JSON")

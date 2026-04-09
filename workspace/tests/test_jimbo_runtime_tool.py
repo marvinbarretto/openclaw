@@ -45,6 +45,17 @@ class TestJimboRuntimeTool(unittest.TestCase):
         run_report.assert_called_once()
         dump_mock.assert_called_once()
 
+    def test_emit_command_prints_producer_output(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'emit_producer_output', return_value='[{"task_id":"note_1"}]\n') as emit_output, \
+             mock.patch.object(runtime_tool.sys, 'stdout') as stdout:
+            exit_code = runtime_tool.main(['emit', '--producer', 'dispatch-proposal'])
+
+        self.assertEqual(exit_code, 0)
+        emit_output.assert_called_once_with('dispatch-proposal')
+        stdout.write.assert_called_once_with('[{"task_id":"note_1"}]\n')
+
 
 if __name__ == '__main__':
     unittest.main()

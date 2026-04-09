@@ -29,6 +29,11 @@ def run_subprocess(cmd, *, stdin_text=None):
     return proc.stdout
 
 
+def emit_producer_output(producer):
+    """Run one producer in emit mode and return its raw intake JSON."""
+    return run_subprocess(get_producer_command(producer))
+
+
 def build_runtime_cli_command(*, live=False, summary=False):
     command = "summary" if summary else "resolve"
     cmd = [
@@ -48,7 +53,7 @@ def run_roundtrip(producer, *, live=False, summary=False):
     if live and summary:
         raise ValueError("summary mode does not support live execution")
 
-    producer_output = run_subprocess(get_producer_command(producer))
+    producer_output = emit_producer_output(producer)
     runtime_output = run_subprocess(
         build_runtime_cli_command(live=live, summary=summary),
         stdin_text=producer_output,
@@ -58,7 +63,7 @@ def run_roundtrip(producer, *, live=False, summary=False):
 
 def load_producer_payloads(producer):
     """Run one producer in emit mode and parse its intake payloads."""
-    return json.loads(run_subprocess(get_producer_command(producer)))
+    return json.loads(emit_producer_output(producer))
 
 
 def run_report(producer, *, output_file=None, log_activity=False,

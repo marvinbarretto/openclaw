@@ -230,6 +230,7 @@ The top-level control-plane entrypoint is:
 
 ```bash
 python3 workspace/jimbo_runtime_tool.py producers
+python3 workspace/jimbo_runtime_tool.py emit --producer dispatch-proposal
 python3 workspace/jimbo_runtime_tool.py resolve --intake-file /tmp/intake.json
 python3 workspace/jimbo_runtime_tool.py summary --intake-file /tmp/intake.json
 python3 workspace/jimbo_runtime_tool.py roundtrip --producer dispatch-proposal --summary
