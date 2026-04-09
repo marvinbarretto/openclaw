@@ -198,3 +198,18 @@ python3 workspace/jimbo_runtime_summary.py \
   --log-activity \
   --summary-id runtime-summary-2026-04-09
 ```
+
+## Operational wrapper
+
+For a single scheduled-facing command that runs a producer, summarizes its
+intake payloads, optionally writes an artifact, and optionally logs activity:
+
+```bash
+python3 workspace/jimbo_runtime_report.py --producer dispatch-proposal
+python3 workspace/jimbo_runtime_report.py --producer dispatch-worker
+python3 workspace/jimbo_runtime_report.py \
+  --producer dispatch-proposal \
+  --output-file /tmp/jimbo-runtime-summary.json \
+  --log-activity \
+  --summary-id runtime-summary-2026-04-09
+```
