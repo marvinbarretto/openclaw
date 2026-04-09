@@ -4,6 +4,7 @@ import importlib.util
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -54,6 +55,7 @@ class TestDispatchWorkerApiWrites(unittest.TestCase):
             'files_changed': ['src/app.ts'],
         }
         proc = mock.Mock(stdout='ignored', stderr='', returncode=0)
+        mock_core = mock.Mock()
 
         with mock.patch.object(worker, 'load_template', return_value='Task: {title}'), \
              mock.patch.object(worker, 'hydrate_task', return_value=normalized_task), \
@@ -67,16 +69,19 @@ class TestDispatchWorkerApiWrites(unittest.TestCase):
              mock.patch.object(worker, 'preserve_evidence') as preserve_mock, \
              mock.patch.object(worker, 'cleanup') as cleanup_mock, \
              mock.patch.object(worker, 'send_telegram'), \
-             mock.patch.object(worker.JimboCore, 'intake', return_value='act_1'), \
-             mock.patch.object(worker.JimboCore, 'delegate', return_value='act_2'), \
-             mock.patch.object(worker.JimboCore, 'review', return_value='act_3'), \
-             mock.patch.object(worker.JimboCore, 'report', return_value='act_4'), \
+             mock.patch.object(worker, 'resolve_dispatch_selection',
+                               return_value=SimpleNamespace(core=mock_core)) as resolve_selection, \
              mock.patch.object(worker.subprocess, 'run', return_value=proc), \
              mock.patch.object(worker, 'parse_result', return_value=completed_result), \
              mock.patch.object(worker.os.path, 'exists', return_value=False):
             ok = worker.execute_task(task, dry_run=False)
 
         self.assertFalse(ok)
+        resolve_selection.assert_called_once_with(task, normalized_task, '/tmp')
+        mock_core.intake.assert_called_once()
+        mock_core.delegate.assert_called_once()
+        mock_core.review.assert_called_once()
+        self.assertEqual(mock_core.report.call_count, 1)
         preserve_mock.assert_called_once()
         cleanup_mock.assert_not_called()
 

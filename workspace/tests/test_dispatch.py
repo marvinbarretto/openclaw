@@ -109,5 +109,45 @@ class TestTransitionPersistence(unittest.TestCase):
         save_state.assert_called_once()
 
 
+class TestRuntimeIntegration(unittest.TestCase):
+
+    def test_propose_batch_routes_items_through_jimbo_runtime(self):
+        import dispatch
+
+        proposed_item = {
+            'id': 11,
+            'task_id': 'note_1',
+            'title': 'Fix auth bug',
+            'agent_type': 'coder',
+            'flow': 'commission',
+        }
+
+        with mock.patch.object(dispatch, 'api_request', side_effect=[
+            {
+                'items': [proposed_item],
+                'batch_id': 'batch-20260325-143000',
+                'approve_url': 'https://approve',
+                'reject_url': 'https://reject',
+            },
+            None,
+        ]), \
+             mock.patch.object(dispatch, 'hydrate_batch', return_value=[proposed_item]), \
+             mock.patch.object(dispatch, 'build_batch_summary', return_value='batch message'), \
+             mock.patch.object(dispatch, 'build_batch', return_value={'items': {'11': proposed_item}}), \
+             mock.patch.object(dispatch, 'emit_batch_report', return_value=True), \
+             mock.patch.object(dispatch, 'send_telegram', return_value=True), \
+             mock.patch.object(dispatch.RUNTIME, 'begin') as runtime_begin:
+            ok = dispatch.propose_batch(dry_run=False)
+
+        self.assertTrue(ok)
+        runtime_begin.assert_called_once()
+        envelope = runtime_begin.call_args.args[0]
+        self.assertEqual(envelope.source, 'dispatch')
+        self.assertEqual(envelope.trigger, 'dispatch-propose')
+        self.assertEqual(envelope.workflow_hint, 'dispatch')
+        self.assertEqual(envelope.metadata['batch_id'], 'batch-20260325-143000')
+        self.assertEqual(envelope.metadata['dispatch_id'], 11)
+
+
 if __name__ == '__main__':
     unittest.main()
