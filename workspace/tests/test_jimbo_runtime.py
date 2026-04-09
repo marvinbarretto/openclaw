@@ -10,6 +10,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 class TestJimboRuntime(unittest.TestCase):
 
+    def test_get_default_runtime_returns_shared_instance(self):
+        from jimbo_runtime import get_default_runtime
+
+        self.assertIs(get_default_runtime(), get_default_runtime())
+
     def test_resolves_dispatch_workflow_from_registry_alias(self):
         from jimbo_runtime import JimboIntakeEnvelope, JimboRuntime
 

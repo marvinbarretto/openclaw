@@ -180,3 +180,16 @@ class JimboRuntime:
             intake_activity_id=intake_activity_id,
             route_activity_id=route_activity_id,
         )
+
+
+def create_default_runtime(*, logger=None):
+    """Build the canonical Jimbo runtime used by live orchestration scripts."""
+    return JimboRuntime(workflows=DEFAULT_WORKFLOWS, logger=logger)
+
+
+_DEFAULT_RUNTIME = create_default_runtime()
+
+
+def get_default_runtime():
+    """Return the shared Jimbo runtime configuration for this process."""
+    return _DEFAULT_RUNTIME

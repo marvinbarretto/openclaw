@@ -38,7 +38,7 @@ from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_transitions import collect_new_items, normalize_seen_state, serialize_seen_state
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
 from jimbo_core import JimboCore, JimboTask
-from jimbo_runtime import JimboIntakeEnvelope, JimboRuntime
+from jimbo_runtime_service import begin_dispatch_proposal
 
 # --- Configuration ---
 
@@ -53,7 +53,6 @@ BATCH_QUEUE_STATUSES = 'proposed,approved,running,completed,failed,rejected'
 
 # Timeout limits — if a task has been running longer than this, mark it failed
 TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200}  # seconds
-RUNTIME = JimboRuntime()
 
 
 # --- Utility functions ---
@@ -452,35 +451,11 @@ def propose_batch(dry_run=False):
     send_telegram(message)
     emit_batch_report(batch_id, build_batch(batch_id, hydrated_items, default_status='proposed'), dry_run=dry_run)
     for item in hydrated_items:
-        RUNTIME.begin(
-            JimboIntakeEnvelope.from_mapping(
-                item,
-                intake_id=item.get("id") or item["task_id"],
-                source='dispatch',
-                trigger='dispatch-propose',
-                workflow_hint='dispatch',
-                metadata={
-                    "batch_id": batch_id,
-                    "dispatch_id": item.get("id"),
-                },
-            ),
-            intake_reason='Task selected from ready queue',
-            route={
-                "decision": "proposed",
-                "reason": "Selected by dispatch proposer from ready queue",
-                "batch_id": batch_id,
-                "flow": item.get("flow"),
-            },
-            route_reason='Selected by dispatch proposer from ready queue',
-            delegate={
-                "agent_type": item.get("agent_type"),
-                "approval": "pending",
-            },
-            metadata={
-                "dispatch_id": item.get("id"),
-                "approve_url": approve_url,
-                "reject_url": reject_url,
-            },
+        begin_dispatch_proposal(
+            item,
+            batch_id=batch_id,
+            approve_url=approve_url,
+            reject_url=reject_url,
         )
     log(f'Proposed batch {batch_id} with {len(hydrated_items)} tasks')
     return True

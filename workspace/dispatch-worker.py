@@ -32,7 +32,7 @@ from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
 from dispatch_review import validate_result
 from jimbo_core import JimboCore, JimboTask
-from jimbo_runtime import JimboIntakeEnvelope, JimboRuntime
+from jimbo_runtime_service import resolve_dispatch_execution
 
 # --- Configuration ---
 
@@ -45,7 +45,6 @@ DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 # Approach 3: configurable per-task or via settings API
 TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200}  # seconds
-RUNTIME = JimboRuntime()
 
 
 # --- Utility functions ---
@@ -164,24 +163,6 @@ def fetch_vault_note(task_id):
     return api_request('GET', f'/api/vault/notes/{task_id}')
 
 
-def resolve_dispatch_selection(task, normalized_task, work_dir):
-    """Resolve the runtime workflow selection for a dispatch execution."""
-    return RUNTIME.resolve_workflow(
-        JimboIntakeEnvelope.from_mapping(
-            normalized_task,
-            intake_id=task.get('id') or task.get('task_id'),
-            source='dispatch',
-            trigger='dispatch-next',
-            workflow_hint='dispatch',
-            model=DEFAULT_MODEL,
-            metadata={
-                'dispatch_id': task.get('id'),
-                'repo': work_dir,
-            },
-        )
-    )
-
-
 # --- Core worker logic ---
 
 def execute_task(task, dry_run=False):
@@ -232,7 +213,12 @@ def execute_task(task, dry_run=False):
     if not report_dispatch_start(dispatch_id, prompt, work_dir):
         preserve_evidence(task_id, 'could not mark task as started in jimbo-api')
         return False
-    selection = resolve_dispatch_selection(task, normalized_task, work_dir)
+    selection = resolve_dispatch_execution(
+        task,
+        normalized_task,
+        work_dir,
+        model=DEFAULT_MODEL,
+    )
     core = selection.core
     core.intake(
         reason='Approved task fetched from dispatch queue',

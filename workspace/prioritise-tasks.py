@@ -32,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from jimbo_runtime import JimboIntakeEnvelope, JimboRuntime
+from jimbo_runtime_service import log_dispatch_candidate_classification
 
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
@@ -44,7 +44,6 @@ CONTEXT_DIR = os.path.join(_script_dir, "context")
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-RUNTIME = JimboRuntime()
 
 BATCH_SIZE = 5
 
@@ -134,43 +133,6 @@ def get_env(name):
 
 def log(msg):
     print(msg, file=sys.stderr)
-
-
-def log_dispatch_candidate_classification(task, *, priority, actionability,
-                                          reason, suggested_agent_type,
-                                          suggested_route,
-                                          acceptance_criteria,
-                                          changed_fields, model=GEMINI_MODEL):
-    """Log a classified task that is suitable for Jimbo delegation."""
-    selection = RUNTIME.resolve_workflow(
-        JimboIntakeEnvelope.from_mapping(
-            task,
-            intake_id=task.get('id') or task['id'],
-            source='vault',
-            trigger='vault-task-triage',
-            workflow_hint='vault-task-triage',
-            task_source='vault',
-            model=model,
-        )
-    )
-    selection.core.classify(
-        classification={
-            'priority': priority,
-            'actionability': actionability,
-            'reason': reason,
-        },
-        route={
-            'decision': suggested_route,
-            'reason': 'Task is suitable for delegated execution',
-        },
-        delegate={
-            'agent_type': suggested_agent_type,
-            'acceptance_criteria': acceptance_criteria,
-        },
-        changed={
-            'fields': sorted(changed_fields),
-        },
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -800,6 +762,7 @@ def cmd_score_api(args):
                         suggested_route=s_route,
                         acceptance_criteria=s_ac,
                         changed_fields=patch.keys(),
+                        model=GEMINI_MODEL,
                     )
 
             scored += 1

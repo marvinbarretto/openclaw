@@ -136,17 +136,16 @@ class TestRuntimeIntegration(unittest.TestCase):
              mock.patch.object(dispatch, 'build_batch', return_value={'items': {'11': proposed_item}}), \
              mock.patch.object(dispatch, 'emit_batch_report', return_value=True), \
              mock.patch.object(dispatch, 'send_telegram', return_value=True), \
-             mock.patch.object(dispatch.RUNTIME, 'begin') as runtime_begin:
+             mock.patch.object(dispatch, 'begin_dispatch_proposal') as begin_dispatch_proposal:
             ok = dispatch.propose_batch(dry_run=False)
 
         self.assertTrue(ok)
-        runtime_begin.assert_called_once()
-        envelope = runtime_begin.call_args.args[0]
-        self.assertEqual(envelope.source, 'dispatch')
-        self.assertEqual(envelope.trigger, 'dispatch-propose')
-        self.assertEqual(envelope.workflow_hint, 'dispatch')
-        self.assertEqual(envelope.metadata['batch_id'], 'batch-20260325-143000')
-        self.assertEqual(envelope.metadata['dispatch_id'], 11)
+        begin_dispatch_proposal.assert_called_once_with(
+            proposed_item,
+            batch_id='batch-20260325-143000',
+            approve_url='https://approve',
+            reject_url='https://reject',
+        )
 
 
 if __name__ == '__main__':

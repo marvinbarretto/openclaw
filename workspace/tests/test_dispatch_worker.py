@@ -69,15 +69,20 @@ class TestDispatchWorkerApiWrites(unittest.TestCase):
              mock.patch.object(worker, 'preserve_evidence') as preserve_mock, \
              mock.patch.object(worker, 'cleanup') as cleanup_mock, \
              mock.patch.object(worker, 'send_telegram'), \
-             mock.patch.object(worker, 'resolve_dispatch_selection',
-                               return_value=SimpleNamespace(core=mock_core)) as resolve_selection, \
+             mock.patch.object(worker, 'resolve_dispatch_execution',
+                               return_value=SimpleNamespace(core=mock_core)) as resolve_dispatch_execution, \
              mock.patch.object(worker.subprocess, 'run', return_value=proc), \
              mock.patch.object(worker, 'parse_result', return_value=completed_result), \
              mock.patch.object(worker.os.path, 'exists', return_value=False):
             ok = worker.execute_task(task, dry_run=False)
 
         self.assertFalse(ok)
-        resolve_selection.assert_called_once_with(task, normalized_task, '/tmp')
+        resolve_dispatch_execution.assert_called_once_with(
+            task,
+            normalized_task,
+            '/tmp',
+            model='claude-sonnet-4-6',
+        )
         mock_core.intake.assert_called_once()
         mock_core.delegate.assert_called_once()
         mock_core.review.assert_called_once()
