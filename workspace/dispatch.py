@@ -26,6 +26,9 @@ import sys
 import urllib.request
 import urllib.error
 
+from dispatch_utils import is_valid_batch_id, parse_result, render_template
+import orchestration_helper
+
 # --- Configuration ---
 
 API_URL = os.environ.get('JIMBO_API_URL', 'http://localhost:3100')
@@ -162,6 +165,9 @@ def propose_batch(dry_run=False):
         log('No tasks ready for dispatch')
         return False
 
+    if batch_id and not is_valid_batch_id(batch_id):
+        log(f'Unexpected batch ID format: {batch_id}')
+
     # Build Telegram message
     lines = [f'[Dispatch] Batch {batch_id} -- {len(all_items)} tasks ready:\n']
     for i, item in enumerate(all_items, 1):
@@ -185,6 +191,34 @@ def propose_batch(dry_run=False):
         return True
 
     send_telegram(message)
+    for item in all_items:
+        item_title = item.get('task_id')
+        item_source = item.get('task_source', 'vault')
+        if item_source != 'github':
+            vault_task = api_request('GET', f'/api/vault/notes/{item["task_id"]}')
+            if vault_task:
+                item_title = vault_task.get('title', item_title)
+        orchestration_helper.log_decision(
+            "route",
+            item["task_id"],
+            title=item_title,
+            task_source=item_source,
+            route={
+                "decision": "proposed",
+                "reason": "Selected by dispatch proposer from ready queue",
+                "batch_id": batch_id,
+                "flow": item.get("flow"),
+            },
+            delegate={
+                "agent_type": item.get("agent_type"),
+                "approval": "pending",
+            },
+            metadata={
+                "dispatch_id": item.get("id"),
+                "approve_url": approve_url,
+                "reject_url": reject_url,
+            },
+        )
     log(f'Proposed batch {batch_id} with {len(all_items)} tasks')
     return True
 
