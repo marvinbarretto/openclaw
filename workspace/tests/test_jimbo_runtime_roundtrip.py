@@ -35,10 +35,12 @@ class TestJimboRuntimeRoundtrip(unittest.TestCase):
     def test_run_roundtrip_pipes_producer_output_into_runtime_cli(self):
         roundtrip = load_runtime_roundtrip()
 
-        with mock.patch.object(roundtrip, 'run_subprocess', side_effect=['[{"source":"dispatch"}]', '{"mode":"resolved"}']) as run_subprocess:
+        with mock.patch.object(roundtrip, 'get_producer_command', return_value=['python', 'dispatch.py', '--emit-intake']) as get_producer_command, \
+             mock.patch.object(roundtrip, 'run_subprocess', side_effect=['[{"source":"dispatch"}]', '{"mode":"resolved"}']) as run_subprocess:
             output = roundtrip.run_roundtrip('dispatch-proposal')
 
         self.assertEqual(output, '{"mode":"resolved"}')
+        get_producer_command.assert_called_once_with('dispatch-proposal')
         self.assertEqual(run_subprocess.call_count, 2)
         producer_call = run_subprocess.call_args_list[0]
         runtime_call = run_subprocess.call_args_list[1]
@@ -49,24 +51,26 @@ class TestJimboRuntimeRoundtrip(unittest.TestCase):
     def test_run_roundtrip_can_target_summary_surface(self):
         roundtrip = load_runtime_roundtrip()
 
-        with mock.patch.object(roundtrip, 'run_subprocess', side_effect=['[{"source":"dispatch"}]', '{"mode":"summary"}']) as run_subprocess:
+        with mock.patch.object(roundtrip, 'get_producer_command', return_value=['python', 'dispatch.py', '--emit-intake']), \
+             mock.patch.object(roundtrip, 'run_subprocess', side_effect=['[{"source":"dispatch"}]', '{"mode":"summary"}']) as run_subprocess:
             output = roundtrip.run_roundtrip('dispatch-proposal', summary=True)
 
         self.assertEqual(output, '{"mode":"summary"}')
         runtime_call = run_subprocess.call_args_list[1]
         self.assertIn('jimbo_runtime_summary.py', runtime_call.args[0][1])
 
+    def test_run_roundtrip_rejects_unknown_producer(self):
+        roundtrip = load_runtime_roundtrip()
+
+        with mock.patch.object(roundtrip, 'get_producer_command', side_effect=ValueError('Unknown producer: nope')):
+            with self.assertRaisesRegex(ValueError, 'Unknown producer'):
+                roundtrip.run_roundtrip('nope')
+
     def test_run_roundtrip_rejects_live_summary_combination(self):
         roundtrip = load_runtime_roundtrip()
 
         with self.assertRaisesRegex(ValueError, 'does not support live execution'):
             roundtrip.run_roundtrip('dispatch-proposal', live=True, summary=True)
-
-    def test_run_roundtrip_rejects_unknown_producer(self):
-        roundtrip = load_runtime_roundtrip()
-
-        with self.assertRaisesRegex(ValueError, 'Unknown producer'):
-            roundtrip.run_roundtrip('nope')
 
 
 if __name__ == '__main__':

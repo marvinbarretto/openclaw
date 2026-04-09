@@ -5,7 +5,8 @@ import argparse
 import json
 import sys
 
-from jimbo_runtime_roundtrip import PRODUCER_COMMANDS, run_subprocess
+from jimbo_runtime_producers import PRODUCER_COMMANDS, get_producer_command
+from jimbo_runtime_roundtrip import run_subprocess
 from jimbo_runtime_summary import (
     log_summary_activity,
     run_summary,
@@ -15,9 +16,7 @@ from jimbo_runtime_summary import (
 
 def load_producer_payloads(producer):
     """Run one producer in emit mode and parse its intake payloads."""
-    if producer not in PRODUCER_COMMANDS:
-        raise ValueError(f"Unknown producer: {producer}")
-    return json.loads(run_subprocess(PRODUCER_COMMANDS[producer]))
+    return json.loads(run_subprocess(get_producer_command(producer)))
 
 
 def run_report(producer, *, output_file=None, log_activity=False,

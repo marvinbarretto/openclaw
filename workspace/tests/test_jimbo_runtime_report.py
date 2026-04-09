@@ -24,10 +24,12 @@ class TestJimboRuntimeReport(unittest.TestCase):
     def test_load_producer_payloads_runs_emit_command(self):
         runtime_report = load_runtime_report()
 
-        with mock.patch.object(runtime_report, 'run_subprocess', return_value='[{"task_id":"note_1"}]') as run_subprocess:
+        with mock.patch.object(runtime_report, 'get_producer_command', return_value=['python', 'dispatch.py', '--emit-intake']) as get_producer_command, \
+             mock.patch.object(runtime_report, 'run_subprocess', return_value='[{"task_id":"note_1"}]') as run_subprocess:
             payloads = runtime_report.load_producer_payloads('dispatch-proposal')
 
         self.assertEqual(payloads, [{"task_id": "note_1"}])
+        get_producer_command.assert_called_once_with('dispatch-proposal')
         run_subprocess.assert_called_once()
         self.assertIn('dispatch.py', run_subprocess.call_args.args[0][1])
 

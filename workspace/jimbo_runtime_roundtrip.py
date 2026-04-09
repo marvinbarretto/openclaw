@@ -6,12 +6,9 @@ import os
 import subprocess
 import sys
 
+from jimbo_runtime_producers import PRODUCER_COMMANDS, get_producer_command
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PRODUCER_COMMANDS = {
-    "dispatch-proposal": [sys.executable, os.path.join(SCRIPT_DIR, "dispatch.py"), "--emit-intake"],
-    "dispatch-worker": [sys.executable, os.path.join(SCRIPT_DIR, "dispatch-worker.py"), "--emit-intake"],
-}
 
 
 def run_subprocess(cmd, *, stdin_text=None):
@@ -42,12 +39,10 @@ def build_runtime_cli_command(*, live=False, summary=False):
 
 def run_roundtrip(producer, *, live=False, summary=False):
     """Emit intake payloads from a producer and pass them to the runtime CLI."""
-    if producer not in PRODUCER_COMMANDS:
-        raise ValueError(f"Unknown producer: {producer}")
     if live and summary:
         raise ValueError("summary mode does not support live execution")
 
-    producer_output = run_subprocess(PRODUCER_COMMANDS[producer])
+    producer_output = run_subprocess(get_producer_command(producer))
     runtime_output = run_subprocess(
         build_runtime_cli_command(live=live, summary=summary),
         stdin_text=producer_output,
