@@ -18,6 +18,9 @@ def load_intake_payload(*, intake_json=None, intake_file=None):
     if intake_json:
         return json.loads(intake_json)
 
+    if intake_file == "-":
+        return json.load(sys.stdin)
+
     with open(intake_file) as f:
         return json.load(f)
 

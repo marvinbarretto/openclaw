@@ -128,3 +128,10 @@ The runtime CLI accepts either:
 
 That means the proposer output can be passed straight into the runtime CLI via
 `--intake-file`.
+
+You can also pipe directly over stdin:
+
+```bash
+python3 workspace/dispatch.py --emit-intake \
+  | python3 workspace/jimbo_runtime_cli.py --intake-file -
+```

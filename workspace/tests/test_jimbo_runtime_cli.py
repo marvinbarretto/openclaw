@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import io
 import os
 import sys
 import tempfile
@@ -36,6 +37,15 @@ class TestJimboRuntimeCli(unittest.TestCase):
             loaded = runtime_cli.load_intake_payload(intake_file=tmp_path)
         finally:
             os.unlink(tmp_path)
+
+        self.assertEqual(loaded, payload)
+
+    def test_load_intake_payload_from_stdin(self):
+        runtime_cli = load_runtime_cli()
+        payload = {"task_id": "note_1", "source": "dispatch", "trigger": "dispatch-propose"}
+
+        with mock.patch.object(runtime_cli.sys, "stdin", io.StringIO(json.dumps(payload))):
+            loaded = runtime_cli.load_intake_payload(intake_file="-")
 
         self.assertEqual(loaded, payload)
 
