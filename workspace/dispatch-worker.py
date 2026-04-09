@@ -182,7 +182,6 @@ def execute_task(task, dry_run=False):
         summary='Task picked up by dispatch worker',
         review_reason='Execution started on the dispatch worker',
     ))
-
     # Write prompt to temp file
     prompt_path = f'/tmp/dispatch-{task_id}.prompt'
     with open(prompt_path, 'w') as f:
@@ -370,7 +369,6 @@ def execute_task(task, dry_run=False):
         summary=result.get('summary', ''),
         review_reason=review_decision.get('reason'),
     ))
-
     cleanup(task_id)
     return True
 

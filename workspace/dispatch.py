@@ -26,6 +26,15 @@ import sys
 import urllib.request
 import urllib.error
 
+from dispatch_batch_memory import (
+    batch_report_status,
+    initialize_batch,
+    load_batch_state,
+    record_item_status,
+    record_queue_item,
+    save_batch_state,
+    summarize_batch,
+)
 from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_transitions import collect_new_items, load_seen_state, save_seen_state
@@ -40,6 +49,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 LOCK_FILE = '/tmp/dispatch.lock'
 TRANSITION_STATE_FILE = '/tmp/dispatch-transition-state.json'
+BATCH_STATE_FILE = '/tmp/dispatch-batch-state.json'
 DEFAULT_BATCH_SIZE = 3
 
 # Timeout limits — if a task has been running longer than this, mark it failed
@@ -119,6 +129,36 @@ def fetch_queue_items(status):
     return queue.get('items', []) if queue else []
 
 
+def emit_batch_report(batch_id, batch, *, dry_run=False):
+    summary = summarize_batch(batch)
+    report_status = batch_report_status(batch)
+    orchestration_helper.log_decision(
+        'report',
+        batch_id,
+        title=summary,
+        task_source='dispatch-batch',
+        report={
+            'status': report_status,
+            'batch_id': batch_id,
+            'summary': summary,
+        },
+        changed={
+            'items': len(batch.get('items', {})),
+        },
+        metadata={
+            'batch': batch,
+        },
+    )
+    notify_terminal_outcome(
+        report_status,
+        {'task_id': batch_id, 'flow': 'batch', 'agent_type': 'orchestrator'},
+        title=f'batch {batch_id}',
+        summary=summary,
+        review_reason='Batch state updated',
+        dry_run=dry_run,
+    )
+
+
 def emit_transition(status, item, *, dry_run=False):
     hydrated = hydrate_batch([item], fetch_vault_note)
     if not hydrated:
@@ -161,21 +201,50 @@ def emit_transition(status, item, *, dry_run=False):
     )
 
 
+def sync_batch_item(item, *, dry_run=False):
+    """Update the local batch projection from a jimbo-api queue item."""
+    batch_id = item.get('batch_id')
+    if not batch_id:
+        return
+    batch_state = load_batch_state(BATCH_STATE_FILE)
+    batch_state = record_queue_item(batch_state, item)
+    if dry_run:
+        emit_batch_report(batch_id, batch_state[batch_id], dry_run=True)
+        return
+    save_batch_state(BATCH_STATE_FILE, batch_state)
+    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
+
+
 def check_queue_transitions(dry_run=False):
-    """Detect newly-approved and newly-rejected queue items."""
+    """Detect new queue transitions and update batch state from the API."""
     seen_state = load_seen_state(TRANSITION_STATE_FILE)
     approved_items = fetch_queue_items('approved')
     rejected_items = fetch_queue_items('rejected')
+    running_items = fetch_queue_items('running')
+    completed_items = fetch_queue_items('completed')
+    failed_items = fetch_queue_items('failed')
 
     new_approved, next_state = collect_new_items(seen_state, 'approved', approved_items)
     new_rejected, next_state = collect_new_items(next_state, 'rejected', rejected_items)
+    new_running, next_state = collect_new_items(next_state, 'running', running_items)
+    new_completed, next_state = collect_new_items(next_state, 'completed', completed_items)
+    new_failed, next_state = collect_new_items(next_state, 'failed', failed_items)
 
     for item in new_approved:
         emit_transition('approved', item, dry_run=dry_run)
+        sync_batch_item(item, dry_run=dry_run)
     for item in new_rejected:
         emit_transition('rejected', item, dry_run=dry_run)
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_running:
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_completed:
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_failed:
+        sync_batch_item(item, dry_run=dry_run)
 
-    save_seen_state(TRANSITION_STATE_FILE, next_state)
+    if not dry_run:
+        save_seen_state(TRANSITION_STATE_FILE, next_state)
 
 
 # --- Core logic ---
@@ -204,6 +273,12 @@ def check_timeouts(dry_run=False):
                     'id': task['id'],
                     'error_message': f'Timeout after {int(elapsed)}s (limit: {timeout}s for {task["agent_type"]})',
                 })
+                batch_id = task.get('batch_id')
+                if batch_id:
+                    batch_state = load_batch_state(BATCH_STATE_FILE)
+                    batch_state = record_item_status(batch_state, batch_id, task, 'timeout')
+                    save_batch_state(BATCH_STATE_FILE, batch_state)
+                    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
                 notify_terminal_outcome(
                     'timeout',
                     task,
@@ -283,7 +358,11 @@ def propose_batch(dry_run=False):
         log(f'DRY RUN: Would send batch proposal:\n{message}')
         return True
 
+    batch_state = load_batch_state(BATCH_STATE_FILE)
+    batch_state = initialize_batch(batch_state, batch_id, hydrated_items)
+    save_batch_state(BATCH_STATE_FILE, batch_state)
     send_telegram(message)
+    emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
     for item in hydrated_items:
         orchestration_helper.log_decision(
             "route",
