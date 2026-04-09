@@ -1,8 +1,10 @@
 """Tests for the Jimbo runtime summary command."""
 
 import importlib.util
+import json
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -48,6 +50,7 @@ class TestJimboRuntimeSummary(unittest.TestCase):
         self.assertEqual(summary["sources"]["dispatch"], 2)
         self.assertEqual(summary["triggers"]["dispatch-propose"], 1)
         self.assertEqual(summary["route_decisions"]["commission"], 1)
+        self.assertTrue(summary["generated_at"].endswith("Z"))
 
     def test_run_summary_uses_runtime_cli_resolution(self):
         runtime_summary = load_runtime_summary()
@@ -67,6 +70,29 @@ class TestJimboRuntimeSummary(unittest.TestCase):
         run_intake_batch.assert_called_once()
         self.assertEqual(summary["mode"], "summary")
         self.assertEqual(summary["items"][0]["task_id"], "note_1")
+
+    def test_write_summary_artifact_persists_json_file(self):
+        runtime_summary = load_runtime_summary()
+        summary = {
+            "mode": "summary",
+            "generated_at": "2026-04-09T12:00:00Z",
+            "total": 1,
+            "workflows": {"dispatch": 1},
+            "sources": {"dispatch": 1},
+            "triggers": {"dispatch-propose": 1},
+            "route_decisions": {"proposed": 1},
+            "items": [{"task_id": "note_1"}],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "runtime-summary.json")
+            runtime_summary.write_summary_artifact(summary, output_path)
+
+            with open(output_path) as f:
+                written = json.load(f)
+
+        self.assertEqual(written["total"], 1)
+        self.assertEqual(written["items"][0]["task_id"], "note_1")
 
 
 if __name__ == '__main__':

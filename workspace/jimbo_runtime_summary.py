@@ -2,6 +2,7 @@
 """Summarize workflow decisions across one or more Jimbo intake payloads."""
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ def summarize_results(results):
 
     summary = {
         "mode": "summary",
+        "generated_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
         "total": len(results),
         "workflows": {},
         "sources": {},
@@ -52,10 +54,21 @@ def run_summary(payloads, *, runtime=None):
     return summarize_results(results)
 
 
+def write_summary_artifact(summary, output_file):
+    """Write a machine-readable summary artifact to disk."""
+    output_dir = os.path.dirname(os.path.abspath(output_file))
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    with open(output_file, "w") as f:
+        json.dump(summary, f, sort_keys=True, indent=2)
+        f.write(os.linesep)
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--intake-json", help="Raw normalized intake JSON")
     parser.add_argument("--intake-file", help="Path to a JSON file containing one or more intake payloads")
+    parser.add_argument("--output-file", help="Optional path to write the summary JSON artifact")
     return parser.parse_args(argv)
 
 
@@ -67,6 +80,8 @@ def main(argv=None):
             intake_file=args.intake_file,
         )
         summary = run_summary(payload)
+        if args.output_file:
+            write_summary_artifact(summary, args.output_file)
     except Exception as exc:
         sys.stderr.write(f"[jimbo-summary] {exc}\n")
         return 1

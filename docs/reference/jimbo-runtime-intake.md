@@ -173,3 +173,11 @@ There is also a direct summary command for one payload or a batch:
 python3 workspace/jimbo_runtime_summary.py --intake-file /tmp/intake.json
 python3 workspace/jimbo_runtime_summary.py --intake-file -
 ```
+
+To persist a machine-readable summary artifact:
+
+```bash
+python3 workspace/jimbo_runtime_summary.py \
+  --intake-file /tmp/intake.json \
+  --output-file /tmp/jimbo-runtime-summary.json
+```
