@@ -7,6 +7,7 @@ import os
 import sys
 
 from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
+from jimbo_runtime_contract import normalize_intake_payload
 
 
 def load_intake_payload(*, intake_json=None, intake_file=None):
@@ -24,6 +25,7 @@ def load_intake_payload(*, intake_json=None, intake_file=None):
 def run_intake(payload, *, live=False, runtime=None):
     """Resolve or execute one normalized intake payload through the runtime."""
     runtime = runtime or get_default_runtime()
+    payload = normalize_intake_payload(payload, live=live)
     envelope = JimboIntakeEnvelope.from_mapping(payload)
     selection = runtime.resolve_workflow(envelope)
 
@@ -40,15 +42,11 @@ def run_intake(payload, *, live=False, runtime=None):
         result["mode"] = "resolved"
         return result
 
-    route = payload.get("route")
-    if not route:
-        raise ValueError("Live runtime execution requires a route payload")
-
     intake_activity_id, route_activity_id = None, None
     runtime_result = runtime.begin(
         envelope,
         intake_reason=payload.get("intake_reason") or "Runtime intake received",
-        route=route,
+        route=payload["route"],
         route_reason=payload.get("route_reason"),
         delegate=payload.get("delegate"),
         changed=payload.get("changed"),

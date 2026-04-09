@@ -72,7 +72,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
             task=SimpleNamespace(task_id="note_1", title="Fix auth bug"),
         )
 
-        with self.assertRaisesRegex(ValueError, "requires a route payload"):
+        with self.assertRaisesRegex(ValueError, "payload.route"):
             runtime_cli.run_intake(
                 {
                     "task_id": "note_1",
