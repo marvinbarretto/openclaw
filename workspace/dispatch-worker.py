@@ -27,6 +27,7 @@ import urllib.request
 import urllib.error
 
 from dispatch_utils import parse_result, render_template
+from dispatch_review import validate_result
 import orchestration_helper
 
 # --- Configuration ---
@@ -211,8 +212,9 @@ def execute_task(task, dry_run=False):
         result = parse_result(proc.stdout or '')
 
     # Report back to API
+    review_decision = validate_result(task, result)
     report_status = 'failed'
-    if result['status'] in ('completed', 'completed_unstructured'):
+    if not review_decision['accepted']:
         orchestration_helper.log_decision(
             'review',
             task_id,
@@ -220,9 +222,33 @@ def execute_task(task, dry_run=False):
             task_source=task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
-                'status': result['status'],
+                'status': review_decision['review_status'],
+                'summary': result.get('summary', ''),
+                'reason': review_decision['reason'],
+                'raw_status': result.get('status'),
+            },
+            changed={
+                'result_keys': sorted(result.keys()),
+            },
+        )
+        log(f'Task {task_id} review rejected: {review_decision["reason"]}')
+        api_request('POST', '/api/dispatch/fail', {
+            'id': dispatch_id,
+            'error_message': f'Review rejected: {review_decision["reason"]}',
+        })
+        report_status = 'rejected'
+    elif result['status'] == 'completed':
+        orchestration_helper.log_decision(
+            'review',
+            task_id,
+            title=vault_task.get('title', ''),
+            task_source=task.get('task_source', 'vault'),
+            model=DEFAULT_MODEL,
+            review={
+                'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'artifacts_present': len(result) > 2,
+                'reason': review_decision['reason'],
             },
         )
         log(f'Task {task_id} completed: {result.get("summary", "")[:100]}')
@@ -242,9 +268,10 @@ def execute_task(task, dry_run=False):
             task_source=task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
-                'status': 'blocked',
+                'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'blockers': result.get('blockers'),
+                'reason': review_decision['reason'],
             },
         )
         log(f'Task {task_id} blocked: {result.get("blockers", "")}')
@@ -264,8 +291,9 @@ def execute_task(task, dry_run=False):
             task_source=task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
-                'status': 'failed',
+                'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
+                'reason': review_decision['reason'],
             },
         )
         log(f'Task {task_id} failed: {result.get("summary", "")}')
