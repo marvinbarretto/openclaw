@@ -113,6 +113,37 @@ class TestJimboRuntimeCli(unittest.TestCase):
         self.assertEqual(result["route_activity_id"], "act_2")
         runtime.begin.assert_called_once()
 
+    def test_run_intake_batch_handles_payload_lists(self):
+        runtime_cli = load_runtime_cli()
+        runtime = mock.Mock()
+        runtime.resolve_workflow.return_value = SimpleNamespace(
+            workflow=SimpleNamespace(name="dispatch"),
+            task=SimpleNamespace(task_id="note_1", title="Fix auth bug"),
+        )
+
+        results = runtime_cli.run_intake_batch(
+            [
+                {
+                    "task_id": "note_1",
+                    "title": "Fix auth bug",
+                    "source": "dispatch",
+                    "trigger": "dispatch-propose",
+                },
+                {
+                    "task_id": "note_2",
+                    "title": "Write blog draft",
+                    "source": "dispatch",
+                    "trigger": "dispatch-propose",
+                },
+            ],
+            runtime=runtime,
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["mode"], "resolved")
+        self.assertEqual(results[1]["mode"], "resolved")
+        self.assertEqual(runtime.resolve_workflow.call_count, 2)
+
 
 if __name__ == '__main__':
     unittest.main()

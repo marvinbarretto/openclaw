@@ -11,7 +11,7 @@ from jimbo_runtime_contract import normalize_intake_payload
 
 
 def load_intake_payload(*, intake_json=None, intake_file=None):
-    """Load one normalized intake payload from JSON text or a file path."""
+    """Load one normalized intake payload or a payload list."""
     if bool(intake_json) == bool(intake_file):
         raise ValueError("Provide exactly one of intake_json or intake_file")
 
@@ -60,6 +60,14 @@ def run_intake(payload, *, live=False, runtime=None):
     return result
 
 
+def run_intake_batch(payloads, *, live=False, runtime=None):
+    """Resolve or execute one or more intake payloads through the runtime."""
+    runtime = runtime or get_default_runtime()
+    if isinstance(payloads, list):
+        return [run_intake(payload, live=live, runtime=runtime) for payload in payloads]
+    return run_intake(payloads, live=live, runtime=runtime)
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--intake-json", help="Raw normalized intake JSON")
@@ -79,7 +87,7 @@ def main(argv=None):
             intake_json=args.intake_json,
             intake_file=args.intake_file,
         )
-        result = run_intake(payload, live=args.live)
+        result = run_intake_batch(payload, live=args.live)
     except Exception as exc:
         sys.stderr.write(f"[jimbo-runtime] {exc}\n")
         return 1

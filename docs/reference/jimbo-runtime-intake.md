@@ -120,3 +120,11 @@ python3 workspace/dispatch.py --emit-intake
 
 That prints a JSON array of normalized intake payloads using the same contract
 consumed by the runtime CLI and service helpers.
+
+The runtime CLI accepts either:
+
+- a single intake payload object
+- a JSON array of intake payload objects
+
+That means the proposer output can be passed straight into the runtime CLI via
+`--intake-file`.
