@@ -37,7 +37,7 @@ from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_transitions import collect_new_items, normalize_seen_state, serialize_seen_state
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
-import orchestration_helper
+from jimbo_core import JimboCore, JimboTask
 
 # --- Configuration ---
 
@@ -174,16 +174,18 @@ def save_transition_state(state):
 def emit_batch_report(batch_id, batch, *, dry_run=False):
     summary = summarize_batch(batch)
     report_status = batch_report_status(batch)
-    activity_id = orchestration_helper.log_decision(
-        'report',
-        batch_id,
+    activity_id = JimboCore(JimboTask(
+        task_id=batch_id,
         title=summary,
         task_source='dispatch-batch',
+        workflow='dispatch',
+    )).report(
         report={
             'status': report_status,
             'batch_id': batch_id,
             'summary': summary,
         },
+        reason='Batch state updated',
         changed={
             'items': len(batch.get('items', {})),
         },
@@ -223,16 +225,18 @@ def emit_transition(status, item, *, dry_run=False):
         summary = item.get('error_message') or status
         reason = f'Dispatch queue entered {status}'
 
-    activity_id = orchestration_helper.log_decision(
-        'report',
-        task['task_id'],
+    activity_id = JimboCore(JimboTask(
+        task_id=task['task_id'],
         title=title,
         task_source=task.get('task_source', 'vault'),
+        workflow='dispatch',
+    )).report(
         report={
             'status': status,
             'dispatch_id': item.get('id'),
             'summary': summary,
         },
+        reason=reason,
         changed={
             'batch_id': item.get('batch_id'),
             'queue_status': item.get('status'),
@@ -446,17 +450,28 @@ def propose_batch(dry_run=False):
     send_telegram(message)
     emit_batch_report(batch_id, build_batch(batch_id, hydrated_items, default_status='proposed'), dry_run=dry_run)
     for item in hydrated_items:
-        orchestration_helper.log_decision(
-            "route",
-            item["task_id"],
+        core = JimboCore(JimboTask(
+            task_id=item["task_id"],
             title=item.get("title", item["task_id"]),
             task_source=item.get("task_source", "vault"),
+            workflow='dispatch',
+        ))
+        core.intake(
+            reason='Task selected from ready queue',
+            intake={
+                'trigger': 'dispatch-propose',
+                'batch_id': batch_id,
+                'dispatch_id': item.get("id"),
+            },
+        )
+        core.route(
             route={
                 "decision": "proposed",
                 "reason": "Selected by dispatch proposer from ready queue",
                 "batch_id": batch_id,
                 "flow": item.get("flow"),
             },
+            reason='Selected by dispatch proposer from ready queue',
             delegate={
                 "agent_type": item.get("agent_type"),
                 "approval": "pending",

@@ -31,7 +31,7 @@ from dispatch_intake import hydrate_task
 from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
 from dispatch_review import validate_result
-import orchestration_helper
+from jimbo_core import JimboCore, JimboTask
 
 # --- Configuration ---
 
@@ -212,16 +212,27 @@ def execute_task(task, dry_run=False):
     if not report_dispatch_start(dispatch_id, prompt, work_dir):
         preserve_evidence(task_id, 'could not mark task as started in jimbo-api')
         return False
-    orchestration_helper.log_decision(
-        'delegate',
-        task_id,
+    core = JimboCore(JimboTask(
+        task_id=task_id,
         title=normalized_task.get('title', ''),
         task_source=normalized_task.get('task_source', 'vault'),
+        workflow='dispatch',
         model=DEFAULT_MODEL,
+    ))
+    core.intake(
+        reason='Approved task fetched from dispatch queue',
+        intake={
+            'trigger': 'dispatch-next',
+            'dispatch_id': dispatch_id,
+            'repo': work_dir,
+        },
+    )
+    core.delegate(
         route={
             'decision': normalized_task.get('flow', 'dispatch'),
             'reason': 'Approved task picked up by dispatch worker',
         },
+        reason='Approved task picked up by dispatch worker',
         delegate={
             'agent_type': agent_type,
             'executor': 'claude-code',
@@ -229,16 +240,13 @@ def execute_task(task, dry_run=False):
             'dispatch_id': dispatch_id,
         },
     )
-    orchestration_helper.log_decision(
-        'report',
-        task_id,
-        title=normalized_task.get('title', ''),
-        task_source=normalized_task.get('task_source', 'vault'),
+    core.report(
         report={
             'status': 'picked_up',
             'dispatch_id': dispatch_id,
             'summary': 'Task picked up by dispatch worker',
         },
+        reason='Execution started on the dispatch worker',
         changed={
             'queue_status': 'running',
             'repo': work_dir,
@@ -324,18 +332,14 @@ def execute_task(task, dry_run=False):
     review_decision = validate_result(normalized_task, result, work_dir=work_dir)
     report_status = 'failed'
     if not review_decision['accepted']:
-        orchestration_helper.log_decision(
-            'review',
-            task_id,
-            title=normalized_task.get('title', ''),
-            task_source=normalized_task.get('task_source', 'vault'),
-            model=DEFAULT_MODEL,
+        core.review(
             review={
                 'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'reason': review_decision['reason'],
                 'raw_status': result.get('status'),
             },
+            reason=review_decision['reason'],
             changed={
                 'result_keys': sorted(result.keys()),
             },
@@ -346,18 +350,14 @@ def execute_task(task, dry_run=False):
             return False
         report_status = 'rejected'
     elif result['status'] == 'completed':
-        orchestration_helper.log_decision(
-            'review',
-            task_id,
-            title=normalized_task.get('title', ''),
-            task_source=normalized_task.get('task_source', 'vault'),
-            model=DEFAULT_MODEL,
+        core.review(
             review={
                 'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'artifacts_present': len(result) > 2,
                 'reason': review_decision['reason'],
             },
+            reason=review_decision['reason'],
         )
         log(f'Task {task_id} completed: {result.get("summary", "")[:100]}')
         if not report_dispatch_complete(dispatch_id, result):
@@ -365,18 +365,14 @@ def execute_task(task, dry_run=False):
             return False
         report_status = 'completed'
     elif result['status'] == 'blocked':
-        orchestration_helper.log_decision(
-            'review',
-            task_id,
-            title=normalized_task.get('title', ''),
-            task_source=normalized_task.get('task_source', 'vault'),
-            model=DEFAULT_MODEL,
+        core.review(
             review={
                 'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'blockers': result.get('blockers'),
                 'reason': review_decision['reason'],
             },
+            reason=review_decision['reason'],
         )
         log(f'Task {task_id} blocked: {result.get("blockers", "")}')
         if not report_dispatch_failure(dispatch_id, f'Blocked: {result.get("blockers", "unknown")}'):
@@ -387,34 +383,26 @@ def execute_task(task, dry_run=False):
             return False
         report_status = 'blocked'
     else:
-        orchestration_helper.log_decision(
-            'review',
-            task_id,
-            title=normalized_task.get('title', ''),
-            task_source=normalized_task.get('task_source', 'vault'),
-            model=DEFAULT_MODEL,
+        core.review(
             review={
                 'status': review_decision['review_status'],
                 'summary': result.get('summary', ''),
                 'reason': review_decision['reason'],
             },
+            reason=review_decision['reason'],
         )
         log(f'Task {task_id} failed: {result.get("summary", "")}')
         if not report_dispatch_failure(dispatch_id, result.get('summary', 'Unknown failure')):
             preserve_evidence(task_id, 'could not report failure to jimbo-api')
             return False
 
-    orchestration_helper.log_decision(
-        'report',
-        task_id,
-        title=normalized_task.get('title', ''),
-        task_source=normalized_task.get('task_source', 'vault'),
-        model=DEFAULT_MODEL,
+    core.report(
         report={
             'status': report_status,
             'dispatch_id': dispatch_id,
             'summary': result.get('summary', ''),
         },
+        reason=review_decision.get('reason'),
         changed={
             'files_changed': result.get('files_changed'),
             'branch': result.get('branch'),

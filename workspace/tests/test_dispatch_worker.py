@@ -67,7 +67,10 @@ class TestDispatchWorkerApiWrites(unittest.TestCase):
              mock.patch.object(worker, 'preserve_evidence') as preserve_mock, \
              mock.patch.object(worker, 'cleanup') as cleanup_mock, \
              mock.patch.object(worker, 'send_telegram'), \
-             mock.patch.object(worker.orchestration_helper, 'log_decision', return_value='act_123'), \
+             mock.patch.object(worker.JimboCore, 'intake', return_value='act_1'), \
+             mock.patch.object(worker.JimboCore, 'delegate', return_value='act_2'), \
+             mock.patch.object(worker.JimboCore, 'review', return_value='act_3'), \
+             mock.patch.object(worker.JimboCore, 'report', return_value='act_4'), \
              mock.patch.object(worker.subprocess, 'run', return_value=proc), \
              mock.patch.object(worker, 'parse_result', return_value=completed_result), \
              mock.patch.object(worker.os.path, 'exists', return_value=False):

@@ -32,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import orchestration_helper
+from jimbo_core import JimboCore, JimboTask
 
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
@@ -753,12 +753,13 @@ def cmd_score_api(args):
                     patch["suggested_ac"] = s_ac
                 _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
                 if s_agent and s_route == 'jimbo':
-                    orchestration_helper.log_decision(
-                        'classify',
-                        t['id'],
+                    JimboCore(JimboTask(
+                        task_id=t['id'],
                         title=t['title'],
                         task_source='vault',
+                        workflow='vault-task-triage',
                         model=GEMINI_MODEL,
+                    )).classify(
                         classification={
                             'priority': priority,
                             'actionability': actionability,
