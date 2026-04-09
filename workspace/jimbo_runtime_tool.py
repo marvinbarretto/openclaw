@@ -9,8 +9,8 @@ from jimbo_runtime_executor import (
     build_report_output,
     build_resolve_output,
     build_summary_output,
-    run_runtime_request,
 )
+from jimbo_runtime_request_service import execute_runtime_request, stream_runtime_requests
 from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_requests import (
     iter_runtime_requests,
@@ -31,15 +31,17 @@ def cmd_request(args):
         request_json=args.request_json,
         request_file=args.request_file,
     )
-    response = run_runtime_request(request)
+    response = execute_runtime_request(request)
     json.dump(response, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
 
 
 def cmd_serve(args):
-    for request in iter_runtime_requests(request_file=args.request_file):
-        response = run_runtime_request(request)
+    for response in stream_runtime_requests(
+        iter_runtime_requests(request_file=args.request_file),
+        continue_on_error=True,
+    ):
         json.dump(response, sys.stdout, sort_keys=True)
         sys.stdout.write("\n")
     return 0

@@ -52,16 +52,16 @@ class TestJimboRuntimeTool(unittest.TestCase):
             'command': 'emit',
             'producer': 'dispatch-proposal',
         }) as load_runtime_request, \
-             mock.patch.object(runtime_tool, 'run_runtime_request', return_value={
+             mock.patch.object(runtime_tool, 'execute_runtime_request', return_value={
                  'command': 'emit',
                  'result': [{'task_id': 'note_1'}],
-             }) as run_runtime_request, \
+             }) as execute_runtime_request, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['request', '--request-file', '/tmp/request.json'])
 
         self.assertEqual(exit_code, 0)
         load_runtime_request.assert_called_once_with(request_json=None, request_file='/tmp/request.json')
-        run_runtime_request.assert_called_once_with({
+        execute_runtime_request.assert_called_once_with({
             'command': 'emit',
             'producer': 'dispatch-proposal',
         })
@@ -75,15 +75,15 @@ class TestJimboRuntimeTool(unittest.TestCase):
             'producer': 'vault-triage',
             'output_file': '/tmp/summary.json',
         }), \
-             mock.patch.object(runtime_tool, 'run_runtime_request', return_value={
+             mock.patch.object(runtime_tool, 'execute_runtime_request', return_value={
                  'command': 'summary',
                  'result': {'mode': 'summary'},
-             }) as run_runtime_request, \
+             }) as execute_runtime_request, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['request', '--request-json', '{"command":"summary"}'])
 
         self.assertEqual(exit_code, 0)
-        run_runtime_request.assert_called_once()
+        execute_runtime_request.assert_called_once()
         dump_mock.assert_called_once()
 
     def test_resolve_command_can_load_payloads_from_producer(self):
@@ -147,16 +147,16 @@ class TestJimboRuntimeTool(unittest.TestCase):
             {'command': 'emit', 'producer': 'dispatch-proposal'},
             {'command': 'summary', 'producer': 'vault-triage'},
         ]) as iter_runtime_requests, \
-             mock.patch.object(runtime_tool, 'run_runtime_request', side_effect=[
+             mock.patch.object(runtime_tool, 'stream_runtime_requests', return_value=[
                  {'command': 'emit', 'result': [{'task_id': 'note_1'}]},
                  {'command': 'summary', 'result': {'mode': 'summary'}},
-             ]) as run_runtime_request, \
+             ]) as stream_runtime_requests, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['serve', '--request-file', '-'])
 
         self.assertEqual(exit_code, 0)
         iter_runtime_requests.assert_called_once_with(request_file='-')
-        self.assertEqual(run_runtime_request.call_count, 2)
+        stream_runtime_requests.assert_called_once()
         self.assertEqual(dump_mock.call_count, 2)
 
 
