@@ -26,6 +26,7 @@ import time
 import urllib.request
 import urllib.error
 
+from dispatch_intake import hydrate_task
 from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
 from dispatch_review import validate_result
@@ -80,6 +81,10 @@ def load_template(agent_type):
         return f.read()
 
 
+def fetch_vault_note(task_id):
+    return api_request('GET', f'/api/vault/notes/{task_id}')
+
+
 # --- Core worker logic ---
 
 def execute_task(task, dry_run=False):
@@ -101,9 +106,8 @@ def execute_task(task, dry_run=False):
             })
         return False
 
-    # Get vault task details
-    vault_task = api_request('GET', f'/api/vault/notes/{task_id}')
-    if not vault_task:
+    normalized_task = hydrate_task(task, fetch_vault_note)
+    if not normalized_task:
         log(f'Vault task not found: {task_id}')
         if not dry_run:
             api_request('POST', '/api/dispatch/fail', {
@@ -111,17 +115,18 @@ def execute_task(task, dry_run=False):
                 'error_message': f'Vault task not found: {task_id}',
             })
         return False
+    vault_task = normalized_task.get('vault_task') or {}
 
     # Determine working directory
-    dispatch_repo = task.get('dispatch_repo', '')
+    dispatch_repo = normalized_task.get('dispatch_repo', '')
     if not dispatch_repo and agent_type == 'coder':
         dispatch_repo = os.path.join(WORK_DIR, 'localshout-next')
     work_dir = dispatch_repo or WORK_DIR
 
     # Render prompt
     prompt = render_template(template, {
-        'title': vault_task.get('title', ''),
-        'definition_of_done': vault_task.get('definition_of_done', ''),
+        'title': normalized_task.get('title', ''),
+        'definition_of_done': normalized_task.get('definition_of_done', ''),
         'dispatch_repo': work_dir,
         'task_id': task_id,
         'output_path': f'/tmp/dispatch-{task_id}-output',
@@ -141,11 +146,11 @@ def execute_task(task, dry_run=False):
     orchestration_helper.log_decision(
         'delegate',
         task_id,
-        title=vault_task.get('title', ''),
-        task_source=task.get('task_source', 'vault'),
+        title=normalized_task.get('title', ''),
+        task_source=normalized_task.get('task_source', 'vault'),
         model=DEFAULT_MODEL,
         route={
-            'decision': task.get('flow', 'dispatch'),
+            'decision': normalized_task.get('flow', 'dispatch'),
             'reason': 'Approved task picked up by dispatch worker',
         },
         delegate={
@@ -194,8 +199,8 @@ def execute_task(task, dry_run=False):
             'error_message': f'Timeout after {timeout}s (limit for {agent_type})',
         })
         send_telegram(build_result_summary(
-            task,
-            title=vault_task.get('title', ''),
+            normalized_task,
+            title=normalized_task.get('title', ''),
             report_status='timeout',
             summary=f'Timed out after {timeout}s',
             review_reason=f'limit for {agent_type}',
@@ -210,8 +215,8 @@ def execute_task(task, dry_run=False):
             'error_message': f'Execution error: {e}',
         })
         send_telegram(build_result_summary(
-            task,
-            title=vault_task.get('title', ''),
+            normalized_task,
+            title=normalized_task.get('title', ''),
             report_status='failed',
             summary='Execution error',
             review_reason=str(e),
@@ -228,14 +233,14 @@ def execute_task(task, dry_run=False):
         result = parse_result(proc.stdout or '')
 
     # Report back to API
-    review_decision = validate_result(task, result)
+    review_decision = validate_result(normalized_task, result)
     report_status = 'failed'
     if not review_decision['accepted']:
         orchestration_helper.log_decision(
             'review',
             task_id,
-            title=vault_task.get('title', ''),
-            task_source=task.get('task_source', 'vault'),
+            title=normalized_task.get('title', ''),
+            task_source=normalized_task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
                 'status': review_decision['review_status'],
@@ -257,8 +262,8 @@ def execute_task(task, dry_run=False):
         orchestration_helper.log_decision(
             'review',
             task_id,
-            title=vault_task.get('title', ''),
-            task_source=task.get('task_source', 'vault'),
+            title=normalized_task.get('title', ''),
+            task_source=normalized_task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
                 'status': review_decision['review_status'],
@@ -280,8 +285,8 @@ def execute_task(task, dry_run=False):
         orchestration_helper.log_decision(
             'review',
             task_id,
-            title=vault_task.get('title', ''),
-            task_source=task.get('task_source', 'vault'),
+            title=normalized_task.get('title', ''),
+            task_source=normalized_task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
                 'status': review_decision['review_status'],
@@ -303,8 +308,8 @@ def execute_task(task, dry_run=False):
         orchestration_helper.log_decision(
             'review',
             task_id,
-            title=vault_task.get('title', ''),
-            task_source=task.get('task_source', 'vault'),
+            title=normalized_task.get('title', ''),
+            task_source=normalized_task.get('task_source', 'vault'),
             model=DEFAULT_MODEL,
             review={
                 'status': review_decision['review_status'],
@@ -321,8 +326,8 @@ def execute_task(task, dry_run=False):
     orchestration_helper.log_decision(
         'report',
         task_id,
-        title=vault_task.get('title', ''),
-        task_source=task.get('task_source', 'vault'),
+        title=normalized_task.get('title', ''),
+        task_source=normalized_task.get('task_source', 'vault'),
         model=DEFAULT_MODEL,
         report={
             'status': report_status,
@@ -337,8 +342,8 @@ def execute_task(task, dry_run=False):
         },
     )
     send_telegram(build_result_summary(
-        task,
-        title=vault_task.get('title', ''),
+        normalized_task,
+        title=normalized_task.get('title', ''),
         report_status=report_status,
         summary=result.get('summary', ''),
         review_reason=review_decision.get('reason'),

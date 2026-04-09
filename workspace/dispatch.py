@@ -26,6 +26,7 @@ import sys
 import urllib.request
 import urllib.error
 
+from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
 import orchestration_helper
@@ -105,6 +106,10 @@ def notify_terminal_outcome(status, task, *, summary=None, review_reason=None,
         log(f'DRY RUN: Would send outcome summary:\n{message}')
         return
     send_telegram(message)
+
+
+def fetch_vault_note(task_id):
+    return api_request('GET', f'/api/vault/notes/{task_id}')
 
 
 # --- Core logic ---
@@ -193,17 +198,16 @@ def propose_batch(dry_run=False):
     if batch_id and not is_valid_batch_id(batch_id):
         log(f'Unexpected batch ID format: {batch_id}')
 
-    titles = {}
-    for item in all_items:
-        if item.get('task_source') == 'github':
-            titles[item['task_id']] = item['task_id']
-        else:
-            vault_task = api_request('GET', f'/api/vault/notes/{item["task_id"]}')
-            titles[item['task_id']] = vault_task.get('title', item['task_id']) if vault_task else item['task_id']
+    hydrated_items = hydrate_batch(all_items, fetch_vault_note)
+    if not hydrated_items:
+        log('No dispatch items could be hydrated')
+        return False
+
+    titles = {item['task_id']: item.get('title', item['task_id']) for item in hydrated_items}
 
     message = build_batch_summary(
         batch_id,
-        all_items,
+        hydrated_items,
         titles=titles,
         approve_url=approve_url,
         reject_url=reject_url,
@@ -214,18 +218,12 @@ def propose_batch(dry_run=False):
         return True
 
     send_telegram(message)
-    for item in all_items:
-        item_title = item.get('task_id')
-        item_source = item.get('task_source', 'vault')
-        if item_source != 'github':
-            vault_task = api_request('GET', f'/api/vault/notes/{item["task_id"]}')
-            if vault_task:
-                item_title = vault_task.get('title', item_title)
+    for item in hydrated_items:
         orchestration_helper.log_decision(
             "route",
             item["task_id"],
-            title=item_title,
-            task_source=item_source,
+            title=item.get("title", item["task_id"]),
+            task_source=item.get("task_source", "vault"),
             route={
                 "decision": "proposed",
                 "reason": "Selected by dispatch proposer from ready queue",
@@ -242,7 +240,7 @@ def propose_batch(dry_run=False):
                 "reject_url": reject_url,
             },
         )
-    log(f'Proposed batch {batch_id} with {len(all_items)} tasks')
+    log(f'Proposed batch {batch_id} with {len(hydrated_items)} tasks')
     return True
 
 
