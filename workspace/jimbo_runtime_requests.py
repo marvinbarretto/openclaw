@@ -34,6 +34,7 @@ def normalize_runtime_request(request):
     normalized = {"command": command}
 
     for field in (
+        "request_id",
         "producer",
         "intake_json",
         "intake_file",

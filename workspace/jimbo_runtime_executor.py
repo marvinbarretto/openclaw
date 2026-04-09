@@ -16,6 +16,7 @@ def build_request_namespace(request):
     """Normalize one runtime request and expose it as a simple namespace."""
     request = normalize_runtime_request(request)
     return SimpleNamespace(
+        request_id=request.get("request_id"),
         producer=request.get("producer"),
         intake_json=request.get("intake_json"),
         intake_file=request.get("intake_file"),
@@ -79,6 +80,7 @@ def run_runtime_request(request):
     else:
         raise ValueError(f"Unsupported runtime request command: {command}")
     return {
+        "request_id": delegated_args.request_id,
         "command": command,
         "result": result,
     }

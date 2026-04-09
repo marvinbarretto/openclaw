@@ -49,10 +49,12 @@ class TestJimboRuntimeTool(unittest.TestCase):
         runtime_tool = load_runtime_tool()
 
         with mock.patch.object(runtime_tool, 'load_runtime_request', return_value={
+            'request_id': 'req-1',
             'command': 'emit',
             'producer': 'dispatch-proposal',
         }) as load_runtime_request, \
              mock.patch.object(runtime_tool, 'execute_runtime_request', return_value={
+                 'request_id': 'req-1',
                  'command': 'emit',
                  'result': [{'task_id': 'note_1'}],
              }) as execute_runtime_request, \
@@ -62,6 +64,7 @@ class TestJimboRuntimeTool(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         load_runtime_request.assert_called_once_with(request_json=None, request_file='/tmp/request.json')
         execute_runtime_request.assert_called_once_with({
+            'request_id': 'req-1',
             'command': 'emit',
             'producer': 'dispatch-proposal',
         })
@@ -71,11 +74,13 @@ class TestJimboRuntimeTool(unittest.TestCase):
         runtime_tool = load_runtime_tool()
 
         with mock.patch.object(runtime_tool, 'load_runtime_request', return_value={
+            'request_id': 'req-2',
             'command': 'summary',
             'producer': 'vault-triage',
             'output_file': '/tmp/summary.json',
         }), \
              mock.patch.object(runtime_tool, 'execute_runtime_request', return_value={
+                 'request_id': 'req-2',
                  'command': 'summary',
                  'result': {'mode': 'summary'},
              }) as execute_runtime_request, \
@@ -144,12 +149,12 @@ class TestJimboRuntimeTool(unittest.TestCase):
         runtime_tool = load_runtime_tool()
 
         with mock.patch.object(runtime_tool, 'iter_runtime_requests', return_value=[
-            {'command': 'emit', 'producer': 'dispatch-proposal'},
-            {'command': 'summary', 'producer': 'vault-triage'},
+            {'request_id': 'req-1', 'command': 'emit', 'producer': 'dispatch-proposal'},
+            {'request_id': 'req-2', 'command': 'summary', 'producer': 'vault-triage'},
         ]) as iter_runtime_requests, \
              mock.patch.object(runtime_tool, 'stream_runtime_requests', return_value=[
-                 {'command': 'emit', 'result': [{'task_id': 'note_1'}]},
-                 {'command': 'summary', 'result': {'mode': 'summary'}},
+                 {'request_id': 'req-1', 'command': 'emit', 'result': [{'task_id': 'note_1'}]},
+                 {'request_id': 'req-2', 'command': 'summary', 'result': {'mode': 'summary'}},
              ]) as stream_runtime_requests, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['serve', '--request-file', '-'])

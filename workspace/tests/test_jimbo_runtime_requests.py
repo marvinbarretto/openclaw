@@ -64,11 +64,13 @@ class TestJimboRuntimeRequests(unittest.TestCase):
         runtime_requests = load_runtime_requests()
 
         normalized = runtime_requests.normalize_runtime_request({
+            "request_id": "req-1",
             "command": "resolve",
             "producer": "dispatch-proposal",
             "live": True,
         })
 
+        self.assertEqual(normalized["request_id"], "req-1")
         self.assertEqual(normalized["command"], "resolve")
         self.assertEqual(normalized["producer"], "dispatch-proposal")
         self.assertTrue(normalized["live"])

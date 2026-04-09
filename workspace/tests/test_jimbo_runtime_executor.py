@@ -25,12 +25,14 @@ class TestJimboRuntimeExecutor(unittest.TestCase):
         runtime_executor = load_runtime_executor()
 
         args, command = runtime_executor.build_request_namespace({
+            'request_id': 'req-1',
             'command': 'resolve',
             'producer': 'dispatch-proposal',
             'live': True,
         })
 
         self.assertEqual(command, 'resolve')
+        self.assertEqual(args.request_id, 'req-1')
         self.assertEqual(args.producer, 'dispatch-proposal')
         self.assertTrue(args.live)
 
@@ -83,10 +85,12 @@ class TestJimboRuntimeExecutor(unittest.TestCase):
 
         with mock.patch.object(runtime_executor, 'build_emit_output', return_value=[{'task_id': 'note_1'}]) as build_emit_output:
             result = runtime_executor.run_runtime_request({
+                'request_id': 'req-emit-1',
                 'command': 'emit',
                 'producer': 'dispatch-proposal',
             })
 
         build_emit_output.assert_called_once()
+        self.assertEqual(result['request_id'], 'req-emit-1')
         self.assertEqual(result['command'], 'emit')
         self.assertEqual(result['result'][0]['task_id'], 'note_1')

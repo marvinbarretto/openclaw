@@ -254,6 +254,7 @@ single runtime request object:
 
 ```json
 {
+  "request_id": "req-2026-04-09-001",
   "command": "summary",
   "producer": "vault-triage",
   "output_file": "/tmp/jimbo-summary.json",
@@ -269,6 +270,9 @@ python3 workspace/jimbo_runtime_tool.py \
   request \
   --request-file /tmp/runtime-request.json
 ```
+
+`request_id` is optional but recommended for streamed usage so responses can be
+correlated reliably.
 
 For a stream-oriented control-plane loop, the tool can also consume
 newline-delimited runtime requests and emit one JSON response per line:

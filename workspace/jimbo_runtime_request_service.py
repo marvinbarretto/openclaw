@@ -18,6 +18,7 @@ def stream_runtime_requests(requests, *, continue_on_error=False):
                 raise
             yield {
                 "ok": False,
+                "request_id": request.get("request_id"),
                 "error": str(exc),
                 "request": request,
             }
