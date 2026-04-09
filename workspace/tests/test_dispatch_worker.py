@@ -90,6 +90,35 @@ class TestDispatchWorkerApiWrites(unittest.TestCase):
         preserve_mock.assert_called_once()
         cleanup_mock.assert_not_called()
 
+    def test_emit_next_intake_prints_runtime_payload(self):
+        worker = load_dispatch_worker()
+        task = {'id': 11, 'task_id': 'note_1', 'agent_type': 'coder'}
+        normalized_task = {
+            'task_id': 'note_1',
+            'title': 'Fix auth bug',
+            'task_source': 'vault',
+            'flow': 'commission',
+            'dispatch_repo': '/tmp',
+        }
+
+        with mock.patch.object(worker, 'api_request', return_value=task), \
+             mock.patch.object(worker, 'hydrate_task', return_value=normalized_task), \
+             mock.patch.object(worker, 'build_dispatch_execution_payload', return_value={
+                 'source': 'dispatch',
+                 'trigger': 'dispatch-next',
+             }) as build_payload, \
+             mock.patch('builtins.print') as print_mock:
+            ok = worker.emit_next_intake()
+
+        self.assertTrue(ok)
+        build_payload.assert_called_once_with(
+            task,
+            normalized_task,
+            '/tmp',
+            model='claude-sonnet-4-6',
+        )
+        print_mock.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

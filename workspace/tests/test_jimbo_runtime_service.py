@@ -92,6 +92,28 @@ class TestJimboRuntimeService(unittest.TestCase):
         self.assertEqual(envelope.metadata["dispatch_id"], 11)
         self.assertEqual(envelope.metadata["repo"], "/tmp")
 
+    def test_build_dispatch_execution_payload_matches_runtime_contract(self):
+        from jimbo_runtime_service import build_dispatch_execution_payload
+
+        payload = build_dispatch_execution_payload(
+            {"id": 11, "task_id": "note_1", "agent_type": "coder"},
+            {
+                "task_id": "note_1",
+                "title": "Fix auth bug",
+                "task_source": "vault",
+                "flow": "commission",
+            },
+            "/tmp",
+            model="claude-sonnet-4-6",
+        )
+
+        self.assertEqual(payload["intake_id"], "11")
+        self.assertEqual(payload["trigger"], "dispatch-next")
+        self.assertEqual(payload["model"], "claude-sonnet-4-6")
+        self.assertEqual(payload["route"]["decision"], "commission")
+        self.assertEqual(payload["delegate"]["executor"], "claude-code")
+        self.assertEqual(payload["runtime_metadata"]["repo"], "/tmp")
+
     def test_log_dispatch_candidate_classification_uses_runtime_selection(self):
         from jimbo_runtime_service import log_dispatch_candidate_classification
 

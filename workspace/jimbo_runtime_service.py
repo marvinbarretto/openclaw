@@ -38,6 +38,40 @@ def build_dispatch_proposal_payload(item, *, batch_id, approve_url="",
     }
 
 
+def build_dispatch_execution_payload(task, normalized_task, work_dir, *, model):
+    """Build one normalized intake payload for dispatch worker execution."""
+    return {
+        "intake_id": str(task.get("id") or task.get("task_id")),
+        "task_id": normalized_task["task_id"],
+        "title": normalized_task.get("title"),
+        "source": "dispatch",
+        "trigger": "dispatch-next",
+        "task_source": normalized_task.get("task_source", "vault"),
+        "workflow_hint": "dispatch",
+        "model": model,
+        "metadata": {
+            "dispatch_id": task.get("id"),
+            "repo": work_dir,
+        },
+        "intake_reason": "Approved task fetched from dispatch queue",
+        "route": {
+            "decision": normalized_task.get("flow", "dispatch"),
+            "reason": "Approved task picked up by dispatch worker",
+        },
+        "route_reason": "Approved task picked up by dispatch worker",
+        "delegate": {
+            "agent_type": task.get("agent_type"),
+            "executor": "claude-code",
+            "repo": work_dir,
+            "dispatch_id": task.get("id"),
+        },
+        "runtime_metadata": {
+            "dispatch_id": task.get("id"),
+            "repo": work_dir,
+        },
+    }
+
+
 def begin_dispatch_proposal(item, *, batch_id, approve_url="", reject_url="",
                             runtime=None):
     """Start orchestration for a task proposed onto the dispatch queue."""
@@ -77,16 +111,12 @@ def resolve_dispatch_execution(task, normalized_task, work_dir, *, model,
     runtime = runtime or get_default_runtime()
     return runtime.resolve_workflow(
         JimboIntakeEnvelope.from_mapping(
-            normalized_task,
-            intake_id=task.get("id") or task.get("task_id"),
-            source="dispatch",
-            trigger="dispatch-next",
-            workflow_hint="dispatch",
-            model=model,
-            metadata={
-                "dispatch_id": task.get("id"),
-                "repo": work_dir,
-            },
+            build_dispatch_execution_payload(
+                task,
+                normalized_task,
+                work_dir,
+                model=model,
+            )
         )
     )
 

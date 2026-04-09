@@ -32,7 +32,10 @@ from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
 from dispatch_review import validate_result
 from jimbo_core import JimboCore, JimboTask
-from jimbo_runtime_service import resolve_dispatch_execution
+from jimbo_runtime_service import (
+    build_dispatch_execution_payload,
+    resolve_dispatch_execution,
+)
 
 # --- Configuration ---
 
@@ -163,6 +166,14 @@ def fetch_vault_note(task_id):
     return api_request('GET', f'/api/vault/notes/{task_id}')
 
 
+def determine_work_dir(task, normalized_task):
+    """Resolve the working directory for a dispatch task."""
+    dispatch_repo = normalized_task.get('dispatch_repo', '')
+    if not dispatch_repo and task.get('agent_type') == 'coder':
+        dispatch_repo = os.path.join(WORK_DIR, 'localshout-next')
+    return dispatch_repo or WORK_DIR
+
+
 # --- Core worker logic ---
 
 def execute_task(task, dry_run=False):
@@ -190,10 +201,7 @@ def execute_task(task, dry_run=False):
     vault_task = normalized_task.get('vault_task') or {}
 
     # Determine working directory
-    dispatch_repo = normalized_task.get('dispatch_repo', '')
-    if not dispatch_repo and agent_type == 'coder':
-        dispatch_repo = os.path.join(WORK_DIR, 'localshout-next')
-    work_dir = dispatch_repo or WORK_DIR
+    work_dir = determine_work_dir(task, normalized_task)
 
     # Render prompt
     prompt = render_template(template, {
@@ -625,6 +633,31 @@ def run_once(dry_run=False, stats=None):
     return result
 
 
+def emit_next_intake():
+    """Print the next approved dispatch task as a runtime intake payload."""
+    task = api_request('GET', '/api/dispatch/next')
+    if task is None or 'id' not in task:
+        log('No approved tasks')
+        return False
+
+    normalized_task = hydrate_task(task, fetch_vault_note)
+    if not normalized_task:
+        log(f'Vault task not found: {task.get("task_id")}')
+        return False
+
+    work_dir = determine_work_dir(task, normalized_task)
+    print(json.dumps(
+        build_dispatch_execution_payload(
+            task,
+            normalized_task,
+            work_dir,
+            model=DEFAULT_MODEL,
+        ),
+        indent=2,
+    ))
+    return True
+
+
 def run_loop(dry_run=False, poll_interval=DEFAULT_POLL_INTERVAL):
     """Run continuously — poll for tasks, execute, sleep, repeat.
     Designed to run in a persistent tmux session where Claude auth is active."""
@@ -709,6 +742,7 @@ def main():
     args = sys.argv[1:]
     dry_run = '--live' not in args
     loop_mode = '--loop' in args
+    emit_intake = '--emit-intake' in args
     poll_interval = DEFAULT_POLL_INTERVAL
     for arg in args:
         if arg.startswith('--interval='):
@@ -722,7 +756,10 @@ def main():
         log('JIMBO_API_URL and JIMBO_API_KEY must be set')
         return
 
-    if dry_run:
+    if emit_intake:
+        log('EMIT INTAKE mode')
+        dry_run = False
+    elif dry_run:
         log('DRY RUN mode (use --live for real execution)')
 
     # Acquire lock — one task at a time
@@ -734,7 +771,9 @@ def main():
         log('Another worker instance is running, exiting')
         return
 
-    if loop_mode:
+    if emit_intake:
+        emit_next_intake()
+    elif loop_mode:
         run_loop(dry_run, poll_interval)
     else:
         if not run_once(dry_run):

@@ -5,6 +5,7 @@ This document defines the normalized payload shape accepted by:
 - `workspace/jimbo_runtime_cli.py`
 - the shared helpers in `workspace/jimbo_runtime_service.py`
 - `python3 workspace/dispatch.py --emit-intake`
+- `python3 workspace/dispatch-worker.py --emit-intake`
 
 The goal is simple: one explicit intake object shape for runtime-owned orchestration.
 
@@ -120,6 +121,15 @@ python3 workspace/dispatch.py --emit-intake
 
 That prints a JSON array of normalized intake payloads using the same contract
 consumed by the runtime CLI and service helpers.
+
+The dispatch worker can emit the next approved execution payload:
+
+```bash
+python3 workspace/dispatch-worker.py --emit-intake
+```
+
+That prints a single normalized intake payload for the next approved task the
+worker would pick up.
 
 The runtime CLI accepts either:
 
