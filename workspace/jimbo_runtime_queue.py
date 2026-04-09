@@ -82,18 +82,39 @@ def _new_id(prefix):
     return f"{prefix}-{uuid.uuid4().hex}"
 
 
-def list_inbox_items(*, status=None):
+def _matches_route_filters(entry, *, route=None, workflow=None, capability=None):
+    route_policy = dict(entry.get("route_policy") or {})
+    if route is not None and route_policy.get("route") != route:
+        return False
+    if workflow is not None and route_policy.get("workflow") != workflow:
+        return False
+    if capability is not None and route_policy.get("capability") != capability:
+        return False
+    return True
+
+
+def list_inbox_items(*, status=None, route=None, workflow=None, capability=None):
     items = list(load_inbox_state().get("items", []))
-    if status is None:
-        return items
-    return [item for item in items if item.get("status") == status]
+    filtered = []
+    for item in items:
+        if status is not None and item.get("status") != status:
+            continue
+        if not _matches_route_filters(item, route=route, workflow=workflow, capability=capability):
+            continue
+        filtered.append(item)
+    return filtered
 
 
-def list_runtime_runs(*, status=None):
+def list_runtime_runs(*, status=None, route=None, workflow=None, capability=None):
     runs = list(load_run_state().get("runs", []))
-    if status is None:
-        return runs
-    return [run for run in runs if run.get("status") == status]
+    filtered = []
+    for run in runs:
+        if status is not None and run.get("status") != status:
+            continue
+        if not _matches_route_filters(run, route=route, workflow=workflow, capability=capability):
+            continue
+        filtered.append(run)
+    return filtered
 
 
 def enqueue_runtime_requests(requests, *, source, producer=None):

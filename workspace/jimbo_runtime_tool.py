@@ -29,13 +29,31 @@ def cmd_producers(_args):
 
 
 def cmd_inbox(args):
-    json.dump(list_inbox_items(status=args.status), sys.stdout, sort_keys=True)
+    json.dump(
+        list_inbox_items(
+            status=args.status,
+            route=args.route,
+            workflow=args.workflow,
+            capability=args.capability,
+        ),
+        sys.stdout,
+        sort_keys=True,
+    )
     sys.stdout.write("\n")
     return 0
 
 
 def cmd_runs(args):
-    json.dump(list_runtime_runs(status=args.status), sys.stdout, sort_keys=True)
+    json.dump(
+        list_runtime_runs(
+            status=args.status,
+            route=args.route,
+            workflow=args.workflow,
+            capability=args.capability,
+        ),
+        sys.stdout,
+        sort_keys=True,
+    )
     sys.stdout.write("\n")
     return 0
 
@@ -129,10 +147,16 @@ def build_parser():
 
     inbox_parser = subparsers.add_parser("inbox", help="List runtime inbox items")
     inbox_parser.add_argument("--status", help="Optional inbox status filter")
+    inbox_parser.add_argument("--route", help="Optional route policy filter")
+    inbox_parser.add_argument("--workflow", help="Optional workflow filter")
+    inbox_parser.add_argument("--capability", help="Optional capability filter")
     inbox_parser.set_defaults(handler=cmd_inbox)
 
     runs_parser = subparsers.add_parser("runs", help="List runtime run records")
     runs_parser.add_argument("--status", help="Optional runtime run status filter")
+    runs_parser.add_argument("--route", help="Optional route policy filter")
+    runs_parser.add_argument("--workflow", help="Optional workflow filter")
+    runs_parser.add_argument("--capability", help="Optional capability filter")
     runs_parser.set_defaults(handler=cmd_runs)
 
     request_parser = subparsers.add_parser("request", help="Execute one machine-readable runtime control-plane request")
