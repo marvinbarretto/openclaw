@@ -1,8 +1,4 @@
-"""Batch-level memory for dispatch orchestration."""
-
-import json
-import os
-
+"""Batch-level projection helpers for dispatch orchestration."""
 
 TERMINAL_STATUSES = {
     "completed", "blocked", "failed", "rejected", "timeout",
@@ -18,75 +14,64 @@ QUEUE_STATUS_TO_BATCH_STATUS = {
 }
 
 
-def load_batch_state(path):
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+def dispatch_item_id(item):
+    return str(item.get("id", item.get("dispatch_id", item.get("task_id"))))
 
 
-def save_batch_state(path, state):
-    with open(path, "w") as f:
-        json.dump(state, f, sort_keys=True)
+def queue_item_batch_status(item):
+    """Map a queue item to the orchestration-facing batch status."""
+    queue_status = item.get("status")
+    mapped_status = QUEUE_STATUS_TO_BATCH_STATUS.get(queue_status)
+    if mapped_status != "failed":
+        return mapped_status
+
+    error_message = (item.get("error_message") or "").lower()
+    if "timeout" in error_message:
+        return "timeout"
+    return mapped_status
 
 
-def initialize_batch(state, batch_id, items):
-    """Create or refresh a batch entry from a set of hydrated items."""
+def build_batch(batch_id, items, *, default_status=None, status_overrides=None):
+    """Build a batch projection from hydrated tasks or queue items."""
     batch = {
         "batch_id": batch_id,
         "items": {},
     }
+    status_overrides = status_overrides or {}
+
     for item in items:
-        dispatch_id = str(item.get("id", item.get("task_id")))
+        dispatch_id = dispatch_item_id(item)
+        status = status_overrides.get(dispatch_id)
+        if status is None:
+            status = queue_item_batch_status(item) or item.get("batch_status") or default_status or item.get("status", "unknown")
         batch["items"][dispatch_id] = {
-            "dispatch_id": item.get("id"),
+            "dispatch_id": item.get("id", item.get("dispatch_id")),
             "task_id": item.get("task_id"),
             "title": item.get("title", item.get("task_id")),
             "agent_type": item.get("agent_type"),
             "flow": item.get("flow", "commission"),
             "task_source": item.get("task_source", "vault"),
-            "status": "proposed",
+            "status": status,
         }
-    next_state = dict(state)
-    next_state[batch_id] = batch
-    return next_state
+    return batch
 
 
-def record_item_status(state, batch_id, item, status):
-    """Update one batch item to its latest status."""
-    next_state = dict(state)
-    batch = dict(next_state.get(batch_id, {"batch_id": batch_id, "items": {}}))
-    items = dict(batch.get("items", {}))
-    dispatch_id = str(item.get("id", item.get("dispatch_id", item.get("task_id"))))
+def build_batches(items, *, batch_ids=None, status_overrides=None):
+    """Group queue items into batch projections keyed by batch_id."""
+    grouped = {}
+    allowed = set(batch_ids) if batch_ids else None
+    for item in items:
+        batch_id = item.get("batch_id")
+        if not batch_id:
+            continue
+        if allowed is not None and batch_id not in allowed:
+            continue
+        grouped.setdefault(batch_id, []).append(item)
 
-    existing = dict(items.get(dispatch_id, {}))
-    existing.update({
-        "dispatch_id": item.get("id", item.get("dispatch_id")),
-        "task_id": item.get("task_id"),
-        "title": item.get("title", item.get("task_id")),
-        "agent_type": item.get("agent_type"),
-        "flow": item.get("flow", "commission"),
-        "task_source": item.get("task_source", "vault"),
-        "status": status,
-    })
-    items[dispatch_id] = existing
-    batch["items"] = items
-    next_state[batch_id] = batch
-    return next_state
-
-
-def record_queue_item(state, item):
-    """Update batch state from a queue item emitted by jimbo-api."""
-    batch_id = item.get("batch_id")
-    queue_status = item.get("status")
-    mapped_status = QUEUE_STATUS_TO_BATCH_STATUS.get(queue_status)
-    if not batch_id or not mapped_status:
-        return dict(state)
-    return record_item_status(state, batch_id, item, mapped_status)
+    return {
+        batch_id: build_batch(batch_id, batch_items, status_overrides=status_overrides)
+        for batch_id, batch_items in grouped.items()
+    }
 
 
 def summarize_batch(batch):

@@ -28,11 +28,9 @@ import urllib.error
 
 from dispatch_batch_memory import (
     batch_report_status,
-    initialize_batch,
-    load_batch_state,
-    record_item_status,
-    record_queue_item,
-    save_batch_state,
+    build_batch,
+    build_batches,
+    dispatch_item_id,
     summarize_batch,
 )
 from dispatch_intake import hydrate_batch
@@ -49,8 +47,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 LOCK_FILE = '/tmp/dispatch.lock'
 TRANSITION_STATE_FILE = '/tmp/dispatch-transition-state.json'
-BATCH_STATE_FILE = '/tmp/dispatch-batch-state.json'
 DEFAULT_BATCH_SIZE = 3
+BATCH_QUEUE_STATUSES = 'proposed,approved,running,completed,failed,rejected'
 
 # Timeout limits — if a task has been running longer than this, mark it failed
 TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200}  # seconds
@@ -124,8 +122,8 @@ def fetch_vault_note(task_id):
     return api_request('GET', f'/api/vault/notes/{task_id}')
 
 
-def fetch_queue_items(status):
-    queue = api_request('GET', f'/api/dispatch/queue?status={status}&limit=20')
+def fetch_queue_items(status, *, limit=20):
+    queue = api_request('GET', f'/api/dispatch/queue?status={status}&limit={limit}')
     return queue.get('items', []) if queue else []
 
 
@@ -201,22 +199,25 @@ def emit_transition(status, item, *, dry_run=False):
     )
 
 
-def sync_batch_item(item, *, dry_run=False):
-    """Update the local batch projection from a jimbo-api queue item."""
-    batch_id = item.get('batch_id')
-    if not batch_id:
+def emit_batch_reports(batch_ids, *, dry_run=False, queue_items=None, status_overrides=None):
+    """Rebuild and emit batch narratives from the current queue snapshot."""
+    if not batch_ids:
         return
-    batch_state = load_batch_state(BATCH_STATE_FILE)
-    batch_state = record_queue_item(batch_state, item)
-    if dry_run:
-        emit_batch_report(batch_id, batch_state[batch_id], dry_run=True)
-        return
-    save_batch_state(BATCH_STATE_FILE, batch_state)
-    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
+    if queue_items is None:
+        queue_items = fetch_queue_items(BATCH_QUEUE_STATUSES, limit=100)
+    batches = build_batches(
+        queue_items,
+        batch_ids=batch_ids,
+        status_overrides=status_overrides,
+    )
+    for batch_id in sorted(batch_ids):
+        batch = batches.get(batch_id)
+        if batch:
+            emit_batch_report(batch_id, batch, dry_run=dry_run)
 
 
 def check_queue_transitions(dry_run=False):
-    """Detect new queue transitions and update batch state from the API."""
+    """Detect new queue transitions and rebuild affected batch narratives."""
     seen_state = load_seen_state(TRANSITION_STATE_FILE)
     approved_items = fetch_queue_items('approved')
     rejected_items = fetch_queue_items('rejected')
@@ -229,19 +230,27 @@ def check_queue_transitions(dry_run=False):
     new_running, next_state = collect_new_items(next_state, 'running', running_items)
     new_completed, next_state = collect_new_items(next_state, 'completed', completed_items)
     new_failed, next_state = collect_new_items(next_state, 'failed', failed_items)
+    affected_batch_ids = set()
 
     for item in new_approved:
         emit_transition('approved', item, dry_run=dry_run)
-        sync_batch_item(item, dry_run=dry_run)
+        if item.get('batch_id'):
+            affected_batch_ids.add(item['batch_id'])
     for item in new_rejected:
         emit_transition('rejected', item, dry_run=dry_run)
-        sync_batch_item(item, dry_run=dry_run)
+        if item.get('batch_id'):
+            affected_batch_ids.add(item['batch_id'])
     for item in new_running:
-        sync_batch_item(item, dry_run=dry_run)
+        if item.get('batch_id'):
+            affected_batch_ids.add(item['batch_id'])
     for item in new_completed:
-        sync_batch_item(item, dry_run=dry_run)
+        if item.get('batch_id'):
+            affected_batch_ids.add(item['batch_id'])
     for item in new_failed:
-        sync_batch_item(item, dry_run=dry_run)
+        if item.get('batch_id'):
+            affected_batch_ids.add(item['batch_id'])
+
+    emit_batch_reports(affected_batch_ids, dry_run=dry_run)
 
     if not dry_run:
         save_seen_state(TRANSITION_STATE_FILE, next_state)
@@ -275,10 +284,19 @@ def check_timeouts(dry_run=False):
                 })
                 batch_id = task.get('batch_id')
                 if batch_id:
-                    batch_state = load_batch_state(BATCH_STATE_FILE)
-                    batch_state = record_item_status(batch_state, batch_id, task, 'timeout')
-                    save_batch_state(BATCH_STATE_FILE, batch_state)
-                    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
+                    queue_items = fetch_queue_items(BATCH_QUEUE_STATUSES, limit=100)
+                    target_found = any(
+                        dispatch_item_id(item) == str(task['id']) and item.get('batch_id') == batch_id
+                        for item in queue_items
+                    )
+                    if not target_found:
+                        queue_items = list(queue_items) + [task]
+                    emit_batch_reports(
+                        {batch_id},
+                        dry_run=False,
+                        queue_items=queue_items,
+                        status_overrides={str(task['id']): 'timeout'},
+                    )
                 notify_terminal_outcome(
                     'timeout',
                     task,
@@ -358,11 +376,8 @@ def propose_batch(dry_run=False):
         log(f'DRY RUN: Would send batch proposal:\n{message}')
         return True
 
-    batch_state = load_batch_state(BATCH_STATE_FILE)
-    batch_state = initialize_batch(batch_state, batch_id, hydrated_items)
-    save_batch_state(BATCH_STATE_FILE, batch_state)
     send_telegram(message)
-    emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
+    emit_batch_report(batch_id, build_batch(batch_id, hydrated_items, default_status='proposed'), dry_run=dry_run)
     for item in hydrated_items:
         orchestration_helper.log_decision(
             "route",
