@@ -300,6 +300,15 @@ python3 workspace/jimbo_runtime_server.py --drain-inbox --claimant jimbo-runtime
 The runtime now has an API-backed inbox and run ledger stored in the settings
 API. This is the first runtime-owned queue surface.
 
+Queued items now carry explicit route policy, not just raw requests:
+
+- `dispatch` — execute through the runtime request/executor path
+- `human-required` — record the item as waiting on Marvin instead of executing it
+- `defer` — record the item as deferred instead of executing it
+
+For example, vault triage items with `route.decision = "marvin"` are now
+submitted into the inbox as `human-required` work rather than being dropped.
+
 Submit one producer batch into the inbox:
 
 ```bash

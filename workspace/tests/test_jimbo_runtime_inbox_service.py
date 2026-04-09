@@ -36,6 +36,7 @@ class TestJimboRuntimeInboxService(unittest.TestCase):
         self.assertTrue(requests[0]['live'])
         self.assertIn('vault-triage-note_1-20260409120000-1', requests[0]['request_id'])
         self.assertEqual(json.loads(requests[0]['intake_json'])['task_id'], 'note_1')
+        self.assertEqual(requests[0]['route_policy']['route'], 'dispatch')
 
     def test_enqueue_producer_requests_submits_loaded_payloads(self):
         runtime_inbox_service = load_runtime_inbox_service()
@@ -52,7 +53,12 @@ class TestJimboRuntimeInboxService(unittest.TestCase):
 
     def test_process_next_inbox_item_claims_executes_and_completes(self):
         runtime_inbox_service = load_runtime_inbox_service()
-        item = {'id': 'runtime-inbox-1', 'request_id': 'req-1', 'request': {'command': 'resolve'}}
+        item = {
+            'id': 'runtime-inbox-1',
+            'request_id': 'req-1',
+            'request': {'command': 'resolve'},
+            'route_policy': {'route': 'dispatch', 'execution': 'execute'},
+        }
         run = {'id': 'runtime-run-1'}
 
         with mock.patch.object(runtime_inbox_service, 'claim_next_inbox_item', return_value=item) as claim_next_inbox_item, \
@@ -68,6 +74,43 @@ class TestJimboRuntimeInboxService(unittest.TestCase):
         complete_runtime_run.assert_called_once()
         complete_inbox_item.assert_called_once()
         self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['route'], 'dispatch')
+
+    def test_process_next_inbox_item_can_record_human_required_route(self):
+        runtime_inbox_service = load_runtime_inbox_service()
+        item = {
+            'id': 'runtime-inbox-1',
+            'request_id': 'req-1',
+            'request': {'command': 'resolve'},
+            'route_policy': {
+                'route': 'human-required',
+                'execution': 'record',
+                'status': 'waiting-human',
+                'workflow': 'vault-task-triage',
+                'capability': 'researcher',
+                'decision': 'marvin',
+            },
+        }
+        run = {'id': 'runtime-run-1'}
+
+        with mock.patch.object(runtime_inbox_service, 'claim_next_inbox_item', return_value=item), \
+             mock.patch.object(runtime_inbox_service, 'create_runtime_run', return_value=run), \
+             mock.patch.object(runtime_inbox_service, 'build_route_response', return_value={
+                 'request_id': 'req-1',
+                 'route': 'human-required',
+                 'status': 'waiting-human',
+                 'result': {'status': 'waiting-human'},
+             }) as build_route_response, \
+             mock.patch.object(runtime_inbox_service, 'execute_runtime_request') as execute_runtime_request, \
+             mock.patch.object(runtime_inbox_service, 'complete_runtime_run') as complete_runtime_run, \
+             mock.patch.object(runtime_inbox_service, 'complete_inbox_item') as complete_inbox_item:
+            result = runtime_inbox_service.process_next_inbox_item(claimant='server-1')
+
+        build_route_response.assert_called_once_with(item)
+        execute_runtime_request.assert_not_called()
+        complete_runtime_run.assert_called_once()
+        complete_inbox_item.assert_called_once()
+        self.assertEqual(result['route'], 'human-required')
 
     def test_drain_runtime_inbox_stops_when_idle(self):
         runtime_inbox_service = load_runtime_inbox_service()

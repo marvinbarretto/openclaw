@@ -84,6 +84,66 @@ class TestPrioritiseTasksRuntimeInbox(unittest.TestCase):
         self.assertEqual(output['submitted_to_runtime_inbox'], 1)
         self.assertGreaterEqual(api_request.call_count, 2)
 
+    def test_cmd_score_api_can_submit_marvin_routes_to_runtime_inbox(self):
+        prioritise_tasks = load_prioritise_tasks()
+        args = SimpleNamespace(
+            dry_run=False,
+            force=False,
+            limit=None,
+            emit_intake=False,
+            submit_runtime_inbox=True,
+        )
+        task = {
+            'id': 'note_2',
+            'title': 'Call landlord',
+            'updated_at': '2026-04-01',
+            'tags': ['admin'],
+            'body': 'Needs Marvin to call',
+        }
+        gemini_result = [{
+            'id': 'note_2',
+            'priority': 1,
+            'priority_reason': 'Personal admin',
+            'actionability': 'clear',
+            'suggested_agent_type': None,
+            'suggested_route': 'marvin',
+            'suggested_ac': None,
+        }]
+        runtime_payload = {
+            'task_id': 'note_2',
+            'source': 'vault',
+            'trigger': 'vault-task-triage',
+            'route': {'decision': 'marvin'},
+        }
+
+        with mock.patch.object(prioritise_tasks, 'get_env', return_value='key'), \
+             mock.patch.object(prioritise_tasks, 'load_context', return_value='context'), \
+             mock.patch.object(prioritise_tasks, 'context_mtime', return_value='2026-03-01'), \
+             mock.patch.object(prioritise_tasks, '_api_request', side_effect=[
+                 {'notes': [task]},
+                 {'status': 'ok'},
+                 {'notes': []},
+             ]), \
+             mock.patch.object(prioritise_tasks, 'call_gemini', return_value=gemini_result), \
+             mock.patch.object(prioritise_tasks, 'build_vault_triage_payload', return_value=runtime_payload) as build_vault_triage_payload, \
+             mock.patch.object(prioritise_tasks, 'log_dispatch_candidate_classification') as log_dispatch_candidate_classification, \
+             mock.patch.object(prioritise_tasks, 'enqueue_payloads', return_value={'count': 1}) as enqueue_payloads, \
+             mock.patch.object(prioritise_tasks, 'time') as time_module, \
+             mock.patch('builtins.print') as print_mock:
+            time_module.sleep = mock.Mock()
+            prioritise_tasks.cmd_score_api(args)
+
+        build_vault_triage_payload.assert_called_once()
+        log_dispatch_candidate_classification.assert_not_called()
+        enqueue_payloads.assert_called_once_with(
+            [runtime_payload],
+            producer='vault-triage',
+            source='vault-triage',
+            live=True,
+        )
+        output = json.loads(print_mock.call_args.args[0])
+        self.assertEqual(output['submitted_to_runtime_inbox'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

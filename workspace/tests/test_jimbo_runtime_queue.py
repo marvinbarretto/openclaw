@@ -40,6 +40,7 @@ class TestJimboRuntimeQueue(unittest.TestCase):
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0]['status'], 'pending')
         self.assertEqual(items[1]['producer'], 'vault-triage')
+        self.assertIsNone(items[0]['route_policy'])
         save_inbox_state.assert_called_once()
 
     def test_claim_next_inbox_item_marks_first_pending(self):
@@ -78,6 +79,25 @@ class TestJimboRuntimeQueue(unittest.TestCase):
 
         self.assertEqual(run['status'], 'completed')
         self.assertEqual(run['response']['command'], 'resolve')
+        save_run_state.assert_called_once_with(state)
+
+    def test_create_runtime_run_carries_route_policy(self):
+        runtime_queue = load_runtime_queue()
+        state = {'runs': [], 'updated_at': None}
+        item = {
+            'id': 'runtime-inbox-1',
+            'request_id': 'req-1',
+            'request': {'command': 'resolve'},
+            'route_policy': {'route': 'human-required'},
+        }
+
+        with mock.patch.object(runtime_queue, 'load_run_state', return_value=state), \
+             mock.patch.object(runtime_queue, 'save_run_state') as save_run_state, \
+             mock.patch.object(runtime_queue, '_new_id', return_value='runtime-run-1'), \
+             mock.patch.object(runtime_queue, '_now_iso', return_value='2026-04-09T12:00:00Z'):
+            run = runtime_queue.create_runtime_run(item, claimant='server-1')
+
+        self.assertEqual(run['route_policy']['route'], 'human-required')
         save_run_state.assert_called_once_with(state)
 
     def test_list_runtime_runs_filters_by_status(self):

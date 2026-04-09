@@ -14,6 +14,7 @@ from jimbo_runtime_queue import (
     fail_runtime_run,
 )
 from jimbo_runtime_request_service import execute_runtime_request
+from jimbo_runtime_routing import build_route_policy, build_route_response
 
 
 def _now_stamp():
@@ -34,6 +35,7 @@ def build_inbox_requests_from_payloads(payloads, *, producer, live=True):
             "command": "resolve",
             "intake_json": json.dumps(payload, sort_keys=True),
             "live": bool(live),
+            "route_policy": build_route_policy(payload, producer=producer),
         })
     return requests
 
@@ -73,7 +75,11 @@ def process_next_inbox_item(*, claimant):
 
     run = create_runtime_run(item, claimant=claimant)
     try:
-        response = execute_runtime_request(item["request"])
+        route_policy = dict(item.get("route_policy") or {})
+        if route_policy.get("execution") == "record":
+            response = build_route_response(item)
+        else:
+            response = execute_runtime_request(item["request"])
         complete_runtime_run(run["id"], response=response)
         complete_inbox_item(item["id"], run_id=run["id"], response=response)
         return {
@@ -81,6 +87,7 @@ def process_next_inbox_item(*, claimant):
             "item_id": item["id"],
             "request_id": item.get("request_id"),
             "run_id": run["id"],
+            "route": route_policy.get("route"),
             "response": response,
         }
     except Exception as exc:

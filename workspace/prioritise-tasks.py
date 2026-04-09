@@ -746,7 +746,7 @@ def cmd_score_api(args):
                         line += f" AC: \"{s_ac[:50]}...\""
                 log(line)
             elif args.emit_intake:
-                if s_agent and s_route == 'jimbo':
+                if s_route in {'jimbo', 'marvin'}:
                     emitted_payloads.append(build_vault_triage_payload(
                         t,
                         priority=priority,
@@ -803,6 +803,18 @@ def cmd_score_api(args):
                     )
                     if args.submit_runtime_inbox:
                         queued_payloads.append(runtime_payload)
+                elif args.submit_runtime_inbox and s_route == 'marvin':
+                    queued_payloads.append(build_vault_triage_payload(
+                        t,
+                        priority=priority,
+                        actionability=actionability,
+                        reason=reason,
+                        suggested_agent_type=s_agent,
+                        suggested_route=s_route,
+                        acceptance_criteria=s_ac,
+                        changed_fields=patch.keys(),
+                        model=GEMINI_MODEL,
+                    ))
 
             scored += 1
 
