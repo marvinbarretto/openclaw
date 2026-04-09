@@ -230,6 +230,7 @@ The top-level control-plane entrypoint is:
 
 ```bash
 python3 workspace/jimbo_runtime_tool.py producers
+python3 workspace/jimbo_runtime_tool.py request --request-file /tmp/runtime-request.json
 python3 workspace/jimbo_runtime_tool.py emit --producer dispatch-proposal
 python3 workspace/jimbo_runtime_tool.py resolve --producer dispatch-proposal
 python3 workspace/jimbo_runtime_tool.py summary --producer vault-triage
@@ -245,3 +246,26 @@ forward into the top-level tool.
 
 `roundtrip` and `report` are now convenience surfaces over the producer-aware
 `resolve` and `summary` flows rather than separate intake-routing paths.
+
+## Runtime request surface
+
+For a machine-readable control-plane boundary, the top-level tool also accepts a
+single runtime request object:
+
+```json
+{
+  "command": "summary",
+  "producer": "vault-triage",
+  "output_file": "/tmp/jimbo-summary.json",
+  "log_activity": true,
+  "summary_id": "runtime-summary-2026-04-09"
+}
+```
+
+Run it with:
+
+```bash
+python3 workspace/jimbo_runtime_tool.py \
+  request \
+  --request-file /tmp/runtime-request.json
+```

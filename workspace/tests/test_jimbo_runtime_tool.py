@@ -45,6 +45,37 @@ class TestJimboRuntimeTool(unittest.TestCase):
         emit_output.assert_called_once_with('dispatch-proposal')
         stdout.write.assert_called_once_with('[{"task_id":"note_1"}]\n')
 
+    def test_request_command_can_delegate_to_emit(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'load_runtime_request', return_value={
+            'command': 'emit',
+            'producer': 'dispatch-proposal',
+        }) as load_runtime_request, \
+             mock.patch.object(runtime_tool, 'cmd_emit', return_value=0) as cmd_emit:
+            exit_code = runtime_tool.main(['request', '--request-file', '/tmp/request.json'])
+
+        self.assertEqual(exit_code, 0)
+        load_runtime_request.assert_called_once_with(request_json=None, request_file='/tmp/request.json')
+        delegated_args = cmd_emit.call_args.args[0]
+        self.assertEqual(delegated_args.producer, 'dispatch-proposal')
+
+    def test_request_command_can_delegate_to_summary(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'load_runtime_request', return_value={
+            'command': 'summary',
+            'producer': 'vault-triage',
+            'output_file': '/tmp/summary.json',
+        }), \
+             mock.patch.object(runtime_tool, 'cmd_summary', return_value=0) as cmd_summary:
+            exit_code = runtime_tool.main(['request', '--request-json', '{"command":"summary"}'])
+
+        self.assertEqual(exit_code, 0)
+        delegated_args = cmd_summary.call_args.args[0]
+        self.assertEqual(delegated_args.producer, 'vault-triage')
+        self.assertEqual(delegated_args.output_file, '/tmp/summary.json')
+
     def test_resolve_command_can_load_payloads_from_producer(self):
         runtime_tool = load_runtime_tool()
 

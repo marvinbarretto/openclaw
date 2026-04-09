@@ -7,6 +7,7 @@ import sys
 
 from jimbo_runtime_engine import load_intake_payload, run_intake_batch
 from jimbo_runtime_producers import PRODUCER_COMMANDS
+from jimbo_runtime_requests import load_runtime_request, normalize_runtime_request
 from jimbo_runtime_ops import (
     emit_producer_output,
     load_producer_payloads,
@@ -21,6 +22,36 @@ from jimbo_runtime_summary_core import (
 def cmd_producers(_args):
     print(json.dumps(sorted(PRODUCER_COMMANDS)))
     return 0
+
+
+def build_request_namespace(request):
+    request = normalize_runtime_request(request)
+    return argparse.Namespace(
+        producer=request.get("producer"),
+        intake_json=request.get("intake_json"),
+        intake_file=request.get("intake_file"),
+        live=bool(request.get("live")),
+        output_file=request.get("output_file"),
+        log_activity=bool(request.get("log_activity")),
+        summary_id=request.get("summary_id"),
+    ), request["command"]
+
+
+def cmd_request(args):
+    request = load_runtime_request(
+        request_json=args.request_json,
+        request_file=args.request_file,
+    )
+    delegated_args, command = build_request_namespace(request)
+    if command == "emit":
+        return cmd_emit(delegated_args)
+    if command == "resolve":
+        return cmd_resolve(delegated_args)
+    if command == "summary":
+        return cmd_summary(delegated_args)
+    if command == "report":
+        return cmd_report(delegated_args)
+    raise ValueError(f"Unsupported runtime request command: {command}")
 
 
 def load_command_payload(args):
@@ -104,6 +135,12 @@ def build_parser():
 
     producers_parser = subparsers.add_parser("producers", help="List registered runtime intake producers")
     producers_parser.set_defaults(handler=cmd_producers)
+
+    request_parser = subparsers.add_parser("request", help="Execute one machine-readable runtime control-plane request")
+    request_source = request_parser.add_mutually_exclusive_group(required=True)
+    request_source.add_argument("--request-json", help="Raw runtime request JSON")
+    request_source.add_argument("--request-file", help="Path to a JSON file containing one runtime request object")
+    request_parser.set_defaults(handler=cmd_request)
 
     resolve_parser = subparsers.add_parser("resolve", help="Resolve or execute runtime intake payloads")
     add_payload_source_args(resolve_parser)
