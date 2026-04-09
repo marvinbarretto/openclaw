@@ -32,7 +32,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from jimbo_runtime_service import log_dispatch_candidate_classification
+from jimbo_runtime_service import (
+    build_vault_triage_payload,
+    log_dispatch_candidate_classification,
+)
 
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
@@ -683,6 +686,7 @@ def cmd_score_api(args):
     # Build batches using task data from API
     scored = 0
     errors = 0
+    emitted_payloads = []
     batches = [to_score[i:i + BATCH_SIZE] for i in range(0, len(to_score), BATCH_SIZE)]
     log(f"Processing {len(to_score)} tasks in {len(batches)} batches...")
 
@@ -739,6 +743,26 @@ def cmd_score_api(args):
                     if s_ac:
                         line += f" AC: \"{s_ac[:50]}...\""
                 log(line)
+            elif args.emit_intake:
+                if s_agent and s_route == 'jimbo':
+                    emitted_payloads.append(build_vault_triage_payload(
+                        t,
+                        priority=priority,
+                        actionability=actionability,
+                        reason=reason,
+                        suggested_agent_type=s_agent,
+                        suggested_route=s_route,
+                        acceptance_criteria=s_ac,
+                        changed_fields={
+                            "ai_priority",
+                            "ai_rationale",
+                            "actionability",
+                            "suggested_agent_type",
+                            "suggested_route",
+                            "suggested_ac",
+                        },
+                        model=GEMINI_MODEL,
+                    ))
             else:
                 patch = {
                     "ai_priority": priority,
@@ -766,6 +790,10 @@ def cmd_score_api(args):
                     )
 
             scored += 1
+
+    if args.emit_intake:
+        print(json.dumps(emitted_payloads, indent=2))
+        return
 
     # Resurface deferred tasks
     if not args.dry_run:
@@ -868,6 +896,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="Max tasks to score")
     parser.add_argument("--stats", action="store_true", help="Show scoring distribution")
     parser.add_argument("--api", action="store_true", help="Score via jimbo-api (vault task system)")
+    parser.add_argument("--emit-intake", action="store_true", help="Emit runtime intake payloads instead of writing task updates")
 
     args = parser.parse_args()
 

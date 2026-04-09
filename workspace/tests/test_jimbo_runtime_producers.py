@@ -16,8 +16,10 @@ class TestJimboRuntimeProducers(unittest.TestCase):
 
         self.assertIn('dispatch-proposal', commands)
         self.assertIn('dispatch-worker', commands)
+        self.assertIn('vault-triage', commands)
         self.assertIn('dispatch.py', commands['dispatch-proposal'][1])
         self.assertIn('--emit-intake', commands['dispatch-worker'])
+        self.assertIn('prioritise-tasks.py', commands['vault-triage'][1])
 
     def test_get_producer_command_returns_copy(self):
         from jimbo_runtime_producers import get_producer_command

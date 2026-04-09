@@ -72,6 +72,42 @@ def build_dispatch_execution_payload(task, normalized_task, work_dir, *, model):
     }
 
 
+def build_vault_triage_payload(task, *, priority, actionability, reason,
+                               suggested_agent_type, suggested_route,
+                               acceptance_criteria, changed_fields, model):
+    """Build one normalized intake payload for a vault triage decision."""
+    return {
+        "intake_id": task.get("id") or task["id"],
+        "task_id": task["id"],
+        "title": task.get("title"),
+        "source": "vault",
+        "trigger": "vault-task-triage",
+        "task_source": "vault",
+        "workflow_hint": "vault-task-triage",
+        "model": model,
+        "metadata": {},
+        "intake_reason": "Task classified as suitable for Jimbo delegation",
+        "route": {
+            "decision": suggested_route,
+            "reason": "Task is suitable for delegated execution",
+        },
+        "delegate": {
+            "agent_type": suggested_agent_type,
+            "acceptance_criteria": acceptance_criteria,
+        },
+        "changed": {
+            "fields": sorted(changed_fields),
+        },
+        "runtime_metadata": {
+            "classification": {
+                "priority": priority,
+                "actionability": actionability,
+                "reason": reason,
+            },
+        },
+    }
+
+
 def begin_dispatch_proposal(item, *, batch_id, approve_url="", reject_url="",
                             runtime=None):
     """Start orchestration for a task proposed onto the dispatch queue."""
@@ -131,13 +167,17 @@ def log_dispatch_candidate_classification(task, *, priority, actionability,
     runtime = runtime or get_default_runtime()
     selection = runtime.resolve_workflow(
         JimboIntakeEnvelope.from_mapping(
-            task,
-            intake_id=task.get("id") or task["id"],
-            source="vault",
-            trigger="vault-task-triage",
-            workflow_hint="vault-task-triage",
-            task_source="vault",
-            model=model,
+            build_vault_triage_payload(
+                task,
+                priority=priority,
+                actionability=actionability,
+                reason=reason,
+                suggested_agent_type=suggested_agent_type,
+                suggested_route=suggested_route,
+                acceptance_criteria=acceptance_criteria,
+                changed_fields=changed_fields,
+                model=model,
+            )
         )
     )
     return selection.core.classify(

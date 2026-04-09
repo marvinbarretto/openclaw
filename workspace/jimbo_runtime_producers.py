@@ -20,6 +20,12 @@ def build_producer_commands():
             os.path.join(SCRIPT_DIR, "dispatch-worker.py"),
             "--emit-intake",
         ],
+        "vault-triage": [
+            sys.executable,
+            os.path.join(SCRIPT_DIR, "prioritise-tasks.py"),
+            "--api",
+            "--emit-intake",
+        ],
     }
 
 

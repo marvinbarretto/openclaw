@@ -3,9 +3,11 @@
 This document defines the normalized payload shape accepted by:
 
 - `workspace/jimbo_runtime_cli.py`
+- `workspace/jimbo_runtime_tool.py`
 - the shared helpers in `workspace/jimbo_runtime_service.py`
 - `python3 workspace/dispatch.py --emit-intake`
 - `python3 workspace/dispatch-worker.py --emit-intake`
+- `python3 workspace/prioritise-tasks.py --api --emit-intake`
 
 The goal is simple: one explicit intake object shape for runtime-owned orchestration.
 
@@ -131,6 +133,14 @@ python3 workspace/dispatch-worker.py --emit-intake
 That prints a single normalized intake payload for the next approved task the
 worker would pick up.
 
+Vault triage can also emit dispatchable runtime payloads directly:
+
+```bash
+python3 workspace/prioritise-tasks.py --api --emit-intake
+```
+
+That prints a JSON array of tasks classified as suitable for Jimbo delegation.
+
 The runtime CLI accepts either:
 
 - a single intake payload object
@@ -212,4 +222,16 @@ python3 workspace/jimbo_runtime_report.py \
   --output-file /tmp/jimbo-runtime-summary.json \
   --log-activity \
   --summary-id runtime-summary-2026-04-09
+```
+
+## Top-level CLI
+
+The top-level control-plane entrypoint is:
+
+```bash
+python3 workspace/jimbo_runtime_tool.py producers
+python3 workspace/jimbo_runtime_tool.py resolve --intake-file /tmp/intake.json
+python3 workspace/jimbo_runtime_tool.py summary --intake-file /tmp/intake.json
+python3 workspace/jimbo_runtime_tool.py roundtrip --producer dispatch-proposal --summary
+python3 workspace/jimbo_runtime_tool.py report --producer vault-triage
 ```

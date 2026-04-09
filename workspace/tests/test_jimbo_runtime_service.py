@@ -152,6 +152,31 @@ class TestJimboRuntimeService(unittest.TestCase):
             ["ai_priority", "suggested_agent_type"],
         )
 
+    def test_build_vault_triage_payload_matches_runtime_contract(self):
+        from jimbo_runtime_service import build_vault_triage_payload
+
+        payload = build_vault_triage_payload(
+            {
+                "id": "note_1",
+                "title": "Fix auth bug",
+            },
+            priority=1,
+            actionability="clear",
+            reason="Aligned with active repo work",
+            suggested_agent_type="coder",
+            suggested_route="jimbo",
+            acceptance_criteria="Green tests and PR opened.",
+            changed_fields={"ai_priority", "suggested_agent_type"},
+            model="gemini-test",
+        )
+
+        self.assertEqual(payload["source"], "vault")
+        self.assertEqual(payload["trigger"], "vault-task-triage")
+        self.assertEqual(payload["workflow_hint"], "vault-task-triage")
+        self.assertEqual(payload["model"], "gemini-test")
+        self.assertEqual(payload["route"]["decision"], "jimbo")
+        self.assertEqual(payload["delegate"]["agent_type"], "coder")
+
 
 if __name__ == '__main__':
     unittest.main()
