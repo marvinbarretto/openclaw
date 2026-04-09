@@ -8,6 +8,15 @@ TERMINAL_STATUSES = {
     "completed", "blocked", "failed", "rejected", "timeout",
 }
 
+QUEUE_STATUS_TO_BATCH_STATUS = {
+    "proposed": "proposed",
+    "approved": "approved",
+    "running": "picked_up",
+    "completed": "completed",
+    "failed": "failed",
+    "rejected": "rejected",
+}
+
 
 def load_batch_state(path):
     if not os.path.exists(path):
@@ -68,6 +77,16 @@ def record_item_status(state, batch_id, item, status):
     batch["items"] = items
     next_state[batch_id] = batch
     return next_state
+
+
+def record_queue_item(state, item):
+    """Update batch state from a queue item emitted by jimbo-api."""
+    batch_id = item.get("batch_id")
+    queue_status = item.get("status")
+    mapped_status = QUEUE_STATUS_TO_BATCH_STATUS.get(queue_status)
+    if not batch_id or not mapped_status:
+        return dict(state)
+    return record_item_status(state, batch_id, item, mapped_status)
 
 
 def summarize_batch(batch):

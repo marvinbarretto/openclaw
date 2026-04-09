@@ -31,6 +31,7 @@ from dispatch_batch_memory import (
     initialize_batch,
     load_batch_state,
     record_item_status,
+    record_queue_item,
     save_batch_state,
     summarize_batch,
 )
@@ -198,29 +199,52 @@ def emit_transition(status, item, *, dry_run=False):
         title=title,
         dry_run=dry_run,
     )
+
+
+def sync_batch_item(item, *, dry_run=False):
+    """Update the local batch projection from a jimbo-api queue item."""
     batch_id = item.get('batch_id')
-    if batch_id:
-        batch_state = load_batch_state(BATCH_STATE_FILE)
-        batch_state = record_item_status(batch_state, batch_id, task, status)
-        save_batch_state(BATCH_STATE_FILE, batch_state)
-        emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
+    if not batch_id:
+        return
+    batch_state = load_batch_state(BATCH_STATE_FILE)
+    batch_state = record_queue_item(batch_state, item)
+    if dry_run:
+        emit_batch_report(batch_id, batch_state[batch_id], dry_run=True)
+        return
+    save_batch_state(BATCH_STATE_FILE, batch_state)
+    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
 
 
 def check_queue_transitions(dry_run=False):
-    """Detect newly-approved and newly-rejected queue items."""
+    """Detect new queue transitions and update batch state from the API."""
     seen_state = load_seen_state(TRANSITION_STATE_FILE)
     approved_items = fetch_queue_items('approved')
     rejected_items = fetch_queue_items('rejected')
+    running_items = fetch_queue_items('running')
+    completed_items = fetch_queue_items('completed')
+    failed_items = fetch_queue_items('failed')
 
     new_approved, next_state = collect_new_items(seen_state, 'approved', approved_items)
     new_rejected, next_state = collect_new_items(next_state, 'rejected', rejected_items)
+    new_running, next_state = collect_new_items(next_state, 'running', running_items)
+    new_completed, next_state = collect_new_items(next_state, 'completed', completed_items)
+    new_failed, next_state = collect_new_items(next_state, 'failed', failed_items)
 
     for item in new_approved:
         emit_transition('approved', item, dry_run=dry_run)
+        sync_batch_item(item, dry_run=dry_run)
     for item in new_rejected:
         emit_transition('rejected', item, dry_run=dry_run)
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_running:
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_completed:
+        sync_batch_item(item, dry_run=dry_run)
+    for item in new_failed:
+        sync_batch_item(item, dry_run=dry_run)
 
-    save_seen_state(TRANSITION_STATE_FILE, next_state)
+    if not dry_run:
+        save_seen_state(TRANSITION_STATE_FILE, next_state)
 
 
 # --- Core logic ---
@@ -249,6 +273,12 @@ def check_timeouts(dry_run=False):
                     'id': task['id'],
                     'error_message': f'Timeout after {int(elapsed)}s (limit: {timeout}s for {task["agent_type"]})',
                 })
+                batch_id = task.get('batch_id')
+                if batch_id:
+                    batch_state = load_batch_state(BATCH_STATE_FILE)
+                    batch_state = record_item_status(batch_state, batch_id, task, 'timeout')
+                    save_batch_state(BATCH_STATE_FILE, batch_state)
+                    emit_batch_report(batch_id, batch_state[batch_id], dry_run=False)
                 notify_terminal_outcome(
                     'timeout',
                     task,
@@ -313,9 +343,6 @@ def propose_batch(dry_run=False):
     if not hydrated_items:
         log('No dispatch items could be hydrated')
         return False
-    batch_state = load_batch_state(BATCH_STATE_FILE)
-    batch_state = initialize_batch(batch_state, batch_id, hydrated_items)
-    save_batch_state(BATCH_STATE_FILE, batch_state)
 
     titles = {item['task_id']: item.get('title', item['task_id']) for item in hydrated_items}
 
@@ -331,6 +358,9 @@ def propose_batch(dry_run=False):
         log(f'DRY RUN: Would send batch proposal:\n{message}')
         return True
 
+    batch_state = load_batch_state(BATCH_STATE_FILE)
+    batch_state = initialize_batch(batch_state, batch_id, hydrated_items)
+    save_batch_state(BATCH_STATE_FILE, batch_state)
     send_telegram(message)
     emit_batch_report(batch_id, batch_state[batch_id], dry_run=dry_run)
     for item in hydrated_items:

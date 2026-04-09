@@ -35,6 +35,37 @@ class TestBatchState(unittest.TestCase):
         self.assertEqual(summarize_batch(batch), '2 tasks: 1 approved, 1 rejected')
         self.assertEqual(batch_report_status(batch), 'mixed')
 
+    def test_record_queue_item_maps_running_to_picked_up(self):
+        from dispatch_batch_memory import initialize_batch, record_queue_item, summarize_batch
+        state = initialize_batch({}, 'batch-1', [
+            {'id': 1, 'task_id': 'note_1', 'title': 'Task one', 'agent_type': 'coder', 'flow': 'commission'},
+        ])
+        state = record_queue_item(state, {
+            'id': 1,
+            'batch_id': 'batch-1',
+            'task_id': 'note_1',
+            'title': 'Task one',
+            'agent_type': 'coder',
+            'flow': 'commission',
+            'status': 'running',
+        })
+        batch = state['batch-1']
+        self.assertEqual(batch['items']['1']['status'], 'picked_up')
+        self.assertEqual(summarize_batch(batch), '1 tasks: 1 picked_up')
+
+    def test_record_queue_item_ignores_unknown_status(self):
+        from dispatch_batch_memory import initialize_batch, record_queue_item
+        state = initialize_batch({}, 'batch-1', [
+            {'id': 1, 'task_id': 'note_1', 'title': 'Task one', 'agent_type': 'coder', 'flow': 'commission'},
+        ])
+        updated = record_queue_item(state, {
+            'id': 1,
+            'batch_id': 'batch-1',
+            'task_id': 'note_1',
+            'status': 'mystery',
+        })
+        self.assertEqual(updated, state)
+
     def test_load_and_save_batch_state(self):
         from dispatch_batch_memory import load_batch_state, save_batch_state
         with tempfile.TemporaryDirectory() as tmpdir:
