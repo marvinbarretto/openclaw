@@ -10,6 +10,7 @@ from jimbo_runtime_executor import (
     build_resolve_output,
     build_summary_output,
 )
+from jimbo_runtime_inbox_service import enqueue_producer_requests
 from jimbo_runtime_request_service import execute_runtime_request
 from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_requests import (
@@ -33,6 +34,13 @@ def cmd_request(args):
     )
     response = execute_runtime_request(request)
     json.dump(response, sys.stdout, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_enqueue(args):
+    result = enqueue_producer_requests(args.producer, live=args.live)
+    json.dump(result, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
 
@@ -124,6 +132,11 @@ def build_parser():
     emit_parser = subparsers.add_parser("emit", help="Emit raw normalized intake JSON from a registered producer")
     emit_parser.add_argument("--producer", choices=sorted(PRODUCER_COMMANDS), required=True)
     emit_parser.set_defaults(handler=cmd_emit)
+
+    enqueue_parser = subparsers.add_parser("enqueue", help="Submit producer payloads into the runtime inbox")
+    enqueue_parser.add_argument("--producer", choices=sorted(PRODUCER_COMMANDS), required=True)
+    enqueue_parser.add_argument("--live", action="store_true", help="Queue live runtime execution requests")
+    enqueue_parser.set_defaults(handler=cmd_enqueue)
 
     summary_parser = subparsers.add_parser("summary", help="Summarize runtime intake payloads")
     add_payload_source_args(summary_parser)

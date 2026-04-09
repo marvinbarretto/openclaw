@@ -45,6 +45,17 @@ class TestJimboRuntimeTool(unittest.TestCase):
         emit_output.assert_called_once_with('dispatch-proposal')
         stdout.write.assert_called_once_with('[{"task_id":"note_1"}]\n')
 
+    def test_enqueue_command_submits_producer_payloads_to_inbox(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'enqueue_producer_requests', return_value={'count': 1}) as enqueue_producer_requests, \
+             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
+            exit_code = runtime_tool.main(['enqueue', '--producer', 'vault-triage', '--live'])
+
+        self.assertEqual(exit_code, 0)
+        enqueue_producer_requests.assert_called_once_with('vault-triage', live=True)
+        dump_mock.assert_called_once()
+
     def test_request_command_can_delegate_to_emit(self):
         runtime_tool = load_runtime_tool()
 

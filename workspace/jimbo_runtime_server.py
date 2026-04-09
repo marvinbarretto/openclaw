@@ -7,6 +7,7 @@ import json
 import os
 import sys
 
+from jimbo_runtime_inbox_service import drain_runtime_inbox
 from jimbo_runtime_request_service import stream_runtime_requests
 from jimbo_runtime_requests import iter_runtime_requests
 
@@ -48,6 +49,15 @@ def write_server_stats(stats, stats_file):
         f.write(os.linesep)
 
 
+def drain_inbox_server(*, claimant, limit=None):
+    """Claim and execute pending runtime inbox items."""
+    started_at = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
+    result = drain_runtime_inbox(claimant=claimant, limit=limit)
+    result["started_at"] = started_at
+    result["completed_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -64,6 +74,21 @@ def build_parser():
         "--stats-file",
         help="Optional path to write machine-readable server run stats",
     )
+    parser.add_argument(
+        "--drain-inbox",
+        action="store_true",
+        help="Claim and execute pending runtime inbox items instead of reading request input",
+    )
+    parser.add_argument(
+        "--drain-limit",
+        type=int,
+        help="Optional max inbox items to process when using --drain-inbox",
+    )
+    parser.add_argument(
+        "--claimant",
+        default="jimbo-runtime-server",
+        help="Identity recorded when claiming runtime inbox items",
+    )
     return parser
 
 
@@ -71,11 +96,17 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        stats = serve_request_stream(
-            request_file=args.request_file,
-            continue_on_error=not args.fail_fast,
-            output_stream=sys.stdout,
-        )
+        if args.drain_inbox:
+            stats = drain_inbox_server(
+                claimant=args.claimant,
+                limit=args.drain_limit,
+            )
+        else:
+            stats = serve_request_stream(
+                request_file=args.request_file,
+                continue_on_error=not args.fail_fast,
+                output_stream=sys.stdout,
+            )
         if args.stats_file:
             write_server_stats(stats, args.stats_file)
         return 0

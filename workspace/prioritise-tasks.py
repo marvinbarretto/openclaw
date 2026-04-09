@@ -36,6 +36,7 @@ from jimbo_runtime_service import (
     build_vault_triage_payload,
     log_dispatch_candidate_classification,
 )
+from jimbo_runtime_inbox_service import enqueue_payloads
 
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
@@ -687,6 +688,7 @@ def cmd_score_api(args):
     scored = 0
     errors = 0
     emitted_payloads = []
+    queued_payloads = []
     batches = [to_score[i:i + BATCH_SIZE] for i in range(0, len(to_score), BATCH_SIZE)]
     log(f"Processing {len(to_score)} tasks in {len(batches)} batches...")
 
@@ -777,6 +779,17 @@ def cmd_score_api(args):
                     patch["suggested_ac"] = s_ac
                 _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
                 if s_agent and s_route == 'jimbo':
+                    runtime_payload = build_vault_triage_payload(
+                        t,
+                        priority=priority,
+                        actionability=actionability,
+                        reason=reason,
+                        suggested_agent_type=s_agent,
+                        suggested_route=s_route,
+                        acceptance_criteria=s_ac,
+                        changed_fields=patch.keys(),
+                        model=GEMINI_MODEL,
+                    )
                     log_dispatch_candidate_classification(
                         t,
                         priority=priority,
@@ -788,12 +801,23 @@ def cmd_score_api(args):
                         changed_fields=patch.keys(),
                         model=GEMINI_MODEL,
                     )
+                    if args.submit_runtime_inbox:
+                        queued_payloads.append(runtime_payload)
 
             scored += 1
 
     if args.emit_intake:
         print(json.dumps(emitted_payloads, indent=2))
         return
+
+    inbox_submission = {"count": 0}
+    if args.submit_runtime_inbox and not args.dry_run:
+        inbox_submission = enqueue_payloads(
+            queued_payloads,
+            producer="vault-triage",
+            source="vault-triage",
+            live=True,
+        )
 
     # Resurface deferred tasks
     if not args.dry_run:
@@ -804,7 +828,8 @@ def cmd_score_api(args):
         log("(Dry run — no API calls made)")
 
     print(json.dumps({"status": "ok", "scored": scored, "errors": errors,
-                       "skipped": len(all_tasks) - len(to_score)}))
+                       "skipped": len(all_tasks) - len(to_score),
+                       "submitted_to_runtime_inbox": inbox_submission["count"]}))
 
 
 def _resurface_deferred():
@@ -897,6 +922,7 @@ def main():
     parser.add_argument("--stats", action="store_true", help="Show scoring distribution")
     parser.add_argument("--api", action="store_true", help="Score via jimbo-api (vault task system)")
     parser.add_argument("--emit-intake", action="store_true", help="Emit runtime intake payloads instead of writing task updates")
+    parser.add_argument("--submit-runtime-inbox", action="store_true", help="Submit eligible Jimbo tasks into the runtime inbox after API updates")
 
     args = parser.parse_args()
 

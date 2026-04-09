@@ -232,6 +232,7 @@ The top-level control-plane entrypoint is:
 python3 workspace/jimbo_runtime_tool.py producers
 python3 workspace/jimbo_runtime_tool.py request --request-file /tmp/runtime-request.json
 python3 workspace/jimbo_runtime_tool.py emit --producer dispatch-proposal
+python3 workspace/jimbo_runtime_tool.py enqueue --producer vault-triage --live
 python3 workspace/jimbo_runtime_tool.py resolve --producer dispatch-proposal
 python3 workspace/jimbo_runtime_tool.py summary --producer vault-triage
 python3 workspace/jimbo_runtime_tool.py resolve --intake-file /tmp/intake.json
@@ -289,4 +290,29 @@ For a dedicated long-lived process entrypoint, use:
 python3 workspace/jimbo_runtime_server.py --request-file /tmp/runtime-requests.ndjson
 python3 workspace/jimbo_runtime_server.py --request-file - --fail-fast
 python3 workspace/jimbo_runtime_server.py --request-file - --stats-file /tmp/jimbo-runtime-server.json
+python3 workspace/jimbo_runtime_server.py --drain-inbox --claimant jimbo-runtime-server
+```
+
+## Runtime inbox
+
+The runtime now has an API-backed inbox and run ledger stored in the settings
+API. This is the first runtime-owned queue surface.
+
+Submit one producer batch into the inbox:
+
+```bash
+python3 workspace/jimbo_runtime_tool.py enqueue --producer vault-triage --live
+```
+
+Drain pending inbox items through the dedicated server loop:
+
+```bash
+python3 workspace/jimbo_runtime_server.py --drain-inbox
+python3 workspace/jimbo_runtime_server.py --drain-inbox --drain-limit 10
+```
+
+Vault triage can also submit eligible Jimbo tasks directly after API scoring:
+
+```bash
+python3 workspace/prioritise-tasks.py --api --submit-runtime-inbox
 ```

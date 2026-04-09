@@ -127,3 +127,35 @@ class TestJimboRuntimeServer(unittest.TestCase):
             },
             '/tmp/server-stats.json',
         )
+
+    def test_drain_inbox_server_returns_runtime_drain_stats(self):
+        runtime_server = load_runtime_server()
+
+        with mock.patch.object(runtime_server, 'drain_runtime_inbox', return_value={
+            'status': 'processed',
+            'processed': 2,
+            'completed': 2,
+            'failed': 0,
+            'results': [],
+            'claimant': 'server-1',
+            'limit': 10,
+        }) as drain_runtime_inbox:
+            stats = runtime_server.drain_inbox_server(claimant='server-1', limit=10)
+
+        drain_runtime_inbox.assert_called_once_with(claimant='server-1', limit=10)
+        self.assertEqual(stats['processed'], 2)
+        self.assertTrue(stats['started_at'].endswith('Z'))
+
+    def test_main_can_drain_runtime_inbox(self):
+        runtime_server = load_runtime_server()
+
+        with mock.patch.object(runtime_server, 'drain_inbox_server', return_value={
+            'status': 'processed',
+            'processed': 1,
+            'completed': 1,
+            'failed': 0,
+        }) as drain_inbox_server:
+            exit_code = runtime_server.main(['--drain-inbox', '--claimant', 'server-1', '--drain-limit', '5'])
+
+        self.assertEqual(exit_code, 0)
+        drain_inbox_server.assert_called_once_with(claimant='server-1', limit=5)
