@@ -254,7 +254,7 @@ def execute_task(task, dry_run=False):
         result = parse_result(proc.stdout or '')
 
     # Report back to API
-    review_decision = validate_result(normalized_task, result)
+    review_decision = validate_result(normalized_task, result, work_dir=work_dir)
     report_status = 'failed'
     if not review_decision['accepted']:
         orchestration_helper.log_decision(
