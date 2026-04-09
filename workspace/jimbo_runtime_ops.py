@@ -34,14 +34,14 @@ def emit_producer_output(producer):
     return run_subprocess(get_producer_command(producer))
 
 
-def build_runtime_cli_command(*, live=False, summary=False):
+def build_runtime_cli_command(producer, *, live=False, summary=False):
     command = "summary" if summary else "resolve"
     cmd = [
         sys.executable,
         os.path.join(SCRIPT_DIR, "jimbo_runtime_tool.py"),
         command,
-        "--intake-file",
-        "-",
+        "--producer",
+        producer,
     ]
     if live and not summary:
         cmd.append("--live")
@@ -53,12 +53,7 @@ def run_roundtrip(producer, *, live=False, summary=False):
     if live and summary:
         raise ValueError("summary mode does not support live execution")
 
-    producer_output = emit_producer_output(producer)
-    runtime_output = run_subprocess(
-        build_runtime_cli_command(live=live, summary=summary),
-        stdin_text=producer_output,
-    )
-    return runtime_output
+    return run_subprocess(build_runtime_cli_command(producer, live=live, summary=summary))
 
 
 def load_producer_payloads(producer):

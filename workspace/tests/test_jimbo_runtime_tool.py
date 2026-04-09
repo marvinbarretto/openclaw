@@ -34,17 +34,6 @@ class TestJimboRuntimeTool(unittest.TestCase):
         self.assertIn('dispatch-worker', producers)
         self.assertIn('vault-triage', producers)
 
-    def test_report_command_delegates_to_report_wrapper(self):
-        runtime_tool = load_runtime_tool()
-
-        with mock.patch.object(runtime_tool, 'run_report', return_value={'mode': 'summary'}) as run_report, \
-             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
-            exit_code = runtime_tool.main(['report', '--producer', 'dispatch-proposal'])
-
-        self.assertEqual(exit_code, 0)
-        run_report.assert_called_once()
-        dump_mock.assert_called_once()
-
     def test_emit_command_prints_producer_output(self):
         runtime_tool = load_runtime_tool()
 
@@ -80,6 +69,40 @@ class TestJimboRuntimeTool(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         load_payloads.assert_called_once_with('dispatch-proposal')
         run_summary.assert_called_once_with([{"task_id": "note_1"}])
+        dump_mock.assert_called_once()
+
+    def test_roundtrip_command_delegates_to_resolve_with_producer(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'cmd_resolve', return_value=0) as cmd_resolve:
+            exit_code = runtime_tool.main(['roundtrip', '--producer', 'dispatch-proposal'])
+
+        self.assertEqual(exit_code, 0)
+        delegated_args = cmd_resolve.call_args.args[0]
+        self.assertEqual(delegated_args.producer, 'dispatch-proposal')
+        self.assertFalse(delegated_args.live)
+
+    def test_roundtrip_command_can_delegate_to_summary_with_producer(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'cmd_summary', return_value=0) as cmd_summary:
+            exit_code = runtime_tool.main(['roundtrip', '--producer', 'dispatch-proposal', '--summary'])
+
+        self.assertEqual(exit_code, 0)
+        delegated_args = cmd_summary.call_args.args[0]
+        self.assertEqual(delegated_args.producer, 'dispatch-proposal')
+
+    def test_report_command_reuses_summary_output_with_producer_label(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'build_summary_output', return_value={'mode': 'summary', 'producer': 'dispatch-proposal'}) as build_summary_output, \
+             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
+            exit_code = runtime_tool.main(['report', '--producer', 'dispatch-proposal'])
+
+        self.assertEqual(exit_code, 0)
+        build_summary_output.assert_called_once()
+        _, kwargs = build_summary_output.call_args
+        self.assertTrue(kwargs['include_producer'])
         dump_mock.assert_called_once()
 
 

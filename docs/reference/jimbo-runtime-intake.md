@@ -242,3 +242,6 @@ python3 workspace/jimbo_runtime_tool.py report --producer vault-triage
 `jimbo_runtime_cli.py`, `jimbo_runtime_summary.py`, `jimbo_runtime_roundtrip.py`,
 and `jimbo_runtime_report.py` remain available as compatibility shims that
 forward into the top-level tool.
+
+`roundtrip` and `report` are now convenience surfaces over the producer-aware
+`resolve` and `summary` flows rather than separate intake-routing paths.

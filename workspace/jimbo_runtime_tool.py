@@ -10,8 +10,6 @@ from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_ops import (
     emit_producer_output,
     load_producer_payloads,
-    run_report,
-    run_roundtrip,
 )
 from jimbo_runtime_summary_core import (
     log_summary_activity,
@@ -48,34 +46,46 @@ def cmd_emit(args):
 
 
 def cmd_summary(args):
-    payload = load_command_payload(args)
-    summary = run_summary(payload)
-    if args.log_activity:
-        summary["activity_id"] = log_summary_activity(summary, summary_id=args.summary_id)
-    if args.output_file:
-        write_summary_artifact(summary, args.output_file)
+    summary = build_summary_output(args)
     json.dump(summary, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
 
 
+def build_summary_output(args, *, include_producer=False):
+    payload = load_command_payload(args)
+    summary = run_summary(payload)
+    if include_producer and args.producer:
+        summary["producer"] = args.producer
+    if args.log_activity:
+        summary["activity_id"] = log_summary_activity(summary, summary_id=args.summary_id)
+    if args.output_file:
+        write_summary_artifact(summary, args.output_file)
+    return summary
+
+
 def cmd_roundtrip(args):
-    output = run_roundtrip(
-        args.producer,
+    if args.live and args.summary:
+        raise ValueError("summary mode does not support live execution")
+    if args.summary:
+        return cmd_summary(argparse.Namespace(
+            producer=args.producer,
+            intake_json=None,
+            intake_file=None,
+            output_file=None,
+            log_activity=False,
+            summary_id=None,
+        ))
+    return cmd_resolve(argparse.Namespace(
+        producer=args.producer,
+        intake_json=None,
+        intake_file=None,
         live=args.live,
-        summary=args.summary,
-    )
-    sys.stdout.write(output)
-    return 0
+    ))
 
 
 def cmd_report(args):
-    summary = run_report(
-        args.producer,
-        output_file=args.output_file,
-        log_activity=args.log_activity,
-        summary_id=args.summary_id,
-    )
+    summary = build_summary_output(args, include_producer=True)
     json.dump(summary, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
