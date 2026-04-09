@@ -5,71 +5,25 @@ import argparse
 import json
 import sys
 
-from jimbo_runtime_engine import load_intake_payload, run_intake_batch
+from jimbo_runtime_executor import (
+    build_report_output,
+    build_resolve_output,
+    build_summary_output,
+    run_runtime_request,
+)
 from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_requests import (
     iter_runtime_requests,
     load_runtime_request,
-    normalize_runtime_request,
 )
 from jimbo_runtime_ops import (
     emit_producer_output,
-    load_producer_payloads,
-)
-from jimbo_runtime_summary_core import (
-    log_summary_activity,
-    run_summary,
-    write_summary_artifact,
 )
 
 
 def cmd_producers(_args):
     print(json.dumps(sorted(PRODUCER_COMMANDS)))
     return 0
-
-
-def build_request_namespace(request):
-    request = normalize_runtime_request(request)
-    return argparse.Namespace(
-        producer=request.get("producer"),
-        intake_json=request.get("intake_json"),
-        intake_file=request.get("intake_file"),
-        live=bool(request.get("live")),
-        output_file=request.get("output_file"),
-        log_activity=bool(request.get("log_activity")),
-        summary_id=request.get("summary_id"),
-    ), request["command"]
-
-
-def build_emit_output(args):
-    return load_producer_payloads(args.producer)
-
-
-def build_resolve_output(args):
-    payload = load_command_payload(args)
-    return run_intake_batch(payload, live=args.live)
-
-
-def build_report_output(args):
-    return build_summary_output(args, include_producer=True)
-
-
-def run_runtime_request(request):
-    delegated_args, command = build_request_namespace(request)
-    if command == "emit":
-        result = build_emit_output(delegated_args)
-    elif command == "resolve":
-        result = build_resolve_output(delegated_args)
-    elif command == "summary":
-        result = build_summary_output(delegated_args)
-    elif command == "report":
-        result = build_report_output(delegated_args)
-    else:
-        raise ValueError(f"Unsupported runtime request command: {command}")
-    return {
-        "command": command,
-        "result": result,
-    }
 
 
 def cmd_request(args):
@@ -91,15 +45,6 @@ def cmd_serve(args):
     return 0
 
 
-def load_command_payload(args):
-    if args.producer:
-        return load_producer_payloads(args.producer)
-    return load_intake_payload(
-        intake_json=args.intake_json,
-        intake_file=args.intake_file,
-    )
-
-
 def cmd_resolve(args):
     result = build_resolve_output(args)
     json.dump(result, sys.stdout, sort_keys=True)
@@ -117,18 +62,6 @@ def cmd_summary(args):
     json.dump(summary, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
-
-
-def build_summary_output(args, *, include_producer=False):
-    payload = load_command_payload(args)
-    summary = run_summary(payload)
-    if include_producer and args.producer:
-        summary["producer"] = args.producer
-    if args.log_activity:
-        summary["activity_id"] = log_summary_activity(summary, summary_id=args.summary_id)
-    if args.output_file:
-        write_summary_artifact(summary, args.output_file)
-    return summary
 
 
 def cmd_roundtrip(args):

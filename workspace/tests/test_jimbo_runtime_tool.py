@@ -86,43 +86,26 @@ class TestJimboRuntimeTool(unittest.TestCase):
         run_runtime_request.assert_called_once()
         dump_mock.assert_called_once()
 
-    def test_run_runtime_request_returns_structured_emit_response(self):
-        runtime_tool = load_runtime_tool()
-
-        with mock.patch.object(runtime_tool, 'load_producer_payloads', return_value=[{'task_id': 'note_1'}]) as load_producer_payloads:
-            response = runtime_tool.run_runtime_request({
-                'command': 'emit',
-                'producer': 'dispatch-proposal',
-            })
-
-        load_producer_payloads.assert_called_once_with('dispatch-proposal')
-        self.assertEqual(response['command'], 'emit')
-        self.assertEqual(response['result'][0]['task_id'], 'note_1')
-
     def test_resolve_command_can_load_payloads_from_producer(self):
         runtime_tool = load_runtime_tool()
 
-        with mock.patch.object(runtime_tool, 'load_producer_payloads', return_value=[{"task_id": "note_1"}]) as load_payloads, \
-             mock.patch.object(runtime_tool, 'run_intake_batch', return_value=[{"mode": "resolved"}]) as run_intake_batch, \
+        with mock.patch.object(runtime_tool, 'build_resolve_output', return_value=[{"mode": "resolved"}]) as build_resolve_output, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['resolve', '--producer', 'dispatch-proposal'])
 
         self.assertEqual(exit_code, 0)
-        load_payloads.assert_called_once_with('dispatch-proposal')
-        run_intake_batch.assert_called_once_with([{"task_id": "note_1"}], live=False)
+        build_resolve_output.assert_called_once()
         dump_mock.assert_called_once()
 
     def test_summary_command_can_load_payloads_from_producer(self):
         runtime_tool = load_runtime_tool()
 
-        with mock.patch.object(runtime_tool, 'load_producer_payloads', return_value=[{"task_id": "note_1"}]) as load_payloads, \
-             mock.patch.object(runtime_tool, 'run_summary', return_value={"mode": "summary"}) as run_summary, \
+        with mock.patch.object(runtime_tool, 'build_summary_output', return_value={"mode": "summary"}) as build_summary_output, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['summary', '--producer', 'dispatch-proposal'])
 
         self.assertEqual(exit_code, 0)
-        load_payloads.assert_called_once_with('dispatch-proposal')
-        run_summary.assert_called_once_with([{"task_id": "note_1"}])
+        build_summary_output.assert_called_once()
         dump_mock.assert_called_once()
 
     def test_roundtrip_command_delegates_to_resolve_with_producer(self):
@@ -149,14 +132,12 @@ class TestJimboRuntimeTool(unittest.TestCase):
     def test_report_command_reuses_summary_output_with_producer_label(self):
         runtime_tool = load_runtime_tool()
 
-        with mock.patch.object(runtime_tool, 'build_summary_output', return_value={'mode': 'summary', 'producer': 'dispatch-proposal'}) as build_summary_output, \
+        with mock.patch.object(runtime_tool, 'build_report_output', return_value={'mode': 'summary', 'producer': 'dispatch-proposal'}) as build_report_output, \
              mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
             exit_code = runtime_tool.main(['report', '--producer', 'dispatch-proposal'])
 
         self.assertEqual(exit_code, 0)
-        build_summary_output.assert_called_once()
-        _, kwargs = build_summary_output.call_args
-        self.assertTrue(kwargs['include_producer'])
+        build_report_output.assert_called_once()
         dump_mock.assert_called_once()
 
     def test_serve_command_streams_request_responses(self):
