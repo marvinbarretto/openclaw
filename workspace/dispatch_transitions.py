@@ -1,31 +1,27 @@
 """Helpers for dispatch queue transition tracking."""
 
 import json
-import os
 
 
-def load_seen_state(path):
-    """Load seen dispatch IDs from disk."""
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return {
-                key: list(dict.fromkeys(value))
-                for key, value in data.items()
-                if isinstance(value, list)
-            }
-    except Exception:
-        pass
+def normalize_seen_state(data):
+    """Normalize arbitrary state into the expected dispatch-ID map."""
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            return {}
+    if isinstance(data, dict):
+        return {
+            key: list(dict.fromkeys(value))
+            for key, value in data.items()
+            if isinstance(value, list)
+        }
     return {}
 
 
-def save_seen_state(path, state):
-    """Persist seen dispatch IDs to disk."""
-    with open(path, "w") as f:
-        json.dump(state, f, sort_keys=True)
+def serialize_seen_state(state):
+    """Serialize transition state for storage in the API settings store."""
+    return json.dumps(normalize_seen_state(state), sort_keys=True)
 
 
 def collect_new_items(seen_state, status, items, *, max_seen=200):

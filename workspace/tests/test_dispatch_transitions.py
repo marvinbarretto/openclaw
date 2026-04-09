@@ -2,7 +2,6 @@
 
 import os
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -32,16 +31,17 @@ class TestCollectNewItems(unittest.TestCase):
         self.assertEqual(state["approved"], [3, 4])
 
 
-class TestSeenStatePersistence(unittest.TestCase):
+class TestSeenStateSerialization(unittest.TestCase):
 
-    def test_load_and_save_seen_state(self):
-        from dispatch_transitions import load_seen_state, save_seen_state
+    def test_normalize_seen_state_from_json(self):
+        from dispatch_transitions import normalize_seen_state
+        loaded = normalize_seen_state('{"approved":[1,2,2],"failed":[5]}')
+        self.assertEqual(loaded, {"approved": [1, 2], "failed": [5]})
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, "dispatch-state.json")
-            save_seen_state(path, {"approved": [1, 2]})
-            loaded = load_seen_state(path)
-            self.assertEqual(loaded, {"approved": [1, 2]})
+    def test_serialize_seen_state(self):
+        from dispatch_transitions import serialize_seen_state
+        payload = serialize_seen_state({"approved": [2, 1, 2]})
+        self.assertEqual(payload, '{"approved": [2, 1]}')
 
 
 if __name__ == '__main__':

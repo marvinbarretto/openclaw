@@ -35,7 +35,7 @@ from dispatch_batch_memory import (
 )
 from dispatch_intake import hydrate_batch
 from dispatch_reporting import build_batch_summary, build_result_summary
-from dispatch_transitions import collect_new_items, load_seen_state, save_seen_state
+from dispatch_transitions import collect_new_items, normalize_seen_state, serialize_seen_state
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
 import orchestration_helper
 
@@ -46,7 +46,7 @@ API_KEY = os.environ.get('JIMBO_API_KEY', os.environ.get('API_KEY', ''))
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 LOCK_FILE = '/tmp/dispatch.lock'
-TRANSITION_STATE_FILE = '/tmp/dispatch-transition-state.json'
+TRANSITION_STATE_KEY = 'dispatch_transition_state'
 DEFAULT_BATCH_SIZE = 3
 BATCH_QUEUE_STATUSES = 'proposed,approved,running,completed,failed,rejected'
 
@@ -125,6 +125,50 @@ def fetch_vault_note(task_id):
 def fetch_queue_items(status, *, limit=20):
     queue = api_request('GET', f'/api/dispatch/queue?status={status}&limit={limit}')
     return queue.get('items', []) if queue else []
+
+
+def fetch_setting_value(key):
+    """Fetch a raw value from the settings store.
+
+    Returns:
+      - the stored value when present
+      - {} when the setting is missing
+      - None when the API request failed
+    """
+    url = f'{API_URL}/api/settings/{key}'
+    req = urllib.request.Request(
+        url,
+        headers={'X-API-Key': API_KEY, 'Accept': 'application/json'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode())
+            return payload.get('value')
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {}
+        body_text = e.read().decode() if e.fp else ''
+        log(f'API error: GET /api/settings/{key} -> {e.code}: {body_text[:200]}')
+        return None
+    except Exception as e:
+        log(f'API request failed: GET /api/settings/{key} -> {e}')
+        return None
+
+
+def store_setting_value(key, value):
+    result = api_request('PUT', f'/api/settings/{key}', {'value': value})
+    return result is not None
+
+
+def load_transition_state():
+    raw_value = fetch_setting_value(TRANSITION_STATE_KEY)
+    if raw_value is None:
+        return None
+    return normalize_seen_state(raw_value)
+
+
+def save_transition_state(state):
+    return store_setting_value(TRANSITION_STATE_KEY, serialize_seen_state(state))
 
 
 def emit_batch_report(batch_id, batch, *, dry_run=False):
@@ -218,7 +262,10 @@ def emit_batch_reports(batch_ids, *, dry_run=False, queue_items=None, status_ove
 
 def check_queue_transitions(dry_run=False):
     """Detect new queue transitions and rebuild affected batch narratives."""
-    seen_state = load_seen_state(TRANSITION_STATE_FILE)
+    seen_state = load_transition_state()
+    if seen_state is None:
+        log('Transition state unavailable, skipping transition detection')
+        return
     approved_items = fetch_queue_items('approved')
     rejected_items = fetch_queue_items('rejected')
     running_items = fetch_queue_items('running')
@@ -253,7 +300,8 @@ def check_queue_transitions(dry_run=False):
     emit_batch_reports(affected_batch_ids, dry_run=dry_run)
 
     if not dry_run:
-        save_seen_state(TRANSITION_STATE_FILE, next_state)
+        if not save_transition_state(next_state):
+            log('Failed to persist transition state')
 
 
 # --- Core logic ---
