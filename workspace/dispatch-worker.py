@@ -26,6 +26,7 @@ import time
 import urllib.request
 import urllib.error
 
+from dispatch_reporting import build_result_summary
 from dispatch_utils import parse_result, render_template
 from dispatch_review import validate_result
 import orchestration_helper
@@ -192,6 +193,14 @@ def execute_task(task, dry_run=False):
             'id': dispatch_id,
             'error_message': f'Timeout after {timeout}s (limit for {agent_type})',
         })
+        send_telegram(build_result_summary(
+            task,
+            title=vault_task.get('title', ''),
+            report_status='timeout',
+            summary=f'Timed out after {timeout}s',
+            review_reason=f'limit for {agent_type}',
+            elapsed_seconds=timeout,
+        ))
         cleanup(task_id)
         return False
     except Exception as e:
@@ -200,6 +209,13 @@ def execute_task(task, dry_run=False):
             'id': dispatch_id,
             'error_message': f'Execution error: {e}',
         })
+        send_telegram(build_result_summary(
+            task,
+            title=vault_task.get('title', ''),
+            report_status='failed',
+            summary='Execution error',
+            review_reason=str(e),
+        ))
         cleanup(task_id)
         return False
 
@@ -320,6 +336,13 @@ def execute_task(task, dry_run=False):
             'artifact_path': result.get('artifact_path'),
         },
     )
+    send_telegram(build_result_summary(
+        task,
+        title=vault_task.get('title', ''),
+        report_status=report_status,
+        summary=result.get('summary', ''),
+        review_reason=review_decision.get('reason'),
+    ))
 
     cleanup(task_id)
     return True
