@@ -20,12 +20,14 @@ import datetime
 import fcntl
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 import urllib.request
 import urllib.error
+
+from dispatch_utils import parse_result, render_template
+import orchestration_helper
 
 # --- Configuration ---
 
@@ -64,42 +66,6 @@ def api_request(method, path, body=None):
     except Exception as e:
         log(f'API request failed: {method} {path} -> {e}')
         return None
-
-
-def parse_result(raw):
-    """Parse agent result JSON with fallback for malformed output."""
-    if not raw or not raw.strip():
-        return {'status': 'failed', 'summary': 'Empty result file'}
-
-    text = raw.strip()
-
-    # Try direct JSON parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Try extracting JSON from markdown fences
-    match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # Fallback: treat raw text as summary
-    return {
-        'status': 'completed_unstructured',
-        'summary': text[:500],
-    }
-
-
-def render_template(template_text, variables):
-    """Render a prompt template with variable substitution."""
-    result = template_text
-    for key, value in variables.items():
-        result = result.replace('{' + key + '}', str(value))
-    return result
 
 
 def load_template(agent_type):
@@ -170,6 +136,23 @@ def execute_task(task, dry_run=False):
         'prompt': prompt,
         'repo': work_dir,
     })
+    orchestration_helper.log_decision(
+        'delegate',
+        task_id,
+        title=vault_task.get('title', ''),
+        task_source=task.get('task_source', 'vault'),
+        model=DEFAULT_MODEL,
+        route={
+            'decision': task.get('flow', 'dispatch'),
+            'reason': 'Approved task picked up by dispatch worker',
+        },
+        delegate={
+            'agent_type': agent_type,
+            'executor': 'claude-code',
+            'repo': work_dir,
+            'dispatch_id': dispatch_id,
+        },
+    )
 
     # Write prompt to temp file
     prompt_path = f'/tmp/dispatch-{task_id}.prompt'
@@ -228,7 +211,20 @@ def execute_task(task, dry_run=False):
         result = parse_result(proc.stdout or '')
 
     # Report back to API
+    report_status = 'failed'
     if result['status'] in ('completed', 'completed_unstructured'):
+        orchestration_helper.log_decision(
+            'review',
+            task_id,
+            title=vault_task.get('title', ''),
+            task_source=task.get('task_source', 'vault'),
+            model=DEFAULT_MODEL,
+            review={
+                'status': result['status'],
+                'summary': result.get('summary', ''),
+                'artifacts_present': len(result) > 2,
+            },
+        )
         log(f'Task {task_id} completed: {result.get("summary", "")[:100]}')
         api_request('POST', '/api/dispatch/complete', {
             'id': dispatch_id,
@@ -237,7 +233,20 @@ def execute_task(task, dry_run=False):
                 k: v for k, v in result.items() if k not in ('status', 'summary')
             }) if len(result) > 2 else None,
         })
+        report_status = 'completed'
     elif result['status'] == 'blocked':
+        orchestration_helper.log_decision(
+            'review',
+            task_id,
+            title=vault_task.get('title', ''),
+            task_source=task.get('task_source', 'vault'),
+            model=DEFAULT_MODEL,
+            review={
+                'status': 'blocked',
+                'summary': result.get('summary', ''),
+                'blockers': result.get('blockers'),
+            },
+        )
         log(f'Task {task_id} blocked: {result.get("blockers", "")}')
         api_request('POST', '/api/dispatch/fail', {
             'id': dispatch_id,
@@ -246,12 +255,43 @@ def execute_task(task, dry_run=False):
         api_request('PATCH', f'/api/vault/notes/{task_id}', {
             'dispatch_status': 'needs_grooming',
         })
+        report_status = 'blocked'
     else:
+        orchestration_helper.log_decision(
+            'review',
+            task_id,
+            title=vault_task.get('title', ''),
+            task_source=task.get('task_source', 'vault'),
+            model=DEFAULT_MODEL,
+            review={
+                'status': 'failed',
+                'summary': result.get('summary', ''),
+            },
+        )
         log(f'Task {task_id} failed: {result.get("summary", "")}')
         api_request('POST', '/api/dispatch/fail', {
             'id': dispatch_id,
             'error_message': result.get('summary', 'Unknown failure'),
         })
+
+    orchestration_helper.log_decision(
+        'report',
+        task_id,
+        title=vault_task.get('title', ''),
+        task_source=task.get('task_source', 'vault'),
+        model=DEFAULT_MODEL,
+        report={
+            'status': report_status,
+            'dispatch_id': dispatch_id,
+            'summary': result.get('summary', ''),
+        },
+        changed={
+            'files_changed': result.get('files_changed'),
+            'branch': result.get('branch'),
+            'pr_url': result.get('pr_url'),
+            'artifact_path': result.get('artifact_path'),
+        },
+    )
 
     cleanup(task_id)
     return True
