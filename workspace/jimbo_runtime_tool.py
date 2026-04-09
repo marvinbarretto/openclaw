@@ -11,6 +11,7 @@ from jimbo_runtime_executor import (
     build_summary_output,
 )
 from jimbo_runtime_inbox_service import enqueue_producer_requests
+from jimbo_runtime_queue import list_inbox_items, list_runtime_runs
 from jimbo_runtime_request_service import execute_runtime_request
 from jimbo_runtime_producers import PRODUCER_COMMANDS
 from jimbo_runtime_requests import (
@@ -24,6 +25,18 @@ from jimbo_runtime_server import serve_request_stream
 
 def cmd_producers(_args):
     print(json.dumps(sorted(PRODUCER_COMMANDS)))
+    return 0
+
+
+def cmd_inbox(args):
+    json.dump(list_inbox_items(status=args.status), sys.stdout, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_runs(args):
+    json.dump(list_runtime_runs(status=args.status), sys.stdout, sort_keys=True)
+    sys.stdout.write("\n")
     return 0
 
 
@@ -113,6 +126,14 @@ def build_parser():
 
     producers_parser = subparsers.add_parser("producers", help="List registered runtime intake producers")
     producers_parser.set_defaults(handler=cmd_producers)
+
+    inbox_parser = subparsers.add_parser("inbox", help="List runtime inbox items")
+    inbox_parser.add_argument("--status", help="Optional inbox status filter")
+    inbox_parser.set_defaults(handler=cmd_inbox)
+
+    runs_parser = subparsers.add_parser("runs", help="List runtime run records")
+    runs_parser.add_argument("--status", help="Optional runtime run status filter")
+    runs_parser.set_defaults(handler=cmd_runs)
 
     request_parser = subparsers.add_parser("request", help="Execute one machine-readable runtime control-plane request")
     request_source = request_parser.add_mutually_exclusive_group(required=True)

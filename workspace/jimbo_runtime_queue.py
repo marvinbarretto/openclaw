@@ -89,6 +89,13 @@ def list_inbox_items(*, status=None):
     return [item for item in items if item.get("status") == status]
 
 
+def list_runtime_runs(*, status=None):
+    runs = list(load_run_state().get("runs", []))
+    if status is None:
+        return runs
+    return [run for run in runs if run.get("status") == status]
+
+
 def enqueue_runtime_requests(requests, *, source, producer=None):
     if not isinstance(requests, list):
         requests = [requests]

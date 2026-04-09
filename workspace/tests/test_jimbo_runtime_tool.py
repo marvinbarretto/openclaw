@@ -102,6 +102,28 @@ class TestJimboRuntimeTool(unittest.TestCase):
         execute_runtime_request.assert_called_once()
         dump_mock.assert_called_once()
 
+    def test_inbox_command_lists_runtime_inbox_items(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'list_inbox_items', return_value=[{'id': 'runtime-inbox-1'}]) as list_inbox_items, \
+             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
+            exit_code = runtime_tool.main(['inbox', '--status', 'pending'])
+
+        self.assertEqual(exit_code, 0)
+        list_inbox_items.assert_called_once_with(status='pending')
+        dump_mock.assert_called_once()
+
+    def test_runs_command_lists_runtime_run_records(self):
+        runtime_tool = load_runtime_tool()
+
+        with mock.patch.object(runtime_tool, 'list_runtime_runs', return_value=[{'id': 'runtime-run-1'}]) as list_runtime_runs, \
+             mock.patch.object(runtime_tool.json, 'dump') as dump_mock:
+            exit_code = runtime_tool.main(['runs', '--status', 'running'])
+
+        self.assertEqual(exit_code, 0)
+        list_runtime_runs.assert_called_once_with(status='running')
+        dump_mock.assert_called_once()
+
     def test_resolve_command_can_load_payloads_from_producer(self):
         runtime_tool = load_runtime_tool()
 

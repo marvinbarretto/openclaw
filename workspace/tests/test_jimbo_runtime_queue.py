@@ -80,6 +80,21 @@ class TestJimboRuntimeQueue(unittest.TestCase):
         self.assertEqual(run['response']['command'], 'resolve')
         save_run_state.assert_called_once_with(state)
 
+    def test_list_runtime_runs_filters_by_status(self):
+        runtime_queue = load_runtime_queue()
+
+        with mock.patch.object(runtime_queue, 'load_run_state', return_value={
+            'runs': [
+                {'id': 'runtime-run-1', 'status': 'running'},
+                {'id': 'runtime-run-2', 'status': 'completed'},
+            ],
+            'updated_at': None,
+        }):
+            runs = runtime_queue.list_runtime_runs(status='completed')
+
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]['id'], 'runtime-run-2')
+
 
 if __name__ == '__main__':
     unittest.main()
