@@ -10,6 +10,7 @@ compact JSON metadata in the outcome field.
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -91,7 +92,7 @@ def _build_rationale(reason, classification=None, route=None, delegate=None):
 def log_decision(stage, task_id, *, title=None, task_source="vault",
                  model=None, reason=None, classification=None, route=None,
                  delegate=None, review=None, report=None, changed=None,
-                 metadata=None):
+                 metadata=None, retries=2, retry_delay_s=0.25):
     """Record an orchestration decision via the activity API.
 
     Returns the created activity record ID when successful, otherwise None.
@@ -139,12 +140,20 @@ def log_decision(stage, task_id, *, title=None, task_source="vault",
     if model:
         body["model_used"] = model
 
-    try:
-        result = _request("POST", "/api/activity", body)
-        return result.get("id")
-    except urllib.error.HTTPError as e:
-        body_text = e.read().decode() if e.fp else str(e)
-        sys.stderr.write(f"[orchestration] API {e.code}: {body_text[:200]}\n")
-    except Exception as e:
-        sys.stderr.write(f"[orchestration] log failed: {e}\n")
+    attempts = max(1, retries + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            result = _request("POST", "/api/activity", body)
+            return result.get("id")
+        except urllib.error.HTTPError as e:
+            body_text = e.read().decode() if e.fp else str(e)
+            sys.stderr.write(
+                f"[orchestration] API {e.code} on attempt {attempt}/{attempts}: {body_text[:200]}\n"
+            )
+        except Exception as e:
+            sys.stderr.write(
+                f"[orchestration] log failed on attempt {attempt}/{attempts}: {e}\n"
+            )
+        if attempt < attempts and retry_delay_s:
+            time.sleep(retry_delay_s)
     return None

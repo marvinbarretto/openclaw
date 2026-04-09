@@ -174,7 +174,7 @@ def save_transition_state(state):
 def emit_batch_report(batch_id, batch, *, dry_run=False):
     summary = summarize_batch(batch)
     report_status = batch_report_status(batch)
-    orchestration_helper.log_decision(
+    activity_id = orchestration_helper.log_decision(
         'report',
         batch_id,
         title=summary,
@@ -191,6 +191,9 @@ def emit_batch_report(batch_id, batch, *, dry_run=False):
             'batch': batch,
         },
     )
+    if not activity_id:
+        log(f'Failed to log batch report for {batch_id}')
+        return False
     notify_terminal_outcome(
         report_status,
         {'task_id': batch_id, 'flow': 'batch', 'agent_type': 'orchestrator'},
@@ -199,12 +202,14 @@ def emit_batch_report(batch_id, batch, *, dry_run=False):
         review_reason='Batch state updated',
         dry_run=dry_run,
     )
+    return True
 
 
 def emit_transition(status, item, *, dry_run=False):
     hydrated = hydrate_batch([item], fetch_vault_note)
     if not hydrated:
-        return
+        log(f'Could not hydrate task for {status} transition: {item.get("task_id")}')
+        return False
     task = hydrated[0]
     title = task.get('title', task['task_id'])
 
@@ -218,7 +223,7 @@ def emit_transition(status, item, *, dry_run=False):
         summary = item.get('error_message') or status
         reason = f'Dispatch queue entered {status}'
 
-    orchestration_helper.log_decision(
+    activity_id = orchestration_helper.log_decision(
         'report',
         task['task_id'],
         title=title,
@@ -233,6 +238,9 @@ def emit_transition(status, item, *, dry_run=False):
             'queue_status': item.get('status'),
         },
     )
+    if not activity_id:
+        log(f'Failed to log {status} transition for {task["task_id"]}')
+        return False
     notify_terminal_outcome(
         status,
         task,
@@ -241,12 +249,13 @@ def emit_transition(status, item, *, dry_run=False):
         title=title,
         dry_run=dry_run,
     )
+    return True
 
 
 def emit_batch_reports(batch_ids, *, dry_run=False, queue_items=None, status_overrides=None):
     """Rebuild and emit batch narratives from the current queue snapshot."""
     if not batch_ids:
-        return
+        return True
     if queue_items is None:
         queue_items = fetch_queue_items(BATCH_QUEUE_STATUSES, limit=100)
     batches = build_batches(
@@ -254,10 +263,15 @@ def emit_batch_reports(batch_ids, *, dry_run=False, queue_items=None, status_ove
         batch_ids=batch_ids,
         status_overrides=status_overrides,
     )
+    success = True
     for batch_id in sorted(batch_ids):
         batch = batches.get(batch_id)
         if batch:
-            emit_batch_report(batch_id, batch, dry_run=dry_run)
+            success = emit_batch_report(batch_id, batch, dry_run=dry_run) and success
+        else:
+            log(f'Could not rebuild batch report for {batch_id} from queue state')
+            success = False
+    return success
 
 
 def check_queue_transitions(dry_run=False):
@@ -278,13 +292,14 @@ def check_queue_transitions(dry_run=False):
     new_completed, next_state = collect_new_items(next_state, 'completed', completed_items)
     new_failed, next_state = collect_new_items(next_state, 'failed', failed_items)
     affected_batch_ids = set()
+    transition_success = True
 
     for item in new_approved:
-        emit_transition('approved', item, dry_run=dry_run)
+        transition_success = emit_transition('approved', item, dry_run=dry_run) and transition_success
         if item.get('batch_id'):
             affected_batch_ids.add(item['batch_id'])
     for item in new_rejected:
-        emit_transition('rejected', item, dry_run=dry_run)
+        transition_success = emit_transition('rejected', item, dry_run=dry_run) and transition_success
         if item.get('batch_id'):
             affected_batch_ids.add(item['batch_id'])
     for item in new_running:
@@ -297,11 +312,15 @@ def check_queue_transitions(dry_run=False):
         if item.get('batch_id'):
             affected_batch_ids.add(item['batch_id'])
 
-    emit_batch_reports(affected_batch_ids, dry_run=dry_run)
+    batch_success = emit_batch_reports(affected_batch_ids, dry_run=dry_run)
 
     if not dry_run:
-        if not save_transition_state(next_state):
-            log('Failed to persist transition state')
+        if transition_success and batch_success:
+            if not save_transition_state(next_state):
+                log('Failed to persist transition state')
+        else:
+            log('Skipping transition state advance because transition logging was incomplete')
+            return
 
 
 # --- Core logic ---

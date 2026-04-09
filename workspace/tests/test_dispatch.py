@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -81,6 +82,31 @@ class TestBatchIdParsing(unittest.TestCase):
         self.assertTrue(is_valid_batch_id('batch-20260325-143000'))
         self.assertFalse(is_valid_batch_id('not-a-batch'))
         self.assertFalse(is_valid_batch_id(''))
+
+
+class TestTransitionPersistence(unittest.TestCase):
+
+    def test_does_not_advance_transition_state_when_transition_logging_fails(self):
+        import dispatch
+        approved_item = {'id': 1, 'task_id': 'note_1', 'batch_id': 'batch-1'}
+        with mock.patch.object(dispatch, 'load_transition_state', return_value={}), \
+             mock.patch.object(dispatch, 'fetch_queue_items', side_effect=[[approved_item], [], [], [], []]), \
+             mock.patch.object(dispatch, 'emit_transition', return_value=False), \
+             mock.patch.object(dispatch, 'emit_batch_reports', return_value=True), \
+             mock.patch.object(dispatch, 'save_transition_state') as save_state:
+            dispatch.check_queue_transitions(dry_run=False)
+        save_state.assert_not_called()
+
+    def test_advances_transition_state_when_logging_succeeds(self):
+        import dispatch
+        approved_item = {'id': 1, 'task_id': 'note_1', 'batch_id': 'batch-1'}
+        with mock.patch.object(dispatch, 'load_transition_state', return_value={}), \
+             mock.patch.object(dispatch, 'fetch_queue_items', side_effect=[[approved_item], [], [], [], []]), \
+             mock.patch.object(dispatch, 'emit_transition', return_value=True), \
+             mock.patch.object(dispatch, 'emit_batch_reports', return_value=True), \
+             mock.patch.object(dispatch, 'save_transition_state', return_value=True) as save_state:
+            dispatch.check_queue_transitions(dry_run=False)
+        save_state.assert_called_once()
 
 
 if __name__ == '__main__':
