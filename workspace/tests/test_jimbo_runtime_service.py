@@ -11,6 +11,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 class TestJimboRuntimeService(unittest.TestCase):
 
+    def test_build_dispatch_proposal_payload_matches_runtime_contract(self):
+        from jimbo_runtime_service import build_dispatch_proposal_payload
+
+        payload = build_dispatch_proposal_payload(
+            {
+                "id": 11,
+                "task_id": "note_1",
+                "title": "Fix auth bug",
+                "agent_type": "coder",
+                "flow": "commission",
+            },
+            batch_id="batch-1",
+            approve_url="https://approve",
+            reject_url="https://reject",
+        )
+
+        self.assertEqual(payload["intake_id"], "11")
+        self.assertEqual(payload["source"], "dispatch")
+        self.assertEqual(payload["trigger"], "dispatch-propose")
+        self.assertEqual(payload["workflow_hint"], "dispatch")
+        self.assertEqual(payload["route"]["decision"], "proposed")
+        self.assertEqual(payload["delegate"]["agent_type"], "coder")
+        self.assertEqual(payload["runtime_metadata"]["approve_url"], "https://approve")
+
     def test_begin_dispatch_proposal_builds_dispatch_intake(self):
         from jimbo_runtime_service import begin_dispatch_proposal
 

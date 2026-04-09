@@ -38,7 +38,7 @@ from dispatch_reporting import build_batch_summary, build_result_summary
 from dispatch_transitions import collect_new_items, normalize_seen_state, serialize_seen_state
 from dispatch_utils import is_valid_batch_id, parse_result, render_template
 from jimbo_core import JimboCore, JimboTask
-from jimbo_runtime_service import begin_dispatch_proposal
+from jimbo_runtime_service import begin_dispatch_proposal, build_dispatch_proposal_payload
 
 # --- Configuration ---
 
@@ -387,7 +387,7 @@ def check_timeouts(dry_run=False):
         return True  # assume still running
 
 
-def propose_batch(dry_run=False):
+def propose_batch(dry_run=False, emit_intake=False):
     """Propose a new batch of tasks for approval.
 
     Tries GitHub commissions first, then vault recon tasks.
@@ -444,6 +444,18 @@ def propose_batch(dry_run=False):
         reject_url=reject_url,
     )
 
+    if emit_intake:
+        print(json.dumps([
+            build_dispatch_proposal_payload(
+                item,
+                batch_id=batch_id,
+                approve_url=approve_url,
+                reject_url=reject_url,
+            )
+            for item in hydrated_items
+        ], indent=2))
+        return True
+
     if dry_run:
         log(f'DRY RUN: Would send batch proposal:\n{message}')
         return True
@@ -482,12 +494,16 @@ def show_status():
 def main():
     args = sys.argv[1:]
     dry_run = '--live' not in args
+    emit_intake = '--emit-intake' in args
 
     if '--status' in args:
         show_status()
         return
 
-    if dry_run:
+    if emit_intake:
+        log('EMIT INTAKE mode')
+        dry_run = False
+    elif dry_run:
         log('DRY RUN mode (use --live for real dispatch)')
 
     # Acquire lock
@@ -516,7 +532,7 @@ def main():
         return
 
     # 4. Propose new batch
-    propose_batch(dry_run)
+    propose_batch(dry_run, emit_intake=emit_intake)
 
 
 if __name__ == '__main__':

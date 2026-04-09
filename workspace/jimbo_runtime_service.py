@@ -3,21 +3,53 @@
 from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
 
 
+def build_dispatch_proposal_payload(item, *, batch_id, approve_url="",
+                                    reject_url=""):
+    """Build one normalized intake payload for a dispatch proposal item."""
+    return {
+        "intake_id": str(item.get("id") or item["task_id"]),
+        "task_id": item["task_id"],
+        "title": item.get("title"),
+        "source": "dispatch",
+        "trigger": "dispatch-propose",
+        "task_source": item.get("task_source", "vault"),
+        "workflow_hint": "dispatch",
+        "metadata": {
+            "batch_id": batch_id,
+            "dispatch_id": item.get("id"),
+        },
+        "intake_reason": "Task selected from ready queue",
+        "route": {
+            "decision": "proposed",
+            "reason": "Selected by dispatch proposer from ready queue",
+            "batch_id": batch_id,
+            "flow": item.get("flow"),
+        },
+        "route_reason": "Selected by dispatch proposer from ready queue",
+        "delegate": {
+            "agent_type": item.get("agent_type"),
+            "approval": "pending",
+        },
+        "runtime_metadata": {
+            "dispatch_id": item.get("id"),
+            "approve_url": approve_url,
+            "reject_url": reject_url,
+        },
+    }
+
+
 def begin_dispatch_proposal(item, *, batch_id, approve_url="", reject_url="",
                             runtime=None):
     """Start orchestration for a task proposed onto the dispatch queue."""
     runtime = runtime or get_default_runtime()
     return runtime.begin(
         JimboIntakeEnvelope.from_mapping(
-            item,
-            intake_id=item.get("id") or item["task_id"],
-            source="dispatch",
-            trigger="dispatch-propose",
-            workflow_hint="dispatch",
-            metadata={
-                "batch_id": batch_id,
-                "dispatch_id": item.get("id"),
-            },
+            build_dispatch_proposal_payload(
+                item,
+                batch_id=batch_id,
+                approve_url=approve_url,
+                reject_url=reject_url,
+            )
         ),
         intake_reason="Task selected from ready queue",
         route={

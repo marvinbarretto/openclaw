@@ -147,6 +147,48 @@ class TestRuntimeIntegration(unittest.TestCase):
             reject_url='https://reject',
         )
 
+    def test_propose_batch_can_emit_runtime_intake_payloads(self):
+        import dispatch
+
+        proposed_item = {
+            'id': 11,
+            'task_id': 'note_1',
+            'title': 'Fix auth bug',
+            'agent_type': 'coder',
+            'flow': 'commission',
+        }
+
+        with mock.patch.object(dispatch, 'api_request', side_effect=[
+            {
+                'items': [proposed_item],
+                'batch_id': 'batch-20260325-143000',
+                'approve_url': 'https://approve',
+                'reject_url': 'https://reject',
+            },
+            None,
+        ]), \
+             mock.patch.object(dispatch, 'hydrate_batch', return_value=[proposed_item]), \
+             mock.patch.object(dispatch, 'build_batch_summary', return_value='batch message'), \
+             mock.patch.object(dispatch, 'build_dispatch_proposal_payload', return_value={
+                 'source': 'dispatch',
+                 'trigger': 'dispatch-propose',
+             }) as build_payload, \
+             mock.patch.object(dispatch, 'begin_dispatch_proposal') as begin_dispatch_proposal, \
+             mock.patch('builtins.print') as print_mock:
+            ok = dispatch.propose_batch(dry_run=False, emit_intake=True)
+
+        self.assertTrue(ok)
+        build_payload.assert_called_once_with(
+            proposed_item,
+            batch_id='batch-20260325-143000',
+            approve_url='https://approve',
+            reject_url='https://reject',
+        )
+        begin_dispatch_proposal.assert_not_called()
+        print_mock.assert_called_once()
+        emitted_payloads = json.loads(print_mock.call_args.args[0])
+        self.assertEqual(emitted_payloads, [{'source': 'dispatch', 'trigger': 'dispatch-propose'}])
+
 
 if __name__ == '__main__':
     unittest.main()
