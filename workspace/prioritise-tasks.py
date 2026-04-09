@@ -32,6 +32,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import orchestration_helper
+
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
 # ---------------------------------------------------------------------------
@@ -750,6 +752,30 @@ def cmd_score_api(args):
                 if s_ac:
                     patch["suggested_ac"] = s_ac
                 _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
+                if s_agent and s_route == 'jimbo':
+                    orchestration_helper.log_decision(
+                        'classify',
+                        t['id'],
+                        title=t['title'],
+                        task_source='vault',
+                        model=GEMINI_MODEL,
+                        classification={
+                            'priority': priority,
+                            'actionability': actionability,
+                            'reason': reason,
+                        },
+                        route={
+                            'decision': s_route,
+                            'reason': 'Task is suitable for delegated execution',
+                        },
+                        delegate={
+                            'agent_type': s_agent,
+                            'acceptance_criteria': s_ac,
+                        },
+                        changed={
+                            'fields': sorted(patch.keys()),
+                        },
+                    )
 
             scored += 1
 
