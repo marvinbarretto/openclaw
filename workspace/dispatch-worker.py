@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 
 from dispatch_intake import hydrate_task
 from dispatch_reporting import build_result_summary
@@ -71,6 +72,82 @@ def api_request(method, path, body=None):
         return None
 
 
+def api_write(method, path, body=None, *, action, retries=2, retry_delay_s=0.25):
+    """Perform a required API write with retries."""
+    attempts = max(1, retries + 1)
+    for attempt in range(1, attempts + 1):
+        result = api_request(method, path, body)
+        if result is not None:
+            return True
+        if attempt < attempts and retry_delay_s:
+            time.sleep(retry_delay_s)
+    log(f'Failed to {action} after {attempts} attempts')
+    return False
+
+
+def update_worker_status(payload, *, retries=2):
+    """Update worker heartbeat/status in the settings API."""
+    return api_write(
+        'PUT',
+        '/api/settings/dispatch_worker_status',
+        {'value': json.dumps(payload)},
+        action='update dispatch worker status',
+        retries=retries,
+    )
+
+
+def report_dispatch_failure(dispatch_id, error_message, *, retries=2):
+    return api_write(
+        'POST',
+        '/api/dispatch/fail',
+        {'id': dispatch_id, 'error_message': error_message},
+        action=f'report dispatch failure for {dispatch_id}',
+        retries=retries,
+    )
+
+
+def report_dispatch_start(dispatch_id, prompt, repo, *, retries=2):
+    return api_write(
+        'POST',
+        '/api/dispatch/start',
+        {'id': dispatch_id, 'prompt': prompt, 'repo': repo},
+        action=f'mark dispatch task {dispatch_id} as started',
+        retries=retries,
+    )
+
+
+def report_dispatch_complete(dispatch_id, result, *, retries=2):
+    return api_write(
+        'POST',
+        '/api/dispatch/complete',
+        {
+            'id': dispatch_id,
+            'result_summary': result.get('summary', ''),
+            'result_artifacts': json.dumps({
+                k: v for k, v in result.items() if k not in ('status', 'summary')
+            }) if len(result) > 2 else None,
+        },
+        action=f'mark dispatch task {dispatch_id} as completed',
+        retries=retries,
+    )
+
+
+def patch_vault_note(task_id, patch, *, retries=2):
+    quoted_id = urllib.parse.quote(task_id, safe='')
+    return api_write(
+        'PATCH',
+        f'/api/vault/notes/{quoted_id}',
+        patch,
+        action=f'update vault note {task_id}',
+        retries=retries,
+    )
+
+
+def preserve_evidence(task_id, reason):
+    log(f'Preserving dispatch artifacts for {task_id}: {reason}')
+    send_telegram(f'[Dispatch Worker] API write failed for {task_id}: {reason}. Local artifacts preserved.')
+
+
 def load_template(agent_type):
     """Load prompt template for an agent type."""
     path = os.path.join(TEMPLATE_DIR, f'{agent_type}.md')
@@ -100,20 +177,14 @@ def execute_task(task, dry_run=False):
     if not template:
         log(f'No template for agent type: {agent_type}')
         if not dry_run:
-            api_request('POST', '/api/dispatch/fail', {
-                'id': dispatch_id,
-                'error_message': f'No template for agent type: {agent_type}',
-            })
+            report_dispatch_failure(dispatch_id, f'No template for agent type: {agent_type}')
         return False
 
     normalized_task = hydrate_task(task, fetch_vault_note)
     if not normalized_task:
         log(f'Vault task not found: {task_id}')
         if not dry_run:
-            api_request('POST', '/api/dispatch/fail', {
-                'id': dispatch_id,
-                'error_message': f'Vault task not found: {task_id}',
-            })
+            report_dispatch_failure(dispatch_id, f'Vault task not found: {task_id}')
         return False
     vault_task = normalized_task.get('vault_task') or {}
 
@@ -138,11 +209,9 @@ def execute_task(task, dry_run=False):
         return True
 
     # Mark as running
-    api_request('POST', '/api/dispatch/start', {
-        'id': dispatch_id,
-        'prompt': prompt,
-        'repo': work_dir,
-    })
+    if not report_dispatch_start(dispatch_id, prompt, work_dir):
+        preserve_evidence(task_id, 'could not mark task as started in jimbo-api')
+        return False
     orchestration_helper.log_decision(
         'delegate',
         task_id,
@@ -215,10 +284,9 @@ def execute_task(task, dry_run=False):
 
     except subprocess.TimeoutExpired:
         log(f'Task {task_id} timed out after {timeout}s')
-        api_request('POST', '/api/dispatch/fail', {
-            'id': dispatch_id,
-            'error_message': f'Timeout after {timeout}s (limit for {agent_type})',
-        })
+        if not report_dispatch_failure(dispatch_id, f'Timeout after {timeout}s (limit for {agent_type})'):
+            preserve_evidence(task_id, 'could not report timeout to jimbo-api')
+            return False
         send_telegram(build_result_summary(
             normalized_task,
             title=normalized_task.get('title', ''),
@@ -231,10 +299,9 @@ def execute_task(task, dry_run=False):
         return False
     except Exception as e:
         log(f'Execution error: {e}')
-        api_request('POST', '/api/dispatch/fail', {
-            'id': dispatch_id,
-            'error_message': f'Execution error: {e}',
-        })
+        if not report_dispatch_failure(dispatch_id, f'Execution error: {e}'):
+            preserve_evidence(task_id, 'could not report execution error to jimbo-api')
+            return False
         send_telegram(build_result_summary(
             normalized_task,
             title=normalized_task.get('title', ''),
@@ -274,10 +341,9 @@ def execute_task(task, dry_run=False):
             },
         )
         log(f'Task {task_id} review rejected: {review_decision["reason"]}')
-        api_request('POST', '/api/dispatch/fail', {
-            'id': dispatch_id,
-            'error_message': f'Review rejected: {review_decision["reason"]}',
-        })
+        if not report_dispatch_failure(dispatch_id, f'Review rejected: {review_decision["reason"]}'):
+            preserve_evidence(task_id, 'could not report review rejection to jimbo-api')
+            return False
         report_status = 'rejected'
     elif result['status'] == 'completed':
         orchestration_helper.log_decision(
@@ -294,13 +360,9 @@ def execute_task(task, dry_run=False):
             },
         )
         log(f'Task {task_id} completed: {result.get("summary", "")[:100]}')
-        api_request('POST', '/api/dispatch/complete', {
-            'id': dispatch_id,
-            'result_summary': result.get('summary', ''),
-            'result_artifacts': json.dumps({
-                k: v for k, v in result.items() if k not in ('status', 'summary')
-            }) if len(result) > 2 else None,
-        })
+        if not report_dispatch_complete(dispatch_id, result):
+            preserve_evidence(task_id, 'could not report completion to jimbo-api')
+            return False
         report_status = 'completed'
     elif result['status'] == 'blocked':
         orchestration_helper.log_decision(
@@ -317,13 +379,12 @@ def execute_task(task, dry_run=False):
             },
         )
         log(f'Task {task_id} blocked: {result.get("blockers", "")}')
-        api_request('POST', '/api/dispatch/fail', {
-            'id': dispatch_id,
-            'error_message': f'Blocked: {result.get("blockers", "unknown")}',
-        })
-        api_request('PATCH', f'/api/vault/notes/{task_id}', {
-            'dispatch_status': 'needs_grooming',
-        })
+        if not report_dispatch_failure(dispatch_id, f'Blocked: {result.get("blockers", "unknown")}'):
+            preserve_evidence(task_id, 'could not report blocked status to jimbo-api')
+            return False
+        if not patch_vault_note(task_id, {'dispatch_status': 'needs_grooming'}):
+            preserve_evidence(task_id, 'could not update vault note after blocked result')
+            return False
         report_status = 'blocked'
     else:
         orchestration_helper.log_decision(
@@ -339,10 +400,9 @@ def execute_task(task, dry_run=False):
             },
         )
         log(f'Task {task_id} failed: {result.get("summary", "")}')
-        api_request('POST', '/api/dispatch/fail', {
-            'id': dispatch_id,
-            'error_message': result.get('summary', 'Unknown failure'),
-        })
+        if not report_dispatch_failure(dispatch_id, result.get('summary', 'Unknown failure')):
+            preserve_evidence(task_id, 'could not report failure to jimbo-api')
+            return False
 
     orchestration_helper.log_decision(
         'report',
@@ -601,9 +661,7 @@ def run_loop(dry_run=False, poll_interval=DEFAULT_POLL_INTERVAL):
     # Report worker online
     send_telegram(f'[Dispatch Worker] Online — polling every {poll_interval // 60}min')
     # Post stats to API so dashboard can show worker status
-    api_request('PUT', '/api/settings/dispatch_worker_status', {
-        'value': json.dumps(stats.to_dict())
-    })
+    update_worker_status(stats.to_dict())
 
     while True:
         try:
@@ -613,9 +671,7 @@ def run_loop(dry_run=False, poll_interval=DEFAULT_POLL_INTERVAL):
             if stats.loop_count % HEARTBEAT_EVERY == 0:
                 log(f'Heartbeat: {stats.summary_line()}')
                 # Update worker status in API
-                api_request('PUT', '/api/settings/dispatch_worker_status', {
-                    'value': json.dumps(stats.to_dict())
-                })
+                update_worker_status(stats.to_dict())
 
             # Periodic auth check
             if stats.loop_count % AUTH_CHECK_EVERY == 0 and stats.loop_count > 0:
@@ -650,9 +706,7 @@ def run_loop(dry_run=False, poll_interval=DEFAULT_POLL_INTERVAL):
             log(f'Stopped by user after {stats.loop_count} loops')
             log(f'Final stats: {stats.summary_line()}')
             send_telegram(f'[Dispatch Worker] Stopped — {stats.summary_line()}')
-            api_request('PUT', '/api/settings/dispatch_worker_status', {
-                'value': json.dumps({**stats.to_dict(), 'status': 'stopped'})
-            })
+            update_worker_status({**stats.to_dict(), 'status': 'stopped'})
             break
         except Exception as e:
             stats.record_error(e)
