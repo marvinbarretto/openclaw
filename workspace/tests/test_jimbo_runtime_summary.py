@@ -1,4 +1,4 @@
-"""Tests for the Jimbo runtime summary command."""
+"""Tests for the Jimbo runtime summary helpers."""
 
 import importlib.util
 import json
@@ -14,8 +14,8 @@ sys.path.insert(0, WORKSPACE_DIR)
 
 
 def load_runtime_summary():
-    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_summary.py')
-    spec = importlib.util.spec_from_file_location('jimbo_runtime_summary_module', module_path)
+    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_summary_core.py')
+    spec = importlib.util.spec_from_file_location('jimbo_runtime_summary_core_module', module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

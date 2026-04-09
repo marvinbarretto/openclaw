@@ -1,4 +1,4 @@
-"""Tests for the Jimbo runtime report wrapper."""
+"""Tests for the Jimbo runtime operational report helpers."""
 
 import importlib.util
 import os
@@ -12,8 +12,8 @@ sys.path.insert(0, WORKSPACE_DIR)
 
 
 def load_runtime_report():
-    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_report.py')
-    spec = importlib.util.spec_from_file_location('jimbo_runtime_report_module', module_path)
+    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_ops.py')
+    spec = importlib.util.spec_from_file_location('jimbo_runtime_ops_module_for_report', module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

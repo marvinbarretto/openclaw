@@ -235,3 +235,7 @@ python3 workspace/jimbo_runtime_tool.py summary --intake-file /tmp/intake.json
 python3 workspace/jimbo_runtime_tool.py roundtrip --producer dispatch-proposal --summary
 python3 workspace/jimbo_runtime_tool.py report --producer vault-triage
 ```
+
+`jimbo_runtime_cli.py`, `jimbo_runtime_summary.py`, `jimbo_runtime_roundtrip.py`,
+and `jimbo_runtime_report.py` remain available as compatibility shims that
+forward into the top-level tool.

@@ -1,4 +1,4 @@
-"""Tests for the Jimbo runtime CLI entrypoint."""
+"""Tests for the Jimbo runtime intake engine."""
 
 import importlib.util
 import json
@@ -15,9 +15,9 @@ WORKSPACE_DIR = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0, WORKSPACE_DIR)
 
 
-def load_runtime_cli():
-    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_cli.py')
-    spec = importlib.util.spec_from_file_location('jimbo_runtime_cli_module', module_path)
+def load_runtime_engine():
+    module_path = os.path.join(WORKSPACE_DIR, 'jimbo_runtime_engine.py')
+    spec = importlib.util.spec_from_file_location('jimbo_runtime_engine_module', module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -26,7 +26,7 @@ def load_runtime_cli():
 class TestJimboRuntimeCli(unittest.TestCase):
 
     def test_load_intake_payload_from_file(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         payload = {"task_id": "note_1", "source": "dispatch", "trigger": "dispatch-propose"}
 
         with tempfile.NamedTemporaryFile("w+", delete=False) as tmp:
@@ -41,7 +41,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
         self.assertEqual(loaded, payload)
 
     def test_load_intake_payload_from_stdin(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         payload = {"task_id": "note_1", "source": "dispatch", "trigger": "dispatch-propose"}
 
         with mock.patch.object(runtime_cli.sys, "stdin", io.StringIO(json.dumps(payload))):
@@ -50,7 +50,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
         self.assertEqual(loaded, payload)
 
     def test_run_intake_resolves_workflow_in_dry_run(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         runtime = mock.Mock()
         runtime.resolve_workflow.return_value = SimpleNamespace(
             workflow=SimpleNamespace(name="dispatch"),
@@ -75,7 +75,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
         runtime.resolve_workflow.assert_called_once()
 
     def test_run_intake_requires_route_for_live_execution(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         runtime = mock.Mock()
         runtime.resolve_workflow.return_value = SimpleNamespace(
             workflow=SimpleNamespace(name="dispatch"),
@@ -94,7 +94,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
             )
 
     def test_run_intake_executes_live_runtime_begin(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         runtime = mock.Mock()
         runtime.resolve_workflow.return_value = SimpleNamespace(
             workflow=SimpleNamespace(name="dispatch"),
@@ -124,7 +124,7 @@ class TestJimboRuntimeCli(unittest.TestCase):
         runtime.begin.assert_called_once()
 
     def test_run_intake_batch_handles_payload_lists(self):
-        runtime_cli = load_runtime_cli()
+        runtime_cli = load_runtime_engine()
         runtime = mock.Mock()
         runtime.resolve_workflow.return_value = SimpleNamespace(
             workflow=SimpleNamespace(name="dispatch"),
