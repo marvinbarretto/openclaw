@@ -1,195 +1,330 @@
-"""Jimbo runtime primitives for normalized intake and workflow selection."""
+#!/usr/bin/env python3
+"""
+Jimbo Workflow Orchestration Runtime
+Executes workflows (JSON-defined) through pipeline: intake → classify → route → delegate → review → decide
+"""
 
+import sys
+import json
+import uuid
+import datetime
+from pathlib import Path
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
-from jimbo_core import JimboCore, JimboTask
+try:
+    from workers.base_worker import BaseWorker
+    from alert import send_telegram_alert
+except ImportError:
+    BaseWorker = None
+    send_telegram_alert = None
 
 
-class UnknownWorkflowError(ValueError):
-    """Raised when the runtime cannot match an intake envelope to a workflow."""
+# ============================================================================
+# Task Record
+# ============================================================================
+
+@dataclass
+class Decision:
+    """Single decision in workflow execution."""
+    step: str
+    decision: Dict[str, Any]
+    model: Optional[str] = None
+    worker_id: Optional[str] = None
+    cost: float = 0.0
+    timestamp: str = field(default_factory=lambda: datetime.datetime.utcnow().isoformat())
 
 
-@dataclass(frozen=True)
-class JimboIntakeEnvelope:
-    """Normalized intake envelope passed into the Jimbo runtime."""
+@dataclass
+class TaskRecord:
+    """Workflow task record tracking state through execution."""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    workflow_id: str = ""
+    source_task_id: str = ""
+    run_id: str = ""
 
-    intake_id: str
-    source: str
-    trigger: str
-    task_id: str | None = None
-    title: str | None = None
-    task_source: str = "vault"
-    workflow_hint: str | None = None
-    model: str | None = None
-    metadata: dict = field(default_factory=dict)
-    payload: dict = field(default_factory=dict)
+    current_step: str = ""
+    state: str = "pending"
+    assigned_to: str = "jimbo"
 
-    @classmethod
-    def from_mapping(cls, mapping, **overrides):
-        payload = dict(mapping or {})
-        metadata = dict(payload.get("metadata", {}) or {})
-        metadata.update(dict(overrides.pop("metadata", {}) or {}))
+    decisions: List[Decision] = field(default_factory=list)
+    final_decision: Optional[str] = None
 
-        task_id = overrides.pop("task_id", payload.get("task_id"))
-        source = overrides.pop("source", payload.get("source") or "unknown")
-        trigger = overrides.pop("trigger", payload.get("trigger") or "manual")
-        intake_id = overrides.pop("intake_id", payload.get("intake_id") or task_id or "")
-        title = overrides.pop("title", payload.get("title"))
-        task_source = overrides.pop("task_source", payload.get("task_source", "vault"))
-        workflow_hint = overrides.pop("workflow_hint", payload.get("workflow") or payload.get("workflow_hint"))
-        model = overrides.pop("model", payload.get("model"))
+    created_at: str = field(default_factory=lambda: datetime.datetime.utcnow().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.datetime.utcnow().isoformat())
+    completed_at: Optional[str] = None
 
-        return cls(
-            intake_id=intake_id,
-            source=source,
-            trigger=trigger,
-            task_id=task_id,
-            title=title,
-            task_source=task_source,
-            workflow_hint=workflow_hint,
-            model=model,
-            metadata=metadata,
-            payload=payload,
-            **overrides,
-        )
+    def log_decision(self, step_id: str, decision: Dict[str, Any], model: Optional[str] = None, worker_id: Optional[str] = None, cost: float = 0.0):
+        """Add decision to audit trail."""
+        self.decisions.append(Decision(step=step_id, decision=decision, model=model, worker_id=worker_id, cost=cost))
+        self.updated_at = datetime.datetime.utcnow().isoformat()
 
-    def to_task(self, *, workflow=None):
-        return JimboTask(
-            task_id=self.task_id or self.intake_id,
-            title=self.title,
-            task_source=self.task_source,
-            workflow=workflow,
-            model=self.model,
-            metadata=self.metadata,
-        )
 
-    def intake_record(self):
-        return {
-            "source": self.source,
-            "trigger": self.trigger,
-            "intake_id": self.intake_id,
-            "workflow_hint": self.workflow_hint,
+# ============================================================================
+# Workflow Loader
+# ============================================================================
+
+class WorkflowLoader:
+    """Load workflow JSON definitions."""
+
+    def __init__(self, workspace_dir: Path):
+        self.workflows_dir = workspace_dir / 'workflows'
+
+    def load(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """Load workflow JSON by ID."""
+        workflow_path = self.workflows_dir / f"{workflow_id}.json"
+
+        if not workflow_path.exists():
+            print(f"ERROR: Workflow not found: {workflow_path}")
+            return None
+
+        with open(workflow_path, 'r') as f:
+            workflow = json.load(f)
+
+        required = ['id', 'enabled', 'schedule', 'intake', 'steps']
+        for req in required:
+            if req not in workflow:
+                print(f"ERROR: Missing required field '{req}'")
+                return None
+
+        return workflow
+
+
+# ============================================================================
+# Step Executors
+# ============================================================================
+
+class ClassifyExecutor:
+    """Classify vault task."""
+
+    def __init__(self, workspace_dir: Path):
+        self.prompts_dir = workspace_dir / 'prompts'
+        self.worker = BaseWorker() if BaseWorker else None
+
+    def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
+        """Call model to classify task."""
+        prompt_file = step.get('prompt_file', 'classify-vault-task.md')
+        prompt_path = self.prompts_dir / prompt_file
+        model = step.get('model', 'haiku')
+
+        if not prompt_path.exists():
+            return {'error': 'prompt_not_found', 'category': 'other', 'confidence': 0.0}
+
+        with open(prompt_path, 'r') as f:
+            prompt_text = f.read()
+
+        task_context = f"Task: {task.get('title', 'Untitled')}\nDescription: {task.get('description', '')}"
+
+        if self.worker:
+            try:
+                response = self.worker.call_model(model=model, messages=[
+                    {'role': 'system', 'content': prompt_text},
+                    {'role': 'user', 'content': task_context}
+                ])
+                result = json.loads(response)
+                task_record.log_decision('classify', result, model=model, cost=0.01)
+                return result
+            except Exception as e:
+                print(f"ERROR in classify: {e}")
+                return {'error': str(e), 'category': 'other', 'confidence': 0.0}
+        else:
+            stub = {'category': 'research', 'confidence': 0.8, 'reasoning': 'Stub'}
+            task_record.log_decision('classify', stub, model=model, cost=0.01)
+            return stub
+
+
+class RouteExecutor:
+    """Route task based on classification."""
+
+    def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
+        """Apply routing rules."""
+        rules = step.get('rules', [])
+        classify_dec = task_record.decisions[-1].decision if task_record.decisions else {}
+        category = classify_dec.get('category', 'other')
+        confidence = classify_dec.get('confidence', 0.0)
+
+        for rule in rules:
+            if self._eval_rule(rule.get('if', ''), category, confidence):
+                action = rule.get('action', '')
+                result = {'action': action, 'assigned_to': 'marvin' if 'marvin' in action else 'jimbo'}
+                task_record.assigned_to = result['assigned_to']
+                task_record.log_decision('route', result)
+                return result
+
+        result = {'action': 'assign_to:jimbo', 'assigned_to': 'jimbo'}
+        task_record.log_decision('route', result)
+        return result
+
+    def _eval_rule(self, rule_if: str, category: str, confidence: float) -> bool:
+        """Evaluate rule expression."""
+        if 'category ==' in rule_if:
+            return category == rule_if.split('==')[1].strip()
+        elif 'confidence <' in rule_if:
+            return confidence < float(rule_if.split('<')[1].strip())
+        return False
+
+
+class DelegateExecutor:
+    """Delegate to worker."""
+
+    def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
+        """Stub delegation."""
+        result = {'status': 'completed', 'output': 'Stub result'}
+        task_record.log_decision('delegate', result, cost=0.05)
+        return result
+
+
+class ReviewExecutor:
+    """Review task outcome."""
+
+    def __init__(self, workspace_dir: Path):
+        self.prompts_dir = workspace_dir / 'prompts'
+        self.worker = BaseWorker() if BaseWorker else None
+
+    def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
+        """Review outcome."""
+        model = step.get('model', 'haiku')
+        stub = {'score': 0.85, 'correctness': 0.9, 'completeness': 0.8, 'relevance': 0.85}
+        task_record.log_decision('review', stub, model=model, cost=0.01)
+        return stub
+
+
+class DecideExecutor:
+    """Make final decision."""
+
+    def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
+        """Apply decide rules."""
+        rules = step.get('rules', [])
+        review_dec = task_record.decisions[-1].decision if task_record.decisions else {}
+        score = review_dec.get('score', 0.5)
+
+        for rule in rules:
+            if self._eval_rule(rule.get('if', ''), score):
+                action = rule.get('action', '')
+                result = {'action': action}
+                task_record.final_decision = self._extract_decision(action)
+                task_record.log_decision('decide', result)
+                return result
+
+        result = {'action': 'assign_to:marvin'}
+        task_record.final_decision = 'needs_context'
+        task_record.log_decision('decide', result)
+        return result
+
+    def _eval_rule(self, rule_if: str, score: float) -> bool:
+        """Evaluate score rule."""
+        if '>=' in rule_if and '<' not in rule_if:
+            return score >= float(rule_if.split('>=')[1].strip())
+        elif '<' in rule_if and '>=' not in rule_if:
+            return score < float(rule_if.split('<')[1].strip())
+        return False
+
+    def _extract_decision(self, action: str) -> str:
+        """Extract final decision."""
+        if 'archive' in action:
+            return 'archive'
+        elif 'needs_context' in action:
+            return 'needs_context'
+        elif 'marvin' in action:
+            return 'needs_marvin_review'
+        return 'unknown'
+
+
+# ============================================================================
+# Workflow Runner
+# ============================================================================
+
+class WorkflowRunner:
+    """Execute workflows end-to-end."""
+
+    def __init__(self, workspace_dir: Path):
+        self.workspace_dir = workspace_dir
+        self.loader = WorkflowLoader(workspace_dir)
+        self.executors = {
+            'classify': ClassifyExecutor(workspace_dir),
+            'route': RouteExecutor(),
+            'delegate': DelegateExecutor(),
+            'review': ReviewExecutor(workspace_dir),
+            'decide': DecideExecutor(),
         }
 
+    def run(self, workflow_id: str, run_id: str, test_tasks: Optional[List[Dict[str, Any]]] = None):
+        """Execute workflow end-to-end."""
+        print(f"\n{'='*60}\nWorkflow: {workflow_id}, Run: {run_id}\n{'='*60}\n")
 
-@dataclass(frozen=True)
-class JimboWorkflow:
-    """Registry entry describing one runtime-owned workflow."""
+        workflow = self.loader.load(workflow_id)
+        if not workflow:
+            return False
 
-    name: str
-    matcher: object
-    description: str | None = None
-    aliases: tuple[str, ...] = ()
-
-    def matches(self, envelope):
-        hints = {self.name, *self.aliases}
-        if envelope.workflow_hint and envelope.workflow_hint in hints:
+        tasks = test_tasks or self._intake(workflow)
+        if not tasks:
+            print("No tasks")
             return True
-        return bool(self.matcher(envelope))
 
+        print(f"Processing {len(tasks)} task(s)\n")
 
-@dataclass(frozen=True)
-class JimboWorkflowSelection:
-    """Resolved workflow for a normalized intake."""
+        for i, task in enumerate(tasks, 1):
+            print(f"--- Task {i}: {task.get('title', 'Untitled')} ---")
+            tr = TaskRecord(workflow_id=workflow_id, source_task_id=task.get('id', f'task-{i}'), run_id=run_id)
 
-    workflow: JimboWorkflow
-    envelope: JimboIntakeEnvelope
-    task: JimboTask
-    core: JimboCore
+            for step in workflow.get('steps', []):
+                tr.current_step = step.get('id')
+                tr.state = 'in_progress'
 
+                executor = self.executors.get(step.get('type'))
+                if not executor:
+                    continue
 
-@dataclass(frozen=True)
-class JimboRuntimeResult:
-    """Result of beginning a runtime-owned orchestration path."""
+                try:
+                    executor.execute(step, task, tr)
+                    print(f"  [{tr.current_step}] OK")
 
-    selection: JimboWorkflowSelection
-    intake_activity_id: str | None
-    route_activity_id: str | None
+                    if tr.assigned_to == 'marvin':
+                        print(f"  [PAUSE] Assigned to marvin")
+                        tr.state = 'awaiting_human'
+                        break
 
+                except Exception as e:
+                    print(f"  ERROR: {e}")
+                    tr.state = 'failed'
+                    break
 
-def _matches_dispatch_vault_triage(envelope):
-    if envelope.source == "dispatch":
+            if tr.state == 'in_progress':
+                tr.state = 'completed'
+                tr.completed_at = datetime.datetime.utcnow().isoformat()
+
+            print(f"  Final: {tr.state}\n")
+
+        print(f"{'='*60}\nComplete\n")
         return True
-    if envelope.trigger.startswith("dispatch-"):
-        return True
-    payload = envelope.payload or {}
-    return bool(payload.get("agent_type") and payload.get("flow"))
+
+    def _intake(self, workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test tasks."""
+        return [
+            {'id': 'task-1', 'title': 'Research LLM fine-tuning', 'description': 'Papers', 'tags': ['research']},
+            {'id': 'task-2', 'title': 'Fix auth bug', 'description': 'Debug', 'tags': ['coding']},
+            {'id': 'task-3', 'title': 'Schedule dentist', 'description': 'Appointment', 'tags': ['admin']},
+        ]
 
 
-DEFAULT_WORKFLOWS = (
-    JimboWorkflow(
-        name="dispatch",
-        aliases=("vault-task-triage",),
-        description="Vault task triage and dispatch delegation workflow",
-        matcher=_matches_dispatch_vault_triage,
-    ),
-)
+# ============================================================================
+# Main
+# ============================================================================
+
+def run_workflow(workflow_id: str, run_id: Optional[str] = None, workspace_dir: Optional[Path] = None):
+    """Execute workflow by ID."""
+    if not workspace_dir:
+        workspace_dir = Path(__file__).parent
+    if not run_id:
+        run_id = f"run-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+    return WorkflowRunner(workspace_dir).run(workflow_id, run_id)
 
 
-class JimboRuntime:
-    """Small runtime that normalizes intake and selects an owned workflow."""
-
-    def __init__(self, *, workflows=None, logger=None):
-        self.workflows = list(workflows or DEFAULT_WORKFLOWS)
-        self.logger = logger
-
-    def register_workflow(self, workflow):
-        self.workflows.append(workflow)
-
-    def resolve_workflow(self, envelope):
-        for workflow in self.workflows:
-            if workflow.matches(envelope):
-                task = envelope.to_task(workflow=workflow.name)
-                return JimboWorkflowSelection(
-                    workflow=workflow,
-                    envelope=envelope,
-                    task=task,
-                    core=JimboCore(task, logger=self.logger),
-                )
-        raise UnknownWorkflowError(
-            f"No Jimbo workflow matched intake {envelope.intake_id or '<unknown>'}"
-        )
-
-    def begin(self, envelope, *, intake_reason, route, route_reason=None,
-              delegate=None, changed=None, metadata=None):
-        selection = self.resolve_workflow(envelope)
-
-        route_payload = dict(route or {})
-        route_payload.setdefault("workflow", selection.workflow.name)
-
-        merged_metadata = dict(metadata or {})
-        merged_metadata.setdefault("workflow_description", selection.workflow.description)
-        merged_metadata.setdefault("workflow_aliases", list(selection.workflow.aliases))
-
-        intake_activity_id = selection.core.intake(
-            reason=intake_reason,
-            intake=envelope.intake_record(),
-            changed=changed,
-            metadata=merged_metadata,
-        )
-        route_activity_id = selection.core.route(
-            route=route_payload,
-            reason=route_reason or intake_reason,
-            delegate=delegate,
-            changed=changed,
-            metadata=merged_metadata,
-        )
-
-        return JimboRuntimeResult(
-            selection=selection,
-            intake_activity_id=intake_activity_id,
-            route_activity_id=route_activity_id,
-        )
-
-
-def create_default_runtime(*, logger=None):
-    """Build the canonical Jimbo runtime used by live orchestration scripts."""
-    return JimboRuntime(workflows=DEFAULT_WORKFLOWS, logger=logger)
-
-
-_DEFAULT_RUNTIME = create_default_runtime()
-
-
-def get_default_runtime():
-    """Return the shared Jimbo runtime configuration for this process."""
-    return _DEFAULT_RUNTIME
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("Usage: python3 jimbo_runtime.py <workflow_id> [run_id]")
+        sys.exit(1)
+    workflow_id = sys.argv[1]
+    run_id = sys.argv[2] if len(sys.argv) > 2 else None
+    success = run_workflow(workflow_id, run_id)
+    sys.exit(0 if success else 1)

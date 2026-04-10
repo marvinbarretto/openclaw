@@ -1,0 +1,95 @@
+{
+  "id": "vault-triage",
+  "enabled": true,
+  "description": "Classify and route vault tasks through delegation pipeline",
+  "schedule": "0 9,15,18 * * *",
+  "intake": {
+    "source": "vault-api",
+    "filter": "status:unprocessed AND age_days < 30",
+    "limit": 20
+  },
+  "steps": [
+    {
+      "id": "classify",
+      "type": "classify",
+      "model": "haiku",
+      "prompt_file": "classify-vault-task.md",
+      "output_schema": {
+        "category": "string",
+        "confidence": "number",
+        "reasoning": "string"
+      }
+    },
+    {
+      "id": "route",
+      "type": "route",
+      "rules": [
+        {
+          "if": "category == research",
+          "action": "delegate_to:research-worker"
+        },
+        {
+          "if": "category == coding",
+          "action": "delegate_to:code-agent"
+        },
+        {
+          "if": "category == copy",
+          "action": "delegate_to:edit-worker"
+        },
+        {
+          "if": "category == admin",
+          "action": "assign_to:marvin"
+        },
+        {
+          "if": "confidence < 0.6",
+          "action": "assign_to:marvin (uncertain)"
+        }
+      ]
+    },
+    {
+      "id": "delegate",
+      "type": "delegate",
+      "timeout_seconds": 300,
+      "fallback_model": "sonnet"
+    },
+    {
+      "id": "review",
+      "type": "review",
+      "model": "haiku",
+      "prompt_file": "review-outcome.md",
+      "criteria": ["correctness", "completeness", "relevance_to_context"]
+    },
+    {
+      "id": "decide",
+      "type": "decide",
+      "rules": [
+        {
+          "if": "score >= 0.8",
+          "action": "archive"
+        },
+        {
+          "if": "0.5 <= score < 0.8",
+          "action": "assign_to:marvin (partial result)"
+        },
+        {
+          "if": "score < 0.5",
+          "action": "needs_context"
+        }
+      ]
+    }
+  ],
+  "human_feedback": {
+    "channels": ["telegram", "site-ui"],
+    "notify_async": true,
+    "decision_override": true
+  },
+  "logging": {
+    "destination": "jimbo-api",
+    "track": ["task_id", "source_task_id", "current_step", "assigned_to", "decisions", "model_calls", "outcomes", "timestamps"]
+  },
+  "metadata": {
+    "version": "1.0",
+    "created": "2026-04-09",
+    "config_hash": null
+  }
+}

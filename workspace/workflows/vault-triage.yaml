@@ -1,0 +1,94 @@
+id: vault-triage
+enabled: true
+description: "Classify and route vault tasks through delegation pipeline"
+
+# Schedule: run at 9am, 3pm, 6pm daily
+schedule: "0 9,15,18 * * *"
+
+# Phase 1: intake
+intake:
+  source: vault-api
+  filter: "status:unprocessed AND age_days < 30"
+  limit: 20
+
+# Phase 2-6: process each task through the loop
+steps:
+
+  # Step 1: Classify the task
+  - id: classify
+    type: classify
+    model: haiku
+    prompt_file: classify-vault-task.md
+    output_schema:
+      category: "admin|research|copy|coding|scheduling|other"
+      confidence: 0.0-1.0
+      reasoning: string
+
+  # Step 2: Route based on classification
+  - id: route
+    type: decision
+    rules:
+      - if: category == research
+        action: delegate_to:research-worker
+      - if: category == coding
+        action: delegate_to:code-agent
+      - if: category == copy
+        action: delegate_to:edit-worker
+      - if: category == admin
+        action: assign_to:marvin
+      - if: confidence < 0.6
+        action: assign_to:marvin (uncertain)
+
+  # Step 3: Execute delegation (if routed)
+  - id: delegate
+    type: delegate
+    timeout_seconds: 300
+    fallback_model: sonnet
+
+  # Step 4: Review the outcome
+  - id: review
+    type: review
+    model: haiku
+    prompt_file: review-outcome.md
+    criteria:
+      - correctness
+      - completeness
+      - relevance_to_context
+
+  # Step 5: Decide final action
+  - id: decide
+    type: decision
+    rules:
+      - if: review_score >= 0.8
+        action: archive
+      - if: review_score >= 0.5 AND review_score < 0.8
+        action: assign_to:marvin (partial result)
+      - if: review_score < 0.5
+        action: needs_context
+      - if: any_step_unclear
+        action: assign_to:marvin (request decision)
+
+# Integration: notify human when needed
+human_feedback:
+  channels: [telegram, site-ui]
+  notify_async: true
+  decision_override: true
+
+# Observability
+logging:
+  destination: jimbo-api
+  track:
+    - task_id
+    - source_task_id
+    - current_step
+    - assigned_to
+    - decisions
+    - model_calls
+    - outcomes
+    - timestamps
+
+# Versioning for iteration
+metadata:
+  version: "1.0"
+  created: "2026-04-09"
+  config_hash: null
