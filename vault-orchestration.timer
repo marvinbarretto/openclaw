@@ -1,0 +1,14 @@
+[Unit]
+Description=Vault Triage Orchestration Timer
+Requires=vault-orchestration.service
+
+[Timer]
+# Run at 9:00am, 3:00pm, and 6:00pm UTC daily
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 15:00:00
+OnCalendar=*-*-* 18:00:00
+Persistent=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

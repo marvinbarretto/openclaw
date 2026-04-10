@@ -8,9 +8,12 @@ import sys
 import json
 import uuid
 import datetime
+import os
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 try:
     from workers.base_worker import BaseWorker
@@ -58,6 +61,65 @@ class TaskRecord:
         """Add decision to audit trail."""
         self.decisions.append(Decision(step=step_id, decision=decision, model=model, worker_id=worker_id, cost=cost))
         self.updated_at = datetime.datetime.utcnow().isoformat()
+
+
+# ============================================================================
+# Task Record API Client
+# ============================================================================
+
+class TaskRecordAPI:
+    """HTTP client for creating/updating task records in jimbo-api."""
+
+    def __init__(self, base_url: str = "http://localhost:3100/api/workflows", api_key: str = None):
+        self.base_url = base_url.rstrip('/')
+        self.api_key = api_key or os.getenv("JIMBO_API_KEY", "")
+
+    def create(self, workflow_id: str, source_task_id: str, run_id: str, current_step: str, state: str, assigned_to: str) -> Optional[Dict[str, Any]]:
+        """Create a task record."""
+        url = f"{self.base_url}/tasks"
+        payload = {
+            'workflow_id': workflow_id,
+            'source_task_id': source_task_id,
+            'run_id': run_id,
+            'current_step': current_step,
+            'state': state,
+            'assigned_to': assigned_to,
+        }
+
+        try:
+            req = Request(url, data=json.dumps(payload).encode('utf-8'), method='POST')
+            req.add_header('Content-Type', 'application/json')
+            if self.api_key:
+                req.add_header('X-API-Key', self.api_key)
+            with urlopen(req) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except URLError as e:
+            print(f"ERROR: Failed to create task record: {e}")
+            return None
+
+    def update(self, task_id: str, current_step: str = None, state: str = None, assigned_to: str = None, decisions: List[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Update a task record."""
+        url = f"{self.base_url}/tasks/{task_id}"
+        payload = {}
+        if current_step is not None:
+            payload['current_step'] = current_step
+        if state is not None:
+            payload['state'] = state
+        if assigned_to is not None:
+            payload['assigned_to'] = assigned_to
+        if decisions is not None:
+            payload['decisions'] = decisions
+
+        try:
+            req = Request(url, data=json.dumps(payload).encode('utf-8'), method='PATCH')
+            req.add_header('Content-Type', 'application/json')
+            if self.api_key:
+                req.add_header('X-API-Key', self.api_key)
+            with urlopen(req) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except URLError as e:
+            print(f"ERROR: Failed to update task record: {e}")
+            return None
 
 
 # ============================================================================
@@ -157,9 +219,10 @@ class RouteExecutor:
 
     def _eval_rule(self, rule_if: str, category: str, confidence: float) -> bool:
         """Evaluate rule expression."""
-        if 'category ==' in rule_if:
-            return category == rule_if.split('==')[1].strip()
-        elif 'confidence <' in rule_if:
+        if 'category' in rule_if and '==' in rule_if:
+            target = rule_if.split('==')[1].strip().strip("'\"")
+            return category == target
+        elif 'confidence' in rule_if and '<' in rule_if:
             return confidence < float(rule_if.split('<')[1].strip())
         return False
 
@@ -240,6 +303,7 @@ class WorkflowRunner:
     def __init__(self, workspace_dir: Path):
         self.workspace_dir = workspace_dir
         self.loader = WorkflowLoader(workspace_dir)
+        self.api = TaskRecordAPI(os.getenv("JIMBO_API_URL", "http://localhost:3100/api/workflows"))
         self.executors = {
             'classify': ClassifyExecutor(workspace_dir),
             'route': RouteExecutor(),
@@ -267,6 +331,19 @@ class WorkflowRunner:
             print(f"--- Task {i}: {task.get('title', 'Untitled')} ---")
             tr = TaskRecord(workflow_id=workflow_id, source_task_id=task.get('id', f'task-{i}'), run_id=run_id)
 
+            # Create task record in API
+            api_task = self.api.create(
+                workflow_id=workflow_id,
+                source_task_id=tr.source_task_id,
+                run_id=run_id,
+                current_step='',
+                state='pending',
+                assigned_to='jimbo'
+            )
+            if api_task:
+                tr.id = api_task.get('id', tr.id)
+                print(f"  Created task record: {tr.id}")
+
             for step in workflow.get('steps', []):
                 tr.current_step = step.get('id')
                 tr.state = 'in_progress'
@@ -279,19 +356,32 @@ class WorkflowRunner:
                     executor.execute(step, task, tr)
                     print(f"  [{tr.current_step}] OK")
 
+                    # Update task record after step
+                    decisions_json = [{'step': d.step, 'decision': d.decision, 'model': d.model, 'worker_id': d.worker_id, 'cost': d.cost, 'timestamp': d.timestamp} for d in tr.decisions]
+                    self.api.update(
+                        task_id=tr.id,
+                        current_step=tr.current_step,
+                        state=tr.state,
+                        assigned_to=tr.assigned_to,
+                        decisions=decisions_json
+                    )
+
                     if tr.assigned_to == 'marvin':
                         print(f"  [PAUSE] Assigned to marvin")
                         tr.state = 'awaiting_human'
+                        self.api.update(task_id=tr.id, state='awaiting_human')
                         break
 
                 except Exception as e:
                     print(f"  ERROR: {e}")
                     tr.state = 'failed'
+                    self.api.update(task_id=tr.id, state='failed')
                     break
 
             if tr.state == 'in_progress':
                 tr.state = 'completed'
                 tr.completed_at = datetime.datetime.utcnow().isoformat()
+                self.api.update(task_id=tr.id, state='completed')
 
             print(f"  Final: {tr.state}\n")
 
@@ -312,19 +402,29 @@ class WorkflowRunner:
 # ============================================================================
 
 def run_workflow(workflow_id: str, run_id: Optional[str] = None, workspace_dir: Optional[Path] = None):
-    """Execute workflow by ID."""
+    """Execute workflow by ID or file path."""
     if not workspace_dir:
         workspace_dir = Path(__file__).parent
     if not run_id:
         run_id = f"run-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+
+    # If workflow_id looks like a file path, extract the workflow ID from the filename
+    if '/' in workflow_id or '\\' in workflow_id:
+        workflow_path = Path(workflow_id)
+        if workflow_path.exists():
+            workflow_id = workflow_path.stem  # Get filename without extension
+        else:
+            print(f"ERROR: Workflow file not found: {workflow_path}")
+            return False
+
     return WorkflowRunner(workspace_dir).run(workflow_id, run_id)
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python3 jimbo_runtime.py <workflow_id> [run_id]")
+        print("Usage: python3 jimbo_runtime.py <workflow_id|workflow_file> [run_id]")
         sys.exit(1)
-    workflow_id = sys.argv[1]
+    workflow_input = sys.argv[1]
     run_id = sys.argv[2] if len(sys.argv) > 2 else None
-    success = run_workflow(workflow_id, run_id)
+    success = run_workflow(workflow_input, run_id)
     sys.exit(0 if success else 1)

@@ -1,0 +1,13 @@
+[Unit]
+Description=Vault Triage Orchestration
+After=network.target jimbo-api.service
+
+[Service]
+Type=oneshot
+User=openclaw
+WorkingDirectory=/home/openclaw/workspace
+Environment="JIMBO_API_URL=http://localhost:3100/api/workflows"
+EnvironmentFile=/opt/jimbo-api.env
+ExecStart=/usr/bin/python3 /home/openclaw/workspace/vault-orchestration-cron.py
+StandardOutput=journal
+StandardError=journal
