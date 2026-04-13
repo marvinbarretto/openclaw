@@ -75,7 +75,7 @@ class TaskRecordAPI:
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key or os.getenv("JIMBO_API_KEY", "")
 
-    def create(self, workflow_id: str, source_task_id: str, run_id: str, current_step: str, state: str, assigned_to: str, config_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def create(self, workflow_id: str, source_task_id: str, run_id: str, current_step: str, state: str, assigned_to: str, config_hash: Optional[str] = None, title: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Create a task record."""
         url = f"{self.base_url}/tasks"
         payload = {
@@ -88,6 +88,8 @@ class TaskRecordAPI:
         }
         if config_hash:
             payload['config_hash'] = config_hash
+        if title:
+            payload['title'] = title
 
         try:
             req = Request(url, data=json.dumps(payload).encode('utf-8'), method='POST')
@@ -350,7 +352,8 @@ class WorkflowRunner:
                 current_step='',
                 state='pending',
                 assigned_to='jimbo',
-                config_hash=workflow.get('config_hash')
+                config_hash=workflow.get('config_hash'),
+                title=task.get('title'),
             )
             if api_task:
                 tr.id = api_task.get('id', tr.id)
@@ -411,11 +414,44 @@ class WorkflowRunner:
         return True
 
     def _intake(self, workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test tasks."""
+        """Fetch tasks from vault API based on workflow intake config."""
+        intake = workflow.get('intake', {})
+        source = intake.get('source', 'vault-api')
+        limit = intake.get('limit', 20)
+
+        if source != 'vault-api':
+            print(f"  Unsupported intake source: {source}")
+            return []
+
+        api_url = os.getenv("JIMBO_API_URL", "http://localhost:3100")
+        api_key = os.getenv("JIMBO_API_KEY", "")
+        url = f"{api_url}/api/vault/notes?status=inbox&limit={limit}&sort=created_at&order=asc"
+
+        try:
+            req = Request(url, method='GET')
+            if api_key:
+                req.add_header('X-API-Key', api_key)
+            with urlopen(req) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except (URLError, HTTPError) as e:
+            print(f"  ERROR: Failed to fetch vault tasks: {e}")
+            return []
+
+        notes = data.get('notes', [])
+        if not notes:
+            print("  No inbox tasks found in vault")
+            return []
+
+        print(f"  Fetched {len(notes)} inbox task(s) from vault")
         return [
-            {'id': 'task-1', 'title': 'Research LLM fine-tuning', 'description': 'Papers', 'tags': ['research']},
-            {'id': 'task-2', 'title': 'Fix auth bug', 'description': 'Debug', 'tags': ['coding']},
-            {'id': 'task-3', 'title': 'Schedule dentist', 'description': 'Appointment', 'tags': ['admin']},
+            {
+                'id': note.get('id', f'note-{i}'),
+                'title': note.get('title', 'Untitled'),
+                'description': note.get('body', ''),
+                'tags': (note.get('tags') or '').split(',') if note.get('tags') else [],
+                'type': note.get('type', 'task'),
+            }
+            for i, note in enumerate(notes, 1)
         ]
 
 
