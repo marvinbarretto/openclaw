@@ -437,22 +437,34 @@ class WorkflowRunner:
             print(f"  ERROR: Failed to fetch vault tasks: {e}")
             return []
 
-        notes = data.get('notes', [])
+        notes = data.get('items', data.get('notes', []))
         if not notes:
             print("  No inbox tasks found in vault")
             return []
 
         print(f"  Fetched {len(notes)} inbox task(s) from vault")
-        return [
-            {
+        tasks = []
+        for i, note in enumerate(notes, 1):
+            # Tags may be a JSON array string like '["tag1","tag2"]' or null
+            raw_tags = note.get('tags')
+            if isinstance(raw_tags, str):
+                try:
+                    tags = json.loads(raw_tags)
+                except (json.JSONDecodeError, ValueError):
+                    tags = [t.strip() for t in raw_tags.split(',') if t.strip()]
+            elif isinstance(raw_tags, list):
+                tags = raw_tags
+            else:
+                tags = []
+
+            tasks.append({
                 'id': note.get('id', f'note-{i}'),
                 'title': note.get('title', 'Untitled'),
                 'description': note.get('body', ''),
-                'tags': (note.get('tags') or '').split(',') if note.get('tags') else [],
+                'tags': tags,
                 'type': note.get('type', 'task'),
-            }
-            for i, note in enumerate(notes, 1)
-        ]
+            })
+        return tasks
 
 
 # ============================================================================
