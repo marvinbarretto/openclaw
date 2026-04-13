@@ -8,6 +8,7 @@ import sys
 import json
 import uuid
 import datetime
+import hashlib
 import os
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
@@ -74,7 +75,7 @@ class TaskRecordAPI:
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key or os.getenv("JIMBO_API_KEY", "")
 
-    def create(self, workflow_id: str, source_task_id: str, run_id: str, current_step: str, state: str, assigned_to: str) -> Optional[Dict[str, Any]]:
+    def create(self, workflow_id: str, source_task_id: str, run_id: str, current_step: str, state: str, assigned_to: str, config_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Create a task record."""
         url = f"{self.base_url}/tasks"
         payload = {
@@ -85,6 +86,8 @@ class TaskRecordAPI:
             'state': state,
             'assigned_to': assigned_to,
         }
+        if config_hash:
+            payload['config_hash'] = config_hash
 
         try:
             req = Request(url, data=json.dumps(payload).encode('utf-8'), method='POST')
@@ -146,7 +149,8 @@ class WorkflowLoader:
             return None
 
         with open(workflow_path, 'r') as f:
-            workflow = json.load(f)
+            raw = f.read()
+            workflow = json.loads(raw)
 
         required = ['id', 'enabled', 'schedule', 'intake', 'steps']
         for req in required:
@@ -154,6 +158,8 @@ class WorkflowLoader:
                 print(f"ERROR: Missing required field '{req}'")
                 return None
 
+        canonical = json.dumps(workflow, sort_keys=True, separators=(',', ':'))
+        workflow['config_hash'] = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
         return workflow
 
 
@@ -343,7 +349,8 @@ class WorkflowRunner:
                 run_id=run_id,
                 current_step='',
                 state='pending',
-                assigned_to='jimbo'
+                assigned_to='jimbo',
+                config_hash=workflow.get('config_hash')
             )
             if api_task:
                 tr.id = api_task.get('id', tr.id)

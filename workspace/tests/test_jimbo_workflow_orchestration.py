@@ -359,5 +359,70 @@ class TestRunWorkflowFunction(unittest.TestCase):
         self.assertIn('run_id', params)
 
 
+class TestConfigHash(unittest.TestCase):
+    """Test workflow config_hash computation."""
+
+    def test_loader_computes_config_hash(self):
+        """WorkflowLoader.load() returns workflow with config_hash field."""
+        with tempfile.TemporaryDirectory() as td:
+            workflows_dir = Path(td) / 'workflows'
+            workflows_dir.mkdir()
+            workflow = {
+                "id": "test-wf", "enabled": True, "schedule": "* * * * *",
+                "intake": {"source": "vault-api"}, "steps": []
+            }
+            (workflows_dir / 'test-wf.json').write_text(json.dumps(workflow))
+            loader = jimbo_runtime.WorkflowLoader(Path(td))
+            result = loader.load('test-wf')
+            self.assertIsNotNone(result)
+            self.assertIn('config_hash', result)
+            self.assertEqual(len(result['config_hash']), 64)  # SHA-256 hex
+
+    def test_same_content_same_hash(self):
+        with tempfile.TemporaryDirectory() as td:
+            workflows_dir = Path(td) / 'workflows'
+            workflows_dir.mkdir()
+            workflow = {"id": "test-wf", "enabled": True, "schedule": "* * * * *",
+                        "intake": {"source": "vault-api"}, "steps": []}
+            (workflows_dir / 'test-wf.json').write_text(json.dumps(workflow))
+            loader = jimbo_runtime.WorkflowLoader(Path(td))
+            h1 = loader.load('test-wf')['config_hash']
+            h2 = loader.load('test-wf')['config_hash']
+            self.assertEqual(h1, h2)
+
+    def test_different_content_different_hash(self):
+        with tempfile.TemporaryDirectory() as td:
+            workflows_dir = Path(td) / 'workflows'
+            workflows_dir.mkdir()
+            wf1 = {"id": "wf", "enabled": True, "schedule": "* * * * *",
+                    "intake": {"source": "vault-api"}, "steps": []}
+            wf2 = {"id": "wf", "enabled": True, "schedule": "0 9 * * *",
+                    "intake": {"source": "vault-api"}, "steps": []}
+            (workflows_dir / 'wf.json').write_text(json.dumps(wf1))
+            loader = jimbo_runtime.WorkflowLoader(Path(td))
+            h1 = loader.load('wf')['config_hash']
+            (workflows_dir / 'wf.json').write_text(json.dumps(wf2))
+            loader2 = jimbo_runtime.WorkflowLoader(Path(td))
+            h2 = loader2.load('wf')['config_hash']
+            self.assertNotEqual(h1, h2)
+
+
+class TestConfigHashPropagation(unittest.TestCase):
+    def test_create_sends_config_hash(self):
+        mock_response = mock.MagicMock()
+        mock_response.read.return_value = json.dumps({"id": "test-id"}).encode()
+        mock_response.status = 201
+        mock_response.__enter__ = mock.MagicMock(return_value=mock_response)
+        mock_response.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch.object(jimbo_runtime, 'urlopen', return_value=mock_response) as mock_urlopen:
+            api = jimbo_runtime.TaskRecordAPI(base_url="http://localhost:3100/api/workflows", api_key="test")
+            api.create(workflow_id="vault-triage", source_task_id="task-1", run_id="run-1",
+                       current_step="", state="pending", assigned_to="jimbo", config_hash="abc123hash")
+            call_args = mock_urlopen.call_args
+            request_obj = call_args[0][0]
+            body = json.loads(request_obj.data.decode())
+            self.assertEqual(body.get('config_hash'), 'abc123hash')
+
+
 if __name__ == '__main__':
     unittest.main()
