@@ -601,7 +601,7 @@ class WorkflowRunner:
 
         api_url = os.getenv("JIMBO_API_URL", "http://localhost:3100")
         api_key = os.getenv("JIMBO_API_KEY", "")
-        url = f"{api_url}/api/vault/notes?status=inbox&limit={limit}&sort=created_at&order=asc"
+        url = f"{api_url}/api/vault/notes?status=active&ready=true&limit={limit}&sort=created_at&order=asc"
 
         try:
             req = Request(url, method='GET')
