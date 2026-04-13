@@ -316,7 +316,8 @@ class WorkflowRunner:
     def __init__(self, workspace_dir: Path):
         self.workspace_dir = workspace_dir
         self.loader = WorkflowLoader(workspace_dir)
-        self.api = TaskRecordAPI(os.getenv("JIMBO_API_URL", "http://localhost:3100/api/workflows"))
+        api_base = os.getenv("JIMBO_API_URL", "http://localhost:3100").rstrip('/')
+        self.api = TaskRecordAPI(f"{api_base}/api/workflows")
         self.executors = {
             'classify': ClassifyExecutor(workspace_dir),
             'route': RouteExecutor(),
