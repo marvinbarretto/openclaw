@@ -13,7 +13,7 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 
 try:
     from workers.base_worker import BaseWorker
@@ -117,6 +117,11 @@ class TaskRecordAPI:
                 req.add_header('X-API-Key', self.api_key)
             with urlopen(req) as resp:
                 return json.loads(resp.read().decode('utf-8'))
+        except HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else ""
+            print(f"ERROR: HTTP {e.code} updating task record: {error_body}")
+            print(f"DEBUG: Payload was: {json.dumps(payload, indent=2)}")
+            return None
         except URLError as e:
             print(f"ERROR: Failed to update task record: {e}")
             return None
@@ -357,7 +362,17 @@ class WorkflowRunner:
                     print(f"  [{tr.current_step}] OK")
 
                     # Update task record after step
-                    decisions_json = [{'step': d.step, 'decision': d.decision, 'model': d.model, 'worker_id': d.worker_id, 'cost': d.cost, 'timestamp': d.timestamp} for d in tr.decisions]
+                    # Serialize decisions, excluding null fields (Zod schema validation)
+                    decisions_json = []
+                    for d in tr.decisions:
+                        dec = {'step': d.step, 'decision': d.decision, 'timestamp': d.timestamp}
+                        if d.model is not None:
+                            dec['model'] = d.model
+                        if d.worker_id is not None:
+                            dec['worker_id'] = d.worker_id
+                        if d.cost > 0:
+                            dec['cost'] = d.cost
+                        decisions_json.append(dec)
                     self.api.update(
                         task_id=tr.id,
                         current_step=tr.current_step,

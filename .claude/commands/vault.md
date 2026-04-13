@@ -1,9 +1,11 @@
 ---
-description: Quick-capture a thought, task, or idea into the Jimbo vault
+description: "[DEPRECATED — use /process instead] Quick-capture a thought, task, or idea into the Jimbo vault"
 argument-hint: "[type] [description]"
 ---
 
 # Vault Quick-Capture
+
+> **Deprecated:** Prefer `/process` — it handles both quick-capture and deep triage in one command. This skill remains as a fallback.
 
 Capture whatever is in `$ARGUMENTS` into the Jimbo vault via the REST API. Parse it, draft a note, confirm with Marvin, and send it.
 

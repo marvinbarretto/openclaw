@@ -202,7 +202,21 @@ Marvin's directional shift: "I want it to tell me what it knows, not what to do.
 
 **Updated maturity ladder:** plumbing → ~~heartbeat~~ → source data quality → **accurate data presentation** (building now) → dispatch flow → briefings as dispatch view → autonomous actions → sub-agents.
 
-## Current Architecture (as of 2026-04-08)
+### Session 18 — 2026-04-11 (Configuration Fracture)
+
+3-day gap. Briefing completely failed — three separate failure modes in one session. (1) Wrong skill invoked: Jimbo picked `morning-summary` instead of `daily-briefing`, hit 401 on health API (key rotated, not propagated), gave up. (2) Reasoning leak continued — heartbeat polls dumped chain-of-thought into Telegram for the 3rd consecutive session. (3) Surprise game ran with entirely fabricated data — invented vault tasks, invented email gems, invented interests. None matched the real pipeline data (14 gems, 10 events, 5 tasks all sitting in briefing-input.json).
+
+Marvin: "It was all rubbish." Identified three immediate needs: stop showing reasoning, migrate priority scale from 1-10 to P0-P3, and get hands-on with the raw files.
+
+**Root causes identified:** SOUL.md still says "propose day plan" (contradicts session 17's reporter rewrite of the skill). API key rotated but not propagated to VPS. Priority scale changed but codebase still uses 1-10 in ~8 files. Multiple configuration surfaces diverged — skill says one thing, SOUL.md says another, env vars are stale.
+
+**Pattern:** The system has more configuration surfaces than maintenance capacity. The data layer works; the configuration layer is fractured. Needs a maintenance pass, not more features.
+
+**Produced:** `docs/jimbo-hands-on-guide.md` — reference for Marvin to work directly with VPS files, check freshness, deploy changes, and troubleshoot.
+
+**Updated maturity ladder:** plumbing → ~~heartbeat~~ → **configuration maintenance** (now) → source data quality → accurate data presentation → dispatch flow → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-04-11, updated from 2026-04-08)
 
 ```
 VPS (always on):
@@ -349,7 +363,7 @@ Jimbo (OpenClaw on Telegram):
 | Message format (wall of text) | Briefing sent as one long message. Should split by section for Telegram UX. Skill fix needed. Session 9. |
 | ~~Calendar pollution~~ | **FIXED.** Whitelist + tags deployed. 12 calendars selected (down from 36). Config UI at `/app/jimbo/calendar`. Session 13. |
 | Briefing auto-delivery broken | **BROKEN.** 2 consecutive mornings failed to auto-deliver. Session 12 was rate limit; session 13 cause unknown. |
-| Email insight fields null | **BUG.** Insights have relevance scores but category/action/reason/insight all null. 3rd consecutive session. Replaces "scores all 0" (session 8). |
+| ~~Email insight fields null~~ | **FIXED.** 74/74 recent insights have full fields. Session 17 confirmed, session 18 reconfirmed. |
 | Stale files throughout repo | HEARTBEAT.md refs retired skills, skills/ has 4-5 retired entries, TODO.md outdated, CAPABILITIES.md inaccurate. Session 8. |
 | No surprise game definition | Only a vague "non-obvious connection" instruction. Needs proper doc defining what delight means. Session 8. |
 | Calendar write not used | Jimbo has write access but only narrates, never proposes+creates. Session 8. |
@@ -363,6 +377,13 @@ Jimbo (OpenClaw on Telegram):
 | ~~Morning gem drought~~ | Resolved — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
 | Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
 | False success on rate limit | **NEW BUG.** Model hit rate limit, no briefing composed, but activity log recorded "briefing delivered: success." No alert. Session 12. |
+| SOUL.md contradicts briefing skill | **CONFIG.** SOUL.md still says "propose day plan" and "priority >= 7" — contradicts session 17's reporter rewrite. Session 18. |
+| API key not propagated | **AUTH.** Key rotated but openclaw.env on VPS still has old key. Causes 401 on health, email_insights, dispatch. Session 18. |
+| Priority scale mismatch | **MIGRATION.** Vault uses P0-P3 but codebase uses 1-10 in ~8 files. Task scoring failed. Session 18. |
+| Skill routing confusion | **CONFIG.** Jimbo invoked `morning-summary` instead of `daily-briefing`. Cron config or model choice? Session 18. |
+| Surprise game fabrication | **BUG.** Skill ran without reading real data, model hallucinated vault tasks and email gems. Needs data-or-silence guard. Session 18. |
+| Reasoning leak (3 sessions) | **ONGOING.** Heartbeat dumps chain-of-thought to Telegram. Sessions 14, 17, 18. Rules exist, not followed. Session 18. |
+| openclaw-readonly token expiring | **TOKEN.** Expires Apr 17. Renew or remove. Session 18. |
 | ~~Email insight fields null~~ | **RESOLVED.** 173/173 insights complete. Session 12→17. |
 | No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
 | marbar.alt not labelled (regression) | Salsa, Football, Parkrun from options calendar not marked lower-confidence. Session 11. |
