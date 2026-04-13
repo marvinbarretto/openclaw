@@ -17,10 +17,13 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
 try:
-    from workers.base_worker import BaseWorker
-    from alert import send_telegram_alert
+    from workers.base_worker import call_model
 except ImportError:
-    BaseWorker = None
+    call_model = None
+
+try:
+    from alert import send_telegram as send_telegram_alert
+except ImportError:
     send_telegram_alert = None
 
 
@@ -102,7 +105,7 @@ class TaskRecordAPI:
             print(f"ERROR: Failed to create task record: {e}")
             return None
 
-    def update(self, task_id: str, current_step: str = None, state: str = None, assigned_to: str = None, decisions: List[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    def update(self, task_id: str, current_step: str = None, state: str = None, assigned_to: str = None, decisions: List[Dict[str, Any]] = None, final_decision: str = None) -> Optional[Dict[str, Any]]:
         """Update a task record."""
         url = f"{self.base_url}/tasks/{task_id}"
         payload = {}
@@ -114,6 +117,8 @@ class TaskRecordAPI:
             payload['assigned_to'] = assigned_to
         if decisions is not None:
             payload['decisions'] = decisions
+        if final_decision is not None:
+            payload['final_decision'] = final_decision
 
         try:
             req = Request(url, data=json.dumps(payload).encode('utf-8'), method='PATCH')
@@ -166,46 +171,83 @@ class WorkflowLoader:
 
 
 # ============================================================================
+# Helpers
+# ============================================================================
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Rough cost estimate per model. Returns USD."""
+    rates = {
+        'gemini-2.5-flash': (0.15 / 1_000_000, 0.60 / 1_000_000),
+        'gemini-2.0-flash': (0.10 / 1_000_000, 0.40 / 1_000_000),
+        'claude-haiku-4.5': (0.80 / 1_000_000, 4.00 / 1_000_000),
+        'claude-sonnet-4-5': (3.00 / 1_000_000, 15.00 / 1_000_000),
+    }
+    in_rate, out_rate = rates.get(model, (0.50 / 1_000_000, 2.00 / 1_000_000))
+    return round(input_tokens * in_rate + output_tokens * out_rate, 6)
+
+
+# ============================================================================
 # Step Executors
 # ============================================================================
 
 class ClassifyExecutor:
-    """Classify vault task."""
+    """Classify vault task using LLM."""
 
     def __init__(self, workspace_dir: Path):
         self.prompts_dir = workspace_dir / 'prompts'
-        self.worker = BaseWorker() if BaseWorker else None
 
     def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
         """Call model to classify task."""
         prompt_file = step.get('prompt_file', 'classify-vault-task.md')
         prompt_path = self.prompts_dir / prompt_file
-        model = step.get('model', 'haiku')
+        model = step.get('model', 'gemini-2.5-flash')
 
         if not prompt_path.exists():
-            return {'error': 'prompt_not_found', 'category': 'other', 'confidence': 0.0}
+            result = {'error': 'prompt_not_found', 'category': 'other', 'confidence': 0.0, '_stub': True}
+            task_record.log_decision('classify', result, model='none', cost=0)
+            return result
 
         with open(prompt_path, 'r') as f:
             prompt_text = f.read()
 
-        task_context = f"Task: {task.get('title', 'Untitled')}\nDescription: {task.get('description', '')}"
-
-        if self.worker:
+        tags = task.get('tags', [])
+        if isinstance(tags, str):
             try:
-                response = self.worker.call_model(model=model, messages=[
-                    {'role': 'system', 'content': prompt_text},
-                    {'role': 'user', 'content': task_context}
-                ])
-                result = json.loads(response)
-                task_record.log_decision('classify', result, model=model, cost=0.01)
-                return result
-            except Exception as e:
-                print(f"ERROR in classify: {e}")
-                return {'error': str(e), 'category': 'other', 'confidence': 0.0}
-        else:
-            stub = {'category': 'research', 'confidence': 0.8, 'reasoning': 'Stub'}
-            task_record.log_decision('classify', stub, model=model, cost=0.01)
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = [t.strip() for t in tags.split(',') if t.strip()]
+
+        task_context = (
+            f"Task: {task.get('title', 'Untitled')}\n"
+            f"Description: {task.get('description', '')}\n"
+            f"Tags: {', '.join(tags) if tags else 'none'}\n"
+            f"Created: {task.get('created_at', 'unknown')}"
+        )
+
+        if not call_model:
+            stub = {'category': 'other', 'confidence': 0.0, 'reasoning': 'call_model unavailable', '_stub': True}
+            task_record.log_decision('classify', stub, model='none', cost=0)
             return stub
+
+        try:
+            response = call_model(task_context, model=model, system=prompt_text)
+            text = response.get('text', '').strip()
+            # Extract JSON from response (may be wrapped in markdown code block)
+            json_match = text
+            if '```' in text:
+                import re
+                m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+                if m:
+                    json_match = m.group(1)
+            result = json.loads(json_match)
+            cost = _estimate_cost(model, response.get('input_tokens', 0), response.get('output_tokens', 0))
+            task_record.log_decision('classify', result, model=model, cost=cost)
+            return result
+        except Exception as e:
+            print(f"  ERROR in classify: {e}")
+            result = {'error': str(e), 'category': 'other', 'confidence': 0.0, '_stub': True}
+            task_record.log_decision('classify', result, model='none', cost=0)
+            return result
 
 
 class RouteExecutor:
@@ -241,62 +283,189 @@ class RouteExecutor:
 
 
 class DelegateExecutor:
-    """Delegate to worker."""
+    """Produce dispatch recommendation — does NOT execute work."""
+
+    DISPATCH_PROMPT = """You are deciding how a vault task should be handled. You do NOT do the work — you recommend a dispatch path.
+
+Task: {title}
+Description: {description}
+Category: {category}
+Route: {route_action}
+
+Return JSON with exactly these fields:
+{{
+  "dispatch": "agent" | "marvin" | "archive",
+  "agent_type": "research" | "coding" | "writing" | null,
+  "reason": "1 sentence why this dispatch path",
+  "effort": "trivial" | "small" | "medium" | "large"
+}}
+
+Rules:
+- "agent": task can be done by an AI agent (research, code generation, writing drafts)
+- "marvin": task requires human judgment, physical action, or account access
+- "archive": task is stale, duplicate, or already done
+- agent_type is null when dispatch is "marvin" or "archive"
+- effort estimates how much work the task is, not how hard the decision is"""
 
     def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
-        """Stub delegation."""
-        result = {'status': 'completed', 'output': 'Stub result'}
-        task_record.log_decision('delegate', result, cost=0.05)
-        return result
+        """Recommend dispatch path for task."""
+        model = step.get('fallback_model', 'gemini-2.5-flash')
+        title = task.get('title', 'Untitled')
+        description = task.get('description', '')
+
+        classify_dec = next((d for d in task_record.decisions if d.step == 'classify'), None)
+        category = classify_dec.decision.get('category', 'other') if classify_dec else 'other'
+
+        route_dec = next((d for d in task_record.decisions if d.step == 'route'), None)
+        route_action = route_dec.decision.get('action', '') if route_dec else ''
+
+        if not call_model:
+            result = {'dispatch': 'marvin', 'agent_type': None, 'reason': 'no model available', 'effort': 'unknown', '_stub': True}
+            task_record.log_decision('delegate', result, cost=0)
+            return result
+
+        prompt = self.DISPATCH_PROMPT.format(
+            title=title, description=description, category=category, route_action=route_action
+        )
+
+        try:
+            response = call_model(prompt, model=model)
+            text = response.get('text', '').strip()
+            if '```' in text:
+                import re
+                m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+                if m:
+                    text = m.group(1)
+            result = json.loads(text)
+            cost = _estimate_cost(model, response.get('input_tokens', 0), response.get('output_tokens', 0))
+            task_record.log_decision('delegate', result, model=model, cost=cost)
+            return result
+        except Exception as e:
+            print(f"  ERROR in delegate: {e}")
+            result = {'dispatch': 'marvin', 'agent_type': None, 'reason': f'assessment failed: {e}', 'effort': 'unknown', '_stub': True}
+            task_record.log_decision('delegate', result, cost=0)
+            return result
 
 
 class ReviewExecutor:
-    """Review task outcome."""
+    """Review task outcome using LLM."""
 
     def __init__(self, workspace_dir: Path):
         self.prompts_dir = workspace_dir / 'prompts'
-        self.worker = BaseWorker() if BaseWorker else None
 
     def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
-        """Review outcome."""
-        model = step.get('model', 'haiku')
-        stub = {'score': 0.85, 'correctness': 0.9, 'completeness': 0.8, 'relevance': 0.85}
-        task_record.log_decision('review', stub, model=model, cost=0.01)
-        return stub
+        """Review delegate output quality."""
+        prompt_file = step.get('prompt_file', 'review-outcome.md')
+        prompt_path = self.prompts_dir / prompt_file
+        model = step.get('model', 'gemini-2.5-flash')
+
+        # Gather context from prior decisions
+        classify_dec = next((d for d in task_record.decisions if d.step == 'classify'), None)
+        delegate_dec = next((d for d in task_record.decisions if d.step == 'delegate'), None)
+
+        if not prompt_path.exists() or not call_model:
+            stub = {'score': 0.5, 'correctness': 0.5, 'completeness': 0.5, 'relevance': 0.5,
+                    'issues': ['no model available' if not call_model else 'prompt not found'],
+                    'recommendation': 'assign_to_marvin', '_stub': True}
+            task_record.log_decision('review', stub, model='none', cost=0)
+            return stub
+
+        with open(prompt_path, 'r') as f:
+            prompt_text = f.read()
+
+        review_context = (
+            f"Original Task: {task.get('title', 'Untitled')}\n"
+            f"Description: {task.get('description', '')}\n\n"
+            f"Classification: {json.dumps(classify_dec.decision) if classify_dec else 'none'}\n\n"
+            f"Worker Output: {json.dumps(delegate_dec.decision) if delegate_dec else 'none'}"
+        )
+
+        try:
+            response = call_model(review_context, model=model, system=prompt_text)
+            text = response.get('text', '').strip()
+            if '```' in text:
+                import re
+                m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+                if m:
+                    text = m.group(1)
+            result = json.loads(text)
+            cost = _estimate_cost(model, response.get('input_tokens', 0), response.get('output_tokens', 0))
+            task_record.log_decision('review', result, model=model, cost=cost)
+            return result
+        except Exception as e:
+            print(f"  ERROR in review: {e}")
+            stub = {'score': 0.5, 'correctness': 0.5, 'completeness': 0.5, 'relevance': 0.5,
+                    'issues': [str(e)], 'recommendation': 'assign_to_marvin', '_stub': True}
+            task_record.log_decision('review', stub, model='none', cost=0)
+            return stub
 
 
 class DecideExecutor:
-    """Make final decision."""
+    """Make final decision based on review scores and dispatch recommendation."""
 
     def execute(self, step: Dict[str, Any], task: Dict[str, Any], task_record: TaskRecord) -> Dict[str, Any]:
-        """Apply decide rules."""
+        """Apply decide rules against review output."""
         rules = step.get('rules', [])
-        review_dec = task_record.decisions[-1].decision if task_record.decisions else {}
-        score = review_dec.get('score', 0.5)
+        review_dec = next((d for d in reversed(task_record.decisions) if d.step == 'review'), None)
+        delegate_dec = next((d for d in reversed(task_record.decisions) if d.step == 'delegate'), None)
+        review = review_dec.decision if review_dec else {}
+        delegate = delegate_dec.decision if delegate_dec else {}
+        score = review.get('score', 0.5)
 
         for rule in rules:
             if self._eval_rule(rule.get('if', ''), score):
                 action = rule.get('action', '')
-                result = {'action': action}
-                task_record.final_decision = self._extract_decision(action)
+
+                if 'accept_recommendation' in action:
+                    # Use the delegate's dispatch recommendation as the final decision
+                    dispatch = delegate.get('dispatch', 'marvin')
+                    agent_type = delegate.get('agent_type')
+                    reason = delegate.get('reason', '')
+                    effort = delegate.get('effort', 'unknown')
+
+                    if dispatch == 'archive':
+                        task_record.final_decision = 'archive'
+                    elif dispatch == 'agent':
+                        task_record.final_decision = f'dispatch:{agent_type or "general"}'
+                    else:
+                        task_record.final_decision = 'needs_marvin_review'
+                        task_record.assigned_to = 'marvin'
+
+                    result = {
+                        'action': f'accepted:{dispatch}',
+                        'dispatch': dispatch, 'agent_type': agent_type,
+                        'reason': reason, 'effort': effort, 'score': score,
+                    }
+                else:
+                    task_record.final_decision = self._extract_decision(action)
+                    if 'marvin' in action:
+                        task_record.assigned_to = 'marvin'
+                    result = {'action': action, 'score': score}
+
                 task_record.log_decision('decide', result)
                 return result
 
-        result = {'action': 'assign_to:marvin'}
-        task_record.final_decision = 'needs_context'
+        # Default: assign to marvin
+        result = {'action': 'assign_to:marvin', 'score': score}
+        task_record.final_decision = 'needs_marvin_review'
+        task_record.assigned_to = 'marvin'
         task_record.log_decision('decide', result)
         return result
 
     def _eval_rule(self, rule_if: str, score: float) -> bool:
-        """Evaluate score rule."""
-        if '>=' in rule_if and '<' not in rule_if:
+        """Evaluate score rule. Handles: 'score >= 0.8', 'score < 0.5', '0.5 <= score < 0.8'."""
+        import re
+        m = re.match(r'([\d.]+)\s*<=\s*score\s*<\s*([\d.]+)', rule_if)
+        if m:
+            return float(m.group(1)) <= score < float(m.group(2))
+        if '>=' in rule_if:
             return score >= float(rule_if.split('>=')[1].strip())
-        elif '<' in rule_if and '>=' not in rule_if:
+        if '<' in rule_if:
             return score < float(rule_if.split('<')[1].strip())
         return False
 
     def _extract_decision(self, action: str) -> str:
-        """Extract final decision."""
+        """Extract final decision label from action string."""
         if 'archive' in action:
             return 'archive'
         elif 'needs_context' in action:
@@ -405,9 +574,15 @@ class WorkflowRunner:
                     break
 
             if tr.state == 'in_progress':
-                tr.state = 'completed'
-                tr.completed_at = datetime.datetime.utcnow().isoformat()
-                self.api.update(task_id=tr.id, state='completed')
+                # If final decision needs human, don't mark completed
+                if tr.final_decision in ('needs_context', 'needs_marvin_review'):
+                    tr.state = 'awaiting_human'
+                    tr.assigned_to = 'marvin'
+                    self.api.update(task_id=tr.id, state='awaiting_human', assigned_to='marvin', final_decision=tr.final_decision)
+                else:
+                    tr.state = 'completed'
+                    tr.completed_at = datetime.datetime.utcnow().isoformat()
+                    self.api.update(task_id=tr.id, state='completed', final_decision=tr.final_decision)
 
             print(f"  Final: {tr.state}\n")
 

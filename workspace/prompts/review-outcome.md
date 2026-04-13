@@ -1,29 +1,28 @@
-# Review Vault Task Outcome
+# Review Dispatch Recommendation
 
-You are reviewing the result of delegated work on a vault task.
+You are reviewing a triage pipeline's dispatch recommendation for a vault task.
 
 ## Input
-- Original task
+- Original task (title + description)
 - Classification (category + confidence)
-- Worker result/output
-- Task context
+- Dispatch recommendation (agent/marvin/archive + reasoning)
 
 ## Review Criteria
 
-1. **Correctness** — Is the output accurate and valid?
-   - Does it match the task intent?
-   - Are there factual errors?
-   - Is the approach sound?
+1. **Correctness** — Is the dispatch path right?
+   - Would an agent actually be able to do this?
+   - Does this genuinely need Marvin, or could an agent handle it?
+   - If archiving, is the task really stale/done/duplicate?
 
-2. **Completeness** — Does it fully address the task?
-   - Are all subtasks done?
-   - Is anything missing?
-   - Does it feel finished?
+2. **Completeness** — Is the recommendation well-reasoned?
+   - Does the reason make sense?
+   - Is the effort estimate reasonable?
+   - Is the agent_type appropriate for the category?
 
-3. **Relevance to Context** — Does it align with Marvin's situation?
-   - Is it actionable?
-   - Is it aligned with known priorities?
-   - Could it be improved with context?
+3. **Relevance** — Does this align with Marvin's priorities?
+   - Is this task worth doing at all?
+   - Is the urgency right?
+   - Would Marvin agree with this routing?
 
 ## Output
 
@@ -36,7 +35,7 @@ Return a JSON object with exactly these fields:
   "completeness": 0.0 to 1.0,
   "relevance": 0.0 to 1.0,
   "issues": ["list of concerns, if any"],
-  "recommendation": "archive | assign_to_marvin | needs_context"
+  "recommendation": "archive | assign_to_marvin | dispatch_to_agent"
 }
 ```
 
@@ -44,13 +43,13 @@ Return a JSON object with exactly these fields:
 
 ## Recommendation Logic
 
-- **score >= 0.8**: archive (good work, move on)
-- **0.5 <= score < 0.8**: assign_to_marvin (partial/needs review)
-- **score < 0.5**: needs_context (likely needs more context or rework)
+- **score >= 0.8**: Accept the dispatch recommendation as-is
+- **0.5 <= score < 0.8**: Flag for Marvin to review the recommendation
+- **score < 0.5**: Recommendation is wrong — needs human review
 
 ## Examples
 
-**Good Result (score 0.9):**
+**Good recommendation (score 0.9):**
 ```json
 {
   "score": 0.9,
@@ -58,30 +57,18 @@ Return a JSON object with exactly these fields:
   "completeness": 0.85,
   "relevance": 0.9,
   "issues": [],
-  "recommendation": "archive"
+  "recommendation": "dispatch_to_agent"
 }
 ```
 
-**Partial Result (score 0.65):**
+**Questionable recommendation (score 0.6):**
 ```json
 {
-  "score": 0.65,
-  "correctness": 0.8,
-  "completeness": 0.5,
-  "relevance": 0.65,
-  "issues": ["Missing edge case handling", "Could use more examples"],
+  "score": 0.6,
+  "correctness": 0.7,
+  "completeness": 0.6,
+  "relevance": 0.5,
+  "issues": ["Task requires account access that agents can't have"],
   "recommendation": "assign_to_marvin"
-}
-```
-
-**Unclear Result (score 0.3):**
-```json
-{
-  "score": 0.3,
-  "correctness": 0.4,
-  "completeness": 0.2,
-  "relevance": 0.3,
-  "issues": ["Doesn't address core task", "Seems to misunderstand intent"],
-  "recommendation": "needs_context"
 }
 ```

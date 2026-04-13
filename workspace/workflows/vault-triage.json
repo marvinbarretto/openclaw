@@ -12,7 +12,7 @@
     {
       "id": "classify",
       "type": "classify",
-      "model": "haiku",
+      "model": "gemini-2.5-flash",
       "prompt_file": "classify-vault-task.md",
       "output_schema": {
         "category": "string",
@@ -50,12 +50,12 @@
       "id": "delegate",
       "type": "delegate",
       "timeout_seconds": 300,
-      "fallback_model": "sonnet"
+      "fallback_model": "gemini-2.5-flash"
     },
     {
       "id": "review",
       "type": "review",
-      "model": "haiku",
+      "model": "gemini-2.5-flash",
       "prompt_file": "review-outcome.md",
       "criteria": ["correctness", "completeness", "relevance_to_context"]
     },
@@ -65,15 +65,15 @@
       "rules": [
         {
           "if": "score >= 0.8",
-          "action": "archive"
+          "action": "accept_recommendation"
         },
         {
           "if": "0.5 <= score < 0.8",
-          "action": "assign_to:marvin (partial result)"
+          "action": "assign_to:marvin (review recommendation)"
         },
         {
           "if": "score < 0.5",
-          "action": "needs_context"
+          "action": "assign_to:marvin (bad recommendation)"
         }
       ]
     }

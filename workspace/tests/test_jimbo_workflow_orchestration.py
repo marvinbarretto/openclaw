@@ -223,14 +223,13 @@ class TestStepExecutors(unittest.TestCase):
         import shutil
         shutil.rmtree(self.temp_dir)
 
-    def test_classify_executor_stub_result(self):
-        """Test classify executor returns stub when BaseWorker unavailable."""
-        # Create a dummy prompt file so it's not missing
+    def test_classify_executor_stub_when_no_model(self):
+        """Test classify executor returns stub when call_model unavailable."""
         prompt_path = self.prompts_dir / 'classify.md'
         prompt_path.write_text('Classify this task:\n{task}')
 
         executor = jimbo_runtime.ClassifyExecutor(Path(self.temp_dir))
-        step = {'id': 'classify', 'type': 'classify', 'prompt_file': 'classify.md', 'model': 'haiku'}
+        step = {'id': 'classify', 'type': 'classify', 'prompt_file': 'classify.md', 'model': 'gemini-2.5-flash'}
         task = {'id': 'task-1', 'title': 'Research Python async', 'description': 'Learn async/await'}
         tr = jimbo_runtime.TaskRecord(workflow_id='test', source_task_id='task-1', run_id='run-1')
 
@@ -238,8 +237,9 @@ class TestStepExecutors(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertIn('category', result)
-        # Stub returns 'research' when BaseWorker is unavailable
-        self.assertEqual(result['category'], 'research')
+        # Stub returns 'other' with _stub flag when no model available
+        self.assertEqual(result['category'], 'other')
+        self.assertTrue(result.get('_stub', False))
         # Decision logged
         self.assertEqual(len(tr.decisions), 1)
         self.assertEqual(tr.decisions[0].step, 'classify')
