@@ -264,6 +264,26 @@ def run_pipeline(session, dry_run=False):
     else:
         pipeline_status["vault"] = {"status": "skipped"}
 
+    # --- Step 5x: Epic decomposition ---
+    if session == "morning" and not dry_run:
+        try:
+            result = subprocess.run(
+                [sys.executable, os.path.join(_script_dir, "decompose-epic.py"), "--limit", "10"],
+                capture_output=True, text=True, timeout=300,
+            )
+            pipeline_status["decomposition"] = {
+                "status": "ok" if result.returncode == 0 else "failed",
+                "output": result.stdout.strip()[:200] if result.stdout else "",
+            }
+            if result.returncode != 0 and result.stderr:
+                pipeline_status["decomposition"]["error"] = result.stderr.strip()[:200]
+        except subprocess.TimeoutExpired:
+            pipeline_status["decomposition"] = {"status": "failed", "error": "timeout (5 min)"}
+        except Exception as e:
+            pipeline_status["decomposition"] = {"status": "failed", "error": str(e)[:200]}
+    else:
+        pipeline_status["decomposition"] = {"status": "skipped"}
+
     # --- Step 5a: Calendar-vault links ---
     calendar_links = []
     if calendar and not dry_run:
@@ -288,6 +308,26 @@ def run_pipeline(session, dry_run=False):
         pipeline_status["dispatch"] = dispatch_status
     else:
         pipeline_status["dispatch"] = {"status": "skipped (dry-run)"}
+
+    # --- Step 5c: Pending decomposition proposals ---
+    pending_decompositions = []
+    if not dry_run:
+        try:
+            api_url = os.environ.get("JIMBO_API_URL", "")
+            api_key = os.environ.get("JIMBO_API_KEY", "")
+            if api_url and api_key:
+                req = urllib.request.Request(
+                    f"{api_url}/api/grooming/proposals?status=pending&limit=5",
+                    headers={"X-API-Key": api_key, "Accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    proposals = json.loads(resp.read().decode())
+                if isinstance(proposals, list):
+                    pending_decompositions = proposals
+                elif isinstance(proposals, dict):
+                    pending_decompositions = proposals.get("proposals", [])
+        except Exception:
+            pass
 
     # --- Step 6: Triage pending ---
     if session == "morning":
@@ -315,6 +355,7 @@ def run_pipeline(session, dry_run=False):
         "vault_tasks": vault_tasks,
         "calendar_links": calendar_links,
         "dispatch": dispatch_data,
+        "pending_decompositions": pending_decompositions,
         "context_summary": context_summary,
         "triage_pending": triage_pending,
     }
