@@ -862,7 +862,7 @@ def cmd_score_api(args):
                 if s_ac:
                     patch["suggested_ac"] = s_ac
                 _api_request("PATCH", f"/api/vault/notes/{t['id']}", patch)
-                if s_agent and s_route == 'jimbo':
+                if s_agent and s_route == 'jimbo' and build_vault_triage_payload:
                     runtime_payload = build_vault_triage_payload(
                         t,
                         priority=priority,
@@ -887,7 +887,7 @@ def cmd_score_api(args):
                     )
                     if args.submit_runtime_inbox:
                         queued_payloads.append(runtime_payload)
-                elif args.submit_runtime_inbox and s_route == 'marvin':
+                elif args.submit_runtime_inbox and s_route == 'marvin' and build_vault_triage_payload:
                     queued_payloads.append(build_vault_triage_payload(
                         t,
                         priority=priority,
