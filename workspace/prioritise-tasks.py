@@ -89,18 +89,38 @@ Output the number only (0, 1, 2, or 3).
 
 For tasks with actionability `clear` and priority <= 2 (P0, P1, or P2), also suggest dispatch fields:
 
-### agent_type
-- `coder` — software tasks: tags mention repos/code/tech, title implies building/fixing/adding features
-- `researcher` — comparison, evaluation, investigation: "compare X vs Y", "find", "evaluate", "research"
-- `drafter` — writing tasks: "write", "draft", "blog post", "document", content creation
-- `null` — unclear, skip suggestion
+### Skill Suggestions
 
-### route
-- `jimbo` — can be done by automation (any AI agent/model — coding, research, writing, server admin)
-- `marvin` — requires Marvin personally (physical actions, personal decisions, phone calls, meetings)
+**required_skills** — array of one or more skills this task needs. Available skills:
+- `coder` — implement code changes, fix bugs, refactor
+- `researcher` — investigate topics, compare options, validate assumptions
+- `extractor` — screenshot URLs, extract structured data from web pages
+- `drafter` — write structured text output (summaries, docs, specs)
+
+Inference rules:
+- Tags contain software/code/repo names, technical content → include `coder`
+- "compare", "research", "find", "evaluate", type=bookmark → include `researcher`
+- "screenshot", "capture", "extract from URL" → include `extractor`
+- "write", "draft", "blog", "document" → include `drafter`
+- Tasks may need multiple skills (e.g. research + code = ["researcher", "coder"])
+
+**suggested_executor** — who should run this task:
+- `boris` — complex tasks, multi-skill, high-priority, requires strong reasoning
+- `ralph` — simple single-skill tasks, CSS/style, basic extraction, non-urgent
+- `marvin` — needs human judgment, product decisions, approval required
+
+Inference rules:
+- Multiple skills → `boris`
+- Priority 0-1 (urgent/this week) → `boris`
+- Single skill + low complexity + priority 2-3 → `ralph`
+- Personal decision, physical action, approval needed → `marvin`
+
+**suggested_route** — where the task runs:
+- `jimbo` — automation can handle (boris or ralph will execute)
+- `marvin` — requires human action
 
 ### acceptance_criteria
-For tasks where you suggest an agent_type, draft concise acceptance criteria — concrete, verifiable conditions.
+For tasks where you suggest skills, draft concise acceptance criteria — concrete, verifiable conditions.
 Keep it to 1-3 short sentences. Focus on WHAT must be true when done, not HOW to do it.
 If the task is too vague to write AC for, leave it null.
 
@@ -110,14 +130,16 @@ IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY ta
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_agent_type": "coder", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
-  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}},
-  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_agent_type": null, "suggested_route": null, "suggested_ac": null}}
+  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
+  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
 ]
 ```
 
 `suggested_status` should be `"stale"` or `null`. Nothing else.
-`suggested_agent_type` should be `"coder"`, `"researcher"`, `"drafter"`, or `null`.
+`suggested_skills` should be a JSON array of strings (e.g. `["coder", "researcher"]`) or `null`.
+`suggested_executor` should be `"boris"`, `"ralph"`, `"marvin"`, or `null`.
+`suggested_agent_type` — deprecated, use `suggested_skills`. Still accepted for backwards compat.
 `suggested_route` should be `"jimbo"`, `"marvin"`, or `null`.
 `suggested_ac` should be a short string or `null`.
 The array MUST contain exactly one entry per task in the input. Do not skip any.
@@ -737,13 +759,21 @@ def cmd_score_api(args):
             s_agent = score_result.get('suggested_agent_type')
             s_route = score_result.get('suggested_route')
             s_ac = score_result.get('suggested_ac')
+            s_skills = score_result.get('suggested_skills')
+            s_executor = score_result.get('suggested_executor')
+
+            # Backwards compat: derive agent_type from primary skill
+            if s_skills and not s_agent:
+                s_agent = s_skills[0]
 
             if args.dry_run:
                 line = f"  {t['id']}: priority={priority} actionability={actionability} reason=\"{reason[:60]}\""
-                if s_agent:
-                    line += f" → {s_agent}/{s_route}"
-                    if s_ac:
-                        line += f" AC: \"{s_ac[:50]}...\""
+                if s_skills:
+                    line += f" skills={s_skills}"
+                if s_executor:
+                    line += f" executor={s_executor}"
+                if s_ac:
+                    line += f" AC: \"{s_ac[:50]}...\""
                 log(line)
             elif args.emit_intake:
                 if s_route in {'jimbo', 'marvin'}:
@@ -762,6 +792,8 @@ def cmd_score_api(args):
                             "suggested_agent_type",
                             "suggested_route",
                             "suggested_ac",
+                            "suggested_skills",
+                            "suggested_executor",
                         },
                         model=GEMINI_MODEL,
                     ))
@@ -771,6 +803,10 @@ def cmd_score_api(args):
                     "ai_rationale": reason,
                     "actionability": actionability,
                 }
+                if s_skills and isinstance(s_skills, list):
+                    patch["suggested_skills"] = json.dumps(s_skills)
+                if s_executor:
+                    patch["suggested_executor"] = s_executor
                 if s_agent:
                     patch["suggested_agent_type"] = s_agent
                 if s_route:
