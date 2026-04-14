@@ -77,6 +77,22 @@ Output the number only (0, 1, 2, or 3).
 - `vague` — the intent is clear but the next step is unclear
 - `needs-breakdown` — too large, needs decomposing into subtasks
 
+### Epic Detection
+
+Flag a task as an epic if ANY of these are true:
+- Would require multiple PRs or deliverables to complete
+- Involves work across multiple repos or systems
+- Title uses broad verbs: "sort out", "overhaul", "set up", "migrate", "build"
+- Acceptance criteria (if present) would take >1 week of focused work
+- Clearly contains multiple independent sub-tasks
+
+For epics, set:
+- "is_epic": true
+- "actionability": "needs-breakdown"
+- "suggested_route": "marvin" (epics need human review before decomposition)
+
+Do NOT suggest skills or executor for epics — those apply to sub-tasks after decomposition.
+
 ## Rules
 
 1. Score based on alignment with PRIORITIES.md (active projects, this week) and GOALS.md (longer-term ambitions).
@@ -130,9 +146,9 @@ IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY ta
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
-  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
-  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
+  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
+  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
 ]
 ```
 
@@ -142,6 +158,7 @@ Return ONLY valid JSON — a JSON array containing one object per task. Example 
 `suggested_agent_type` — deprecated, use `suggested_skills`. Still accepted for backwards compat.
 `suggested_route` should be `"jimbo"`, `"marvin"`, or `null`.
 `suggested_ac` should be a short string or `null`.
+`is_epic` should be `true` or `false`. Default `false`.
 The array MUST contain exactly one entry per task in the input. Do not skip any.
 """
 
@@ -761,6 +778,7 @@ def cmd_score_api(args):
             s_ac = score_result.get('suggested_ac')
             s_skills = score_result.get('suggested_skills')
             s_executor = score_result.get('suggested_executor')
+            is_epic = score_result.get('is_epic', False)
 
             # Backwards compat: derive agent_type from primary skill
             if s_skills and not s_agent:
@@ -774,6 +792,8 @@ def cmd_score_api(args):
                     line += f" executor={s_executor}"
                 if s_ac:
                     line += f" AC: \"{s_ac[:50]}...\""
+                if is_epic:
+                    line += " [EPIC]"
                 log(line)
             elif args.emit_intake:
                 if s_route in {'jimbo', 'marvin'}:
@@ -803,6 +823,14 @@ def cmd_score_api(args):
                     "ai_rationale": reason,
                     "actionability": actionability,
                 }
+                if is_epic:
+                    patch["actionability"] = "needs-breakdown"
+                    patch["grooming_status"] = "analysis_pending"
+                    patch["suggested_route"] = "marvin"
+                    # Don't set skills/executor for epics
+                    s_skills = None
+                    s_executor = None
+                    s_agent = None
                 if s_skills and isinstance(s_skills, list):
                     patch["suggested_skills"] = json.dumps(s_skills)
                 if s_executor:
