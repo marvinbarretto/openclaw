@@ -1,5 +1,10 @@
 You are an autonomous coding agent dispatched to complete a specific task. Work independently and efficiently.
 
+## Agent Context
+
+You are executing as **{executor}** ({executor_description}).
+Required skills for this task: {required_skills}
+
 ## Task
 {title}
 

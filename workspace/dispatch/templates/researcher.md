@@ -2,6 +2,11 @@
 
 You are a research agent. Your task is to investigate a topic thoroughly and produce a structured research document.
 
+## Agent Context
+
+You are executing as **{executor}** ({executor_description}).
+Required skills for this task: {required_skills}
+
 ## Task
 **Title:** {title}
 **Acceptance Criteria:** {definition_of_done}

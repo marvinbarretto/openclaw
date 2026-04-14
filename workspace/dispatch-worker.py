@@ -48,6 +48,11 @@ DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 # Approach 3: configurable per-task or via settings API
 TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200}  # seconds
+EXECUTOR_DESCRIPTIONS = {
+    "boris": "Claude on m2 machine — strong reasoning, complex tasks",
+    "ralph": "Ollama on MacBook Air — simple, mechanical tasks",
+    "marvin": "Human — judgment calls and approvals",
+}
 
 
 # --- Utility functions ---
@@ -204,12 +209,18 @@ def execute_task(task, dry_run=False):
     work_dir = determine_work_dir(task, normalized_task)
 
     # Render prompt
+    executor = task.get('executor') or vault_task.get('executor') or 'unknown'
+    required_skills = vault_task.get('required_skills') or vault_task.get('suggested_skills') or '[]'
+
     prompt = render_template(template, {
         'title': normalized_task.get('title', ''),
         'definition_of_done': normalized_task.get('definition_of_done', ''),
         'dispatch_repo': work_dir,
         'task_id': task_id,
         'output_path': f'/tmp/dispatch-{task_id}-output',
+        'executor': executor,
+        'executor_description': EXECUTOR_DESCRIPTIONS.get(executor, ''),
+        'required_skills': required_skills,
     })
 
     if dry_run:
