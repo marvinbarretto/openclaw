@@ -695,13 +695,13 @@ def cmd_score_api(args):
     system_prompt = SCORING_SYSTEM_PROMPT
 
     # Fetch tasks from API — active and inbox, excluding subtasks
-    result = _api_request("GET", "/api/vault/notes?status=active,inbox&has_parent=false&limit=200&sort=updated_at&order=asc")
-    if not result or not result.get("notes"):
+    result = _api_request("GET", "/api/vault/notes?status=active,inbox&has_parent=false&limit=100&sort=updated_at&order=asc")
+    if not result or not (result.get("items") or result.get("notes")):
         log("No tasks found in API")
         print(json.dumps({"status": "ok", "scored": 0}))
         return
 
-    all_tasks = result["notes"]
+    all_tasks = result.get("items") or result.get("notes") or []
     log(f"Fetched {len(all_tasks)} tasks from API")
 
     # Filter to those needing scoring (no ai_priority, or force)
