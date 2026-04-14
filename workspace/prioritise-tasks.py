@@ -147,13 +147,13 @@ If the task is too vague to write AC for, leave it null.
 
 ## Response format
 
-IMPORTANT: You will receive multiple tasks. You MUST return a score for EVERY task.
+IMPORTANT: You will receive multiple tasks. Each task is identified by a short `#number` (its seq). You MUST return a score for EVERY task, using this number as the `id` field.
 Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
 ```json
 [
-  {{"id": "note_abc123", "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
-  {{"id": "note_def456", "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
-  {{"id": "note_ghi789", "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
+  {{"id": 42, "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
+  {{"id": 108, "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
+  {{"id": 205, "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
 ]
 ```
 
@@ -741,10 +741,15 @@ def cmd_score_api(args):
             time.sleep(1)
         log(f"\nBatch {batch_idx + 1}/{len(batches)} ({len(batch)} tasks)")
 
-        # Build prompt from API task data
+        # Build prompt from API task data — use seq (short integer) as LLM-facing ID
+        # to avoid the LLM mangling long slug-based IDs in its response
+        seq_to_task = {}
         prompt_parts = [f"## Marvin's current context\n\n{context}\n\n## Tasks to score\n"]
         for t in batch:
-            prompt_parts.append(f"### {t['id']}")
+            seq = t.get('seq')
+            seq_key = str(seq) if seq is not None else t['id']
+            seq_to_task[seq_key] = t
+            prompt_parts.append(f"### #{seq_key}")
             prompt_parts.append(f"Title: {t['title']}")
             prompt_parts.append(f"Created: {t.get('created_at', 'unknown')}")
             if t.get('tags'):
@@ -764,12 +769,22 @@ def cmd_score_api(args):
         if isinstance(results, dict):
             results = [results]
 
-        results_by_id = {r.get('id', ''): r for r in results if isinstance(r, dict)}
+        # Match by seq (returned as "id" from LLM) — try both string and int forms
+        results_by_seq = {}
+        for r in (results if isinstance(results, list) else []):
+            if not isinstance(r, dict):
+                continue
+            rid = r.get('id', '')
+            results_by_seq[str(rid)] = r
+            # Also index without # prefix in case LLM includes it
+            results_by_seq[str(rid).lstrip('#')] = r
 
         for t in batch:
-            score_result = results_by_id.get(t['id'])
+            seq = t.get('seq')
+            seq_key = str(seq) if seq is not None else t['id']
+            score_result = results_by_seq.get(seq_key)
             if score_result is None:
-                log(f"  WARNING: No score for {t['id']}")
+                log(f"  WARNING: No score for #{seq_key} ({t['title'][:40]})")
                 errors += 1
                 continue
 
