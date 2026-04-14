@@ -4,7 +4,10 @@
 def summarize_task(task, *, title=None):
     flow = task.get("flow", "commission")
     agent_type = task.get("agent_type", "worker")
+    executor = task.get("executor")
     label = title or task.get("task_id", "unknown-task")
+    if executor:
+        return f"[{flow}] {agent_type} [{executor}] -- {label}"
     return f"[{flow}] {agent_type} -- {label}"
 
 

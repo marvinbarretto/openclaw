@@ -387,6 +387,51 @@ def check_timeouts(dry_run=False):
         return True  # assume still running
 
 
+def assign_executor(task):
+    """Auto-assign executor based on required_skills and complexity signals.
+
+    Returns 'boris', 'ralph', or 'marvin'.
+    """
+    # Manual override
+    executor = task.get("executor")
+    if executor:
+        return executor
+
+    skills_raw = task.get("required_skills") or task.get("suggested_skills")
+    if not skills_raw:
+        # Fallback to agent_type
+        agent_type = task.get("agent_type") or task.get("suggested_agent_type")
+        skills = [agent_type] if agent_type else []
+    elif isinstance(skills_raw, str):
+        try:
+            skills = json.loads(skills_raw)
+        except json.JSONDecodeError:
+            skills = [skills_raw]
+    else:
+        skills = skills_raw
+
+    priority = task.get("manual_priority") or task.get("ai_priority") or 3
+
+    # Multi-skill → Boris (needs reasoning to compose)
+    if len(skills) > 1:
+        return "boris"
+
+    # High priority → Boris (important, use stronger agent)
+    if priority <= 1:
+        return "boris"
+
+    # Researcher with complex signals → Boris
+    if "researcher" in skills and priority <= 2:
+        return "boris"
+
+    # Simple single-skill, lower priority → Ralph
+    if len(skills) == 1 and skills[0] in ("coder", "extractor", "drafter") and priority >= 2:
+        return "ralph"
+
+    # Default → Boris (safe fallback)
+    return "boris"
+
+
 def propose_batch(dry_run=False, emit_intake=False):
     """Propose a new batch of tasks for approval.
 
@@ -430,6 +475,12 @@ def propose_batch(dry_run=False, emit_intake=False):
         log(f'Unexpected batch ID format: {batch_id}')
 
     hydrated_items = hydrate_batch(all_items, fetch_vault_note)
+
+    # Auto-assign executor for items that don't have one
+    for item in hydrated_items:
+        if not item.get("executor"):
+            item["executor"] = assign_executor(item)
+
     if not hydrated_items:
         log('No dispatch items could be hydrated')
         return False
