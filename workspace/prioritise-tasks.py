@@ -32,11 +32,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from jimbo_runtime_service import (
-    build_vault_triage_payload,
-    log_dispatch_candidate_classification,
-)
-from jimbo_runtime_inbox_service import enqueue_payloads
+try:
+    from jimbo_runtime_service import (
+        build_vault_triage_payload,
+        log_dispatch_candidate_classification,
+    )
+    from jimbo_runtime_inbox_service import enqueue_payloads
+except ImportError:
+    build_vault_triage_payload = None
+    log_dispatch_candidate_classification = None
+    enqueue_payloads = None
 
 # ---------------------------------------------------------------------------
 # Paths — all relative to /workspace/ (sandbox) or script dir (laptop)
