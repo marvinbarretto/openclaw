@@ -42,12 +42,13 @@ from jimbo_runtime_service import (
 API_URL = os.environ.get('JIMBO_API_URL', '')
 API_KEY = os.environ.get('JIMBO_API_KEY', '')
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dispatch', 'templates')
+SKILLS_DIR = os.path.expanduser('~/development/hub/docs/dispatch/skills')
 WORK_DIR = os.path.expanduser('~/development')
 LOCK_FILE = '/tmp/dispatch-worker.lock'
 DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 # Approach 3: configurable per-task or via settings API
-TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200}  # seconds
+TIMEOUTS = {'coder': 1800, 'researcher': 900, 'drafter': 1200, 'extractor': 900}  # seconds
 EXECUTOR_DESCRIPTIONS = {
     "boris": "Claude on m2 machine — strong reasoning, complex tasks",
     "ralph": "Ollama on MacBook Air — simple, mechanical tasks",
@@ -157,14 +158,118 @@ def preserve_evidence(task_id, reason):
     send_telegram(f'[Dispatch Worker] API write failed for {task_id}: {reason}. Local artifacts preserved.')
 
 
+def load_skill(skill_name):
+    """Load a skill definition from hub/docs/dispatch/skills/{name}/SKILL.md."""
+    path = os.path.join(SKILLS_DIR, skill_name, 'SKILL.md')
+    if not os.path.exists(path):
+        log(f'Skill not found: {path}')
+        return None
+    with open(path) as f:
+        content = f.read()
+    # Strip YAML frontmatter if present
+    if content.startswith('---'):
+        parts = content.split('---', 2)
+        if len(parts) >= 3:
+            content = parts[2].strip()
+    return content
+
+
 def load_template(agent_type):
-    """Load prompt template for an agent type."""
+    """Load prompt template for an agent type (legacy fallback)."""
     path = os.path.join(TEMPLATE_DIR, f'{agent_type}.md')
     if not os.path.exists(path):
         log(f'Template not found: {path}')
         return None
     with open(path) as f:
         return f.read()
+
+
+def compose_skills_prompt(required_skills, context):
+    """Compose a dispatch prompt from multiple skill definitions.
+
+    Loads each SKILL.md from hub, combines them with execution context
+    (executor, task details, output contract). This replaces the old
+    fixed-template approach where one agent_type = one template.
+    """
+    skills = []
+    if isinstance(required_skills, str):
+        try:
+            skills = json.loads(required_skills)
+        except json.JSONDecodeError:
+            skills = [required_skills]
+    elif isinstance(required_skills, list):
+        skills = required_skills
+
+    if not skills:
+        return None
+
+    # Load each skill definition
+    skill_docs = []
+    for skill_name in skills:
+        content = load_skill(skill_name)
+        if content:
+            skill_docs.append((skill_name, content))
+        else:
+            log(f'Warning: skill "{skill_name}" not found in {SKILLS_DIR}, skipping')
+
+    if not skill_docs:
+        return None
+
+    # Load output contract if it exists
+    output_contract = ''
+    contract_path = os.path.join(TEMPLATE_DIR, '_output-contract.md')
+    if os.path.exists(contract_path):
+        with open(contract_path) as f:
+            output_contract = f.read()
+
+    # Compose the prompt
+    executor = context.get('executor', 'unknown')
+    executor_desc = EXECUTOR_DESCRIPTIONS.get(executor, '')
+
+    sections = []
+
+    # Header
+    sections.append(f"""You are an autonomous dispatch agent executing a task that requires {len(skills)} skill(s): {', '.join(skills)}.
+
+## Agent Context
+
+You are executing as **{executor}** ({executor_desc}).
+
+## Task
+**Title:** {context.get('title', '')}
+**Acceptance Criteria:** {context.get('definition_of_done', '')}
+**Task ID:** {context.get('task_id', '')}
+**Working Directory:** {context.get('dispatch_repo', '')}""")
+
+    # Skill instructions
+    if len(skill_docs) == 1:
+        sections.append(f"\n## Skill: {skill_docs[0][0]}\n\n{skill_docs[0][1]}")
+    else:
+        sections.append("\n## Skills\n\nThis task requires multiple skills. Follow the instructions for each:")
+        for skill_name, content in skill_docs:
+            sections.append(f"\n### {skill_name}\n\n{content}")
+
+    # Execution instructions
+    sections.append(f"""
+## Execution
+
+1. Create a feature branch: `dispatch/{context.get('task_id', '')}`
+2. Apply each skill's instructions to complete the task
+3. Commit using conventional commits (`type: description`)
+4. Run tests — fix any failures your changes introduced
+5. Push branch and open PR
+
+## Constraints
+- Do not modify files unrelated to the task
+- Do not add dependencies without clear justification
+- If you get stuck or the task is ambiguous, write your findings and stop — do not guess
+- A task is NOT complete without a pushed branch and an open PR""")
+
+    # Output contract
+    if output_contract:
+        sections.append(f"\n---\n\n**Output:** Follow the dispatch output contract for branching, pushing, PR format, evidence upload, and result JSON.\n\n{output_contract}")
+
+    return '\n'.join(sections)
 
 
 def fetch_vault_note(task_id):
@@ -174,8 +279,12 @@ def fetch_vault_note(task_id):
 def determine_work_dir(task, normalized_task):
     """Resolve the working directory for a dispatch task."""
     dispatch_repo = normalized_task.get('dispatch_repo', '')
-    if not dispatch_repo and task.get('agent_type') == 'coder':
-        dispatch_repo = os.path.join(WORK_DIR, 'localshout-next')
+    if not dispatch_repo:
+        # Infer from skills or agent_type — coder tasks need a repo
+        skills_raw = (normalized_task.get('vault_task') or {}).get('required_skills') or ''
+        has_coder = 'coder' in skills_raw or task.get('agent_type') == 'coder'
+        if has_coder:
+            dispatch_repo = os.path.join(WORK_DIR, 'localshout-next')
     return dispatch_repo or WORK_DIR
 
 
@@ -189,14 +298,6 @@ def execute_task(task, dry_run=False):
 
     log(f'Picking up {task_id} ({agent_type})')
 
-    # Load template
-    template = load_template(agent_type)
-    if not template:
-        log(f'No template for agent type: {agent_type}')
-        if not dry_run:
-            report_dispatch_failure(dispatch_id, f'No template for agent type: {agent_type}')
-        return False
-
     normalized_task = hydrate_task(task, fetch_vault_note)
     if not normalized_task:
         log(f'Vault task not found: {task_id}')
@@ -208,11 +309,12 @@ def execute_task(task, dry_run=False):
     # Determine working directory
     work_dir = determine_work_dir(task, normalized_task)
 
-    # Render prompt
+    # Resolve executor and skills
     executor = task.get('executor') or vault_task.get('executor') or 'unknown'
-    required_skills = vault_task.get('required_skills') or vault_task.get('suggested_skills') or '[]'
+    required_skills = vault_task.get('required_skills') or vault_task.get('suggested_skills') or None
 
-    prompt = render_template(template, {
+    # Build prompt: compose from skills first, fall back to legacy template
+    context = {
         'title': normalized_task.get('title', ''),
         'definition_of_done': normalized_task.get('definition_of_done', ''),
         'dispatch_repo': work_dir,
@@ -220,8 +322,25 @@ def execute_task(task, dry_run=False):
         'output_path': f'/tmp/dispatch-{task_id}-output',
         'executor': executor,
         'executor_description': EXECUTOR_DESCRIPTIONS.get(executor, ''),
-        'required_skills': required_skills,
-    })
+        'required_skills': required_skills or '[]',
+    }
+
+    prompt = None
+    if required_skills:
+        prompt = compose_skills_prompt(required_skills, context)
+        if prompt:
+            log(f'Composed prompt from skills: {required_skills}')
+
+    if not prompt:
+        # Legacy fallback: load fixed template by agent_type
+        template = load_template(agent_type)
+        if not template:
+            log(f'No skills or template for task: {task_id} (agent_type={agent_type}, skills={required_skills})')
+            if not dry_run:
+                report_dispatch_failure(dispatch_id, f'No skills or template available')
+            return False
+        prompt = render_template(template, context)
+        log(f'Using legacy template: {agent_type}')
 
     if dry_run:
         log(f'DRY RUN: Would execute {task_id} in {work_dir}')
@@ -288,7 +407,16 @@ def execute_task(task, dry_run=False):
     model = DEFAULT_MODEL
     log(f'Running claude -p --model {model} in {work_dir}')
 
-    timeout = TIMEOUTS.get(agent_type, 1800)
+    # Timeout based on primary skill (from required_skills) or legacy agent_type
+    primary_skill = agent_type
+    if required_skills:
+        try:
+            parsed = json.loads(required_skills) if isinstance(required_skills, str) else required_skills
+            if parsed:
+                primary_skill = parsed[0]
+        except (json.JSONDecodeError, IndexError):
+            pass
+    timeout = TIMEOUTS.get(primary_skill, 1800)
     result_path = f'/tmp/dispatch-{task_id}.result'
     log_path = f'/tmp/dispatch-{task_id}.log'
 
