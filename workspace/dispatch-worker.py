@@ -608,8 +608,78 @@ def send_telegram(message):
         pass
 
 
+def process_approved_proposals():
+    """Create sub-tasks from approved grooming proposals."""
+    proposals_result = api_request('GET', '/api/grooming/proposals?status=approved&limit=10')
+    if not proposals_result:
+        return
+
+    # Handle both list and dict response formats
+    if isinstance(proposals_result, dict):
+        proposals = proposals_result.get('proposals', [])
+    else:
+        proposals = proposals_result
+
+    if not proposals:
+        return
+
+    for proposal in proposals:
+        parent_id = proposal.get("parent_note_id")
+        if not parent_id:
+            continue
+
+        try:
+            data = json.loads(proposal["proposal"]) if isinstance(proposal["proposal"], str) else proposal["proposal"]
+        except (json.JSONDecodeError, KeyError):
+            log(f'Invalid proposal data for {parent_id}')
+            continue
+
+        log(f'Creating sub-tasks for: {data.get("analysis", parent_id)[:80]}')
+
+        for sub in data.get("sub_tasks", []):
+            note_body = {
+                "title": sub["title"],
+                "type": "task",
+                "status": "active",
+                "suggested_ac": sub.get("acceptance_criteria"),
+                "suggested_skills": json.dumps(sub.get("required_skills", [])),
+                "parent_note_id": parent_id,
+            }
+
+            if sub.get("suggested_executor"):
+                note_body["suggested_executor"] = sub["suggested_executor"]
+
+            result = api_request('POST', '/api/vault/notes', note_body)
+            if result:
+                log(f'  Created: {sub["title"]}')
+            else:
+                log(f'  Failed: {sub["title"]}')
+
+        # Mark parent as needing review (type stays task, grooming_status updates)
+        api_request('PATCH', f'/api/vault/notes/{parent_id}', {
+            "grooming_status": "approved",
+            "actionability": "needs-breakdown",
+        })
+
+        # Mark proposal as processed
+        proposal_id = proposal.get('id')
+        if proposal_id:
+            api_request('PATCH', f'/api/grooming/proposals/{proposal_id}', {
+                "status": "processed",
+            })
+
+    log(f'Processed {len(proposals)} approved proposals')
+
+
 def run_once(dry_run=False, stats=None):
     """Check for one approved task and execute it. Returns True if a task was found."""
+    # Process any approved decomposition proposals first
+    if not dry_run:
+        try:
+            process_approved_proposals()
+        except Exception as e:
+            log(f'Error processing proposals: {e}')
+
     task = api_request('GET', '/api/dispatch/next')
     if task is None:
         # API unreachable (not just "no tasks" — actual failure)
