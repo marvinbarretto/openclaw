@@ -216,7 +216,21 @@ Marvin: "It was all rubbish." Identified three immediate needs: stop showing rea
 
 **Updated maturity ladder:** plumbing → ~~heartbeat~~ → **configuration maintenance** (now) → source data quality → accurate data presentation → dispatch flow → autonomous actions → sub-agents.
 
-## Current Architecture (as of 2026-04-11, updated from 2026-04-08)
+### Session 19 — 2026-04-14 (The Silent Update)
+
+3-day gap. No briefing — two mechanical messages from pipeline cron: `[FAIL]` status line (misleading — pipeline succeeded) and Opus 401 (auth still not propagated). Data was the richest in weeks: 11 gems, 13 calendar events, 5 vault tasks, 5 calendar-vault links, 1 PR waiting review. None delivered.
+
+Investigation found the agent has been completely dead since Apr 9 — 5 days of silence. `active_models: []` in the health endpoint was a red herring: model IS configured (`openrouter/google/gemini-2.5-flash`), OpenRouter key healthy, memory fine, Telegram API reachable via curl. The gateway starts, the Telegram provider starts, but the long-polling connection never establishes (`UND_ERR_SOCKET` errors).
+
+**Root cause:** OpenClaw 2026.4.9 update on Apr 9 08:51 broke the Telegram connection. Last agent activity at 09:00 that same day, then nothing. Apr 13 saw 181 service restarts (config changes from control UI + crash loops), none resolved the issue. OpenClaw 2026.4.12 available — three versions behind.
+
+**Also found:** email_insights has a new bug (`'str' object has no attribute 'get'`), `[FAIL]` prefix in pipeline Telegram messages is misleading (fires when Opus is absent, regardless of pipeline success), openclaw-readonly token still expiring Apr 17.
+
+**Pattern:** Platform updates break things silently. No alert fired for 5 days of agent inactivity. The system needs an independent "agent hasn't acted in N hours" watchdog — something that doesn't depend on the agent itself being alive.
+
+**Updated maturity ladder:** plumbing → ~~heartbeat~~ → **platform stability** (now — update OpenClaw, fix Telegram) → configuration maintenance → source data quality → accurate data presentation → dispatch flow → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-04-14, updated from 2026-04-11)
 
 ```
 VPS (always on):
@@ -383,6 +397,10 @@ Jimbo (OpenClaw on Telegram):
 | Skill routing confusion | **CONFIG.** Jimbo invoked `morning-summary` instead of `daily-briefing`. Cron config or model choice? Session 18. |
 | Surprise game fabrication | **BUG.** Skill ran without reading real data, model hallucinated vault tasks and email gems. Needs data-or-silence guard. Session 18. |
 | Reasoning leak (3 sessions) | **ONGOING.** Heartbeat dumps chain-of-thought to Telegram. Sessions 14, 17, 18. Rules exist, not followed. Session 18. |
+| Telegram long-polling broken | **BROKEN.** OpenClaw 2026.4.9 update killed the connection. `UND_ERR_SOCKET` errors. Agent dead since Apr 9. 2026.4.12 available. Session 19. |
+| No agent-down watchdog | **DESIGN GAP.** 5 days of agent silence with no alert. Needs independent monitoring that doesn't depend on the agent itself. Session 19. |
+| email_insights parsing bug | **NEW BUG.** `'str' object has no attribute 'get'` — every pipeline run. Session 19. |
+| `[FAIL]` prefix misleading | **UX BUG.** briefing-prep.py labels all messages `[FAIL]` when Opus is absent, even when pipeline succeeded. Session 19. |
 | openclaw-readonly token expiring | **TOKEN.** Expires Apr 17. Renew or remove. Session 18. |
 | ~~Email insight fields null~~ | **RESOLVED.** 173/173 insights complete. Session 12→17. |
 | No surprise section (regression) | Missing from Mar 21 briefing. Was present in sessions 8-10. Session 11. |
@@ -431,6 +449,7 @@ Jimbo (OpenClaw on Telegram):
 - **Free models change the economics.** Kimi K2 (free daily driver), Opus on Max plan (free creative work), Flash for data processing ($0.005/run) — the cost structure is: free for conversation + creativity, near-free for data processing, expensive for many small agent turns.
 - **"Free" isn't always free.** Kimi K2 is free on OpenRouter's pricing page, but the API key has a weekly spending limit that tracks all usage. Free model pricing ≠ free key limits. Measure what the provider measures, not what you think they measure.
 - **Present, don't prescribe.** A briefing that tells Marvin what to do with his free gaps is less useful than one that accurately reports what's happening. "Here's what I see" > "here's what you should do." Accuracy before intelligence.
+- **Platform updates break things silently.** The 2026.4.9 update killed the Telegram connection for 5 days with no alert. The system monitors pipeline health but has no watchdog for "the agent hasn't acted at all." Independent external monitoring is required — something that doesn't depend on the agent being alive to report its own death.
 - **Free models change the skill contract.** A prescriptive skill requiring editorial judgment breaks on weaker models. A reporter skill that presents data works regardless of model capability. Design skills for the worst model in the rotation, not the best.
 - **Self-awareness enables self-correction.** Without the ability to check his own health, activity log, or dispatch queue, Jimbo reasons from nothing during heartbeat polls — pages of chain-of-thought about whether to nudge, grounded in rules not data. Give the agent access to its own telemetry.
 - **Build the system, wake the agent later.** After 15 sessions optimising what Jimbo *says*, session 16 deprioritised Jimbo entirely in favour of what agents *do*. The dispatch system is the product; Jimbo becomes one interface to it. Infrastructure before personality.

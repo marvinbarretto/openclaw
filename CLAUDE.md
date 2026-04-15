@@ -8,7 +8,8 @@ Tooling & config repo for Jimbo (personal OpenClaw AI instance on DigitalOcean V
 
 **Deployment:**
 - `jimbo-api`: `git push/pull` only (systemd runs from repo root)
-- `workspace/` files (SOUL.md, workers, skills): `rsync` via `workspace-push.sh` only
+- `workspace/` files (Python scripts, workers, prompts, workflows): `rsync` via `workspace-push.sh` only
+- `workspace-push.sh` targets `/home/openclaw/.openclaw/workspace/` (OpenClaw's managed workspace, mounted as `/workspace/` in Docker)
 - **Never use per-file `scp`** — VPS rate-limits SSH after ~5 connections
 
 **Security (ADR-001, 003, 008, 022):**
@@ -22,6 +23,7 @@ Tooling & config repo for Jimbo (personal OpenClaw AI instance on DigitalOcean V
 
 ## Gotchas
 
-- VPS path: `/home/openclaw/jimbo-api`, not `~/jimbo-api`
+- VPS workspace path: `/home/openclaw/.openclaw/workspace/`, not `/home/openclaw/workspace/`
+- VPS jimbo-api path: `/home/openclaw/jimbo-api`, not `~/jimbo-api`
 - Running `openclaw` CLI: needs env vars + correct HOME + `openclaw` user
 - Blog deployed to Cloudflare Pages from `blog-src/` on `gh-pages` branch

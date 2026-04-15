@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 
 VALID_TASK_TYPES = (
-    "email-check", "research", "nudge", "blog", "briefing",
+    "email-check", "email-decision", "research", "nudge", "blog", "briefing",
     "chat", "own-project", "heartbeat", "digest", "day-planner",
     "tasks-triage", "orchestration",
 )

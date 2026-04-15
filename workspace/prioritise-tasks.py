@@ -846,6 +846,7 @@ def cmd_score_api(args):
                 if is_epic:
                     patch["actionability"] = "needs-breakdown"
                     patch["grooming_status"] = "analysis_pending"
+                    patch["grooming_started_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                     patch["suggested_route"] = "marvin"
                     # Don't set skills/executor for epics
                     s_skills = None

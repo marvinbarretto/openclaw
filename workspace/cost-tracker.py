@@ -66,9 +66,9 @@ COST_RATES = {
 }
 
 VALID_TASK_TYPES = (
-    "heartbeat", "briefing", "chat", "research", "blog",
-    "email-check", "nudge", "own-project", "digest", "day-planner",
-    "email-decision",
+    "email-check", "email-decision", "research", "nudge", "blog", "briefing",
+    "chat", "own-project", "heartbeat", "digest", "day-planner",
+    "tasks-triage", "orchestration",
 )
 
 

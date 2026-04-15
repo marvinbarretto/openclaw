@@ -47,6 +47,12 @@ workspace/blog-src/node_modules/
 workspace/blog-src/dist/
 workspace/blog-src/.astro/
 
+# Astro (if running dev server from this repo)
+.astro/
+
+# Node
+node_modules/
+
 # Claude Code worktrees
 .claude/worktrees/
 

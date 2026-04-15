@@ -3,7 +3,11 @@
 import json
 import sys
 
-from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
+try:
+    from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
+except ImportError:
+    JimboIntakeEnvelope = None
+    get_default_runtime = None
 from jimbo_runtime_contract import normalize_intake_payload
 
 
@@ -24,6 +28,8 @@ def load_intake_payload(*, intake_json=None, intake_file=None):
 
 def run_intake(payload, *, live=False, runtime=None):
     """Resolve or execute one normalized intake payload through the runtime."""
+    if not get_default_runtime and runtime is None:
+        raise RuntimeError("jimbo_runtime intake API unavailable (JimboIntakeEnvelope removed in workflow rewrite)")
     runtime = runtime or get_default_runtime()
     payload = normalize_intake_payload(payload, live=live)
     envelope = JimboIntakeEnvelope.from_mapping(payload)

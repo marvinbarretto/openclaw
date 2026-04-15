@@ -1,6 +1,9 @@
 """Structured operator summaries for dispatch events."""
 
 
+DASHBOARD_URL = "https://marvinbarretto.dev/app/jimbo/dashboard/dispatch"
+
+
 def summarize_task(task, *, title=None):
     flow = task.get("flow", "commission")
     agent_type = task.get("agent_type", "worker")
@@ -11,20 +14,37 @@ def summarize_task(task, *, title=None):
     return f"[{flow}] {agent_type} -- {label}"
 
 
+def _item_detail(item, *, title=None):
+    """Build a detailed line for a batch item with title and link."""
+    summary = summarize_task(item, title=title)
+    parts = [summary]
+
+    issue_title = item.get("issue_title")
+    if issue_title:
+        parts.append(f"  {issue_title[:80]}")
+
+    issue_repo = item.get("issue_repo")
+    issue_number = item.get("issue_number")
+    if issue_repo and issue_number:
+        parts.append(f'  <a href="https://github.com/{issue_repo}/issues/{issue_number}">#{issue_number}</a>')
+
+    return "\n".join(parts)
+
+
 def build_batch_summary(batch_id, items, *, titles=None, approve_url="", reject_url=""):
     """Build a structured Telegram summary for a proposed batch."""
     titles = titles or {}
     lines = [f"[Dispatch] Batch {batch_id} -- {len(items)} tasks ready", ""]
 
     for idx, item in enumerate(items, 1):
-        lines.append(f"{idx}. {summarize_task(item, title=titles.get(item.get('task_id')))}")
+        lines.append(f"{idx}. {_item_detail(item, title=titles.get(item.get('task_id')))}")
 
-    if approve_url or reject_url:
-        lines.append("")
+    lines.append("")
     if approve_url:
         lines.append(f'<a href="{approve_url}">Approve all</a>')
     if reject_url:
         lines.append(f'<a href="{reject_url}">Reject</a>')
+    lines.append(f'<a href="{DASHBOARD_URL}">View in dashboard</a>')
 
     return "\n".join(lines)
 

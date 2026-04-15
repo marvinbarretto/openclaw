@@ -18,6 +18,11 @@ import sys
 import urllib.request
 import urllib.error
 
+try:
+    from alert import send_telegram
+except ImportError:
+    send_telegram = None
+
 API_URL = os.environ.get("JIMBO_API_URL", "")
 API_KEY = os.environ.get("JIMBO_API_KEY", "")
 
@@ -134,7 +139,7 @@ def fetch_pending_epics(limit=20):
     result = api_request("GET", path)
     if not result:
         return []
-    return result.get("notes", result if isinstance(result, list) else [])
+    return result.get("items", result.get("notes", result if isinstance(result, list) else []))
 
 
 def decompose_task(task):
@@ -187,10 +192,14 @@ def main():
 
     print(f"Found {len(epics)} epics to decompose.\n")
 
+    succeeded = []
+    failed = []
+
     for task in epics:
         title = task.get("title", "untitled")
         task_id = task["id"]
-        print(f"Decomposing: {title} ({task_id})")
+        seq = task.get("seq", "?")
+        print(f"Decomposing: #{seq} {title} ({task_id})")
 
         try:
             proposal = decompose_task(task)
@@ -201,21 +210,43 @@ def main():
             if args.dry_run:
                 print(f"  [dry-run] Would create proposal with {sub_count} sub-tasks")
                 print(json.dumps(proposal, indent=2))
+                succeeded.append((seq, title, sub_count))
                 continue
 
             result = create_proposal(task_id, proposal)
             if result:
                 update_grooming_status(task_id, "decomposition_proposed")
                 print(f"  ✓ Proposal created (id: {result.get('id')})")
+                succeeded.append((seq, title, sub_count))
             else:
                 print(f"  ✗ Failed to create proposal")
+                failed.append((seq, title, "API write failed"))
 
         except json.JSONDecodeError as e:
             print(f"  ✗ LLM returned invalid JSON: {e}")
+            failed.append((seq, title, f"invalid JSON: {e}"))
         except Exception as e:
             print(f"  ✗ Error: {e}")
+            failed.append((seq, title, str(e)))
 
         print()
+
+    # Summary report
+    prefix = "[dry-run] " if args.dry_run else ""
+    lines = [f"[Epic Decomposition] {prefix}{len(succeeded)}/{len(epics)} processed"]
+    if succeeded:
+        for seq, title, count in succeeded:
+            lines.append(f"  ✓ #{seq} {title} → {count} sub-tasks")
+    if failed:
+        lines.append(f"  ✗ {len(failed)} failed:")
+        for seq, title, reason in failed:
+            lines.append(f"    #{seq} {title}: {reason}")
+
+    summary = "\n".join(lines)
+    print(f"\n{summary}")
+
+    if not args.dry_run and send_telegram and (succeeded or failed):
+        send_telegram(summary)
 
     print("Done.")
 

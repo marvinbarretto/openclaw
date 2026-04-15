@@ -1,6 +1,10 @@
 """Shared service entrypoints for live Jimbo orchestration flows."""
 
-from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
+try:
+    from jimbo_runtime import JimboIntakeEnvelope, get_default_runtime
+except ImportError:
+    JimboIntakeEnvelope = None
+    get_default_runtime = None
 
 
 def build_dispatch_proposal_payload(item, *, batch_id, approve_url="",
@@ -111,6 +115,8 @@ def build_vault_triage_payload(task, *, priority, actionability, reason,
 def begin_dispatch_proposal(item, *, batch_id, approve_url="", reject_url="",
                             runtime=None):
     """Start orchestration for a task proposed onto the dispatch queue."""
+    if not get_default_runtime and runtime is None:
+        return None
     runtime = runtime or get_default_runtime()
     return runtime.begin(
         JimboIntakeEnvelope.from_mapping(
@@ -144,6 +150,8 @@ def begin_dispatch_proposal(item, *, batch_id, approve_url="", reject_url="",
 def resolve_dispatch_execution(task, normalized_task, work_dir, *, model,
                                runtime=None):
     """Resolve the workflow selection for an approved dispatch execution."""
+    if not get_default_runtime and runtime is None:
+        return None
     runtime = runtime or get_default_runtime()
     return runtime.resolve_workflow(
         JimboIntakeEnvelope.from_mapping(
@@ -164,6 +172,8 @@ def log_dispatch_candidate_classification(task, *, priority, actionability,
                                           changed_fields, model,
                                           runtime=None):
     """Log vault triage output when a task is suitable for Jimbo dispatch."""
+    if not get_default_runtime and runtime is None:
+        return None
     runtime = runtime or get_default_runtime()
     selection = runtime.resolve_workflow(
         JimboIntakeEnvelope.from_mapping(
