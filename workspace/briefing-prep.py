@@ -117,6 +117,40 @@ def log_to_activity(session, pipeline_status):
         sys.stderr.write(f"Activity log failed: {e}\n")
 
 
+def post_pipeline_run(session, pipeline_status, duration_ms, start_time):
+    """POST step-level pipeline results to jimbo-api for health tracking."""
+    api_url = os.environ.get("JIMBO_API_URL")
+    api_key = os.environ.get("JIMBO_API_KEY")
+    if not api_url or not api_key:
+        return
+
+    any_failed = any(
+        v.get("status") in ("failed", "timeout", "error")
+        for v in pipeline_status.values()
+    )
+    status = "partial" if any_failed else "ok"
+
+    body = json.dumps({
+        "session": session,
+        "status": status,
+        "started_at": datetime.datetime.fromtimestamp(
+            start_time, tz=datetime.timezone.utc
+        ).isoformat(),
+        "duration_ms": duration_ms,
+        "steps": pipeline_status,
+    }).encode()
+
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/api/pipeline/runs",
+            data=body, method="POST",
+            headers={"Content-Type": "application/json", "X-API-Key": api_key},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        sys.stderr.write(f"[briefing-prep] failed to POST pipeline run: {e}\n")
+
+
 def run_step(name, cmd, env=None, timeout=120):
     """Run a pipeline step. Returns (ok, result_dict)."""
     merged_env = {**os.environ, **(env or {})}
@@ -368,6 +402,7 @@ def run_pipeline(session, dry_run=False):
     # --- Log and alert ---
     log_to_tracker(session, pipeline_status, duration_ms)
     log_to_activity(session, pipeline_status)
+    post_pipeline_run(session, pipeline_status, duration_ms, start)
     send_status_alert(session, pipeline_status, duration_ms)
 
     return output
@@ -448,7 +483,10 @@ def fetch_email_insights(hours=14, min_relevance=5):
             "Accept": "application/json",
         })
         with urllib.request.urlopen(req, timeout=15) as resp:
-            reports = json.loads(resp.read().decode())
+            data = json.loads(resp.read().decode())
+
+        # API returns paginated { items: [...], total: N }
+        reports = data.get("items", []) if isinstance(data, dict) else data
 
         # Filter to reports decided within the briefing window
         cutoff = now_utc() - datetime.timedelta(hours=hours)

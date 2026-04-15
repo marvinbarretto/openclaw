@@ -3,12 +3,22 @@ set -euo pipefail
 
 # Opus briefing analysis — runs on Mac, pulls data from VPS, pushes analysis to jimbo-api.
 # Logs errors to stderr (visible in launchd logs). Sends Telegram alert on failure.
+# Reports status to /api/pipeline/runs/opus-status for health dashboard visibility.
 
 SESSION="${1:-morning}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROMPT_DIR="$(dirname "$SCRIPT_DIR")/opus-prompts"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-4200}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-120}"
+
+# Source secrets from env file (mirrors VPS pattern with /opt/openclaw.env)
+ENV_FILE="${OPENCLAW_ENV:-$HOME/.openclaw-env}"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    set +a
+fi
 
 # Required env vars
 : "${JIMBO_API_KEY:?JIMBO_API_KEY not set}"
@@ -22,6 +32,29 @@ send_alert() {
             -d text="[opus-briefing] $msg" \
             -d parse_mode=HTML >/dev/null 2>&1 || true
     fi
+}
+
+report_opus_status() {
+    local status="$1"
+    local error="${2:-}"
+    local posted_at="${3:-}"
+
+    local body
+    if [ -n "$error" ] && [ -n "$posted_at" ]; then
+        body="{\"status\":\"$status\",\"error\":$(python3 -c "import json; print(json.dumps('$error'))"),\"posted_at\":\"$posted_at\"}"
+    elif [ -n "$error" ]; then
+        body="{\"status\":\"$status\",\"error\":$(python3 -c "import json; print(json.dumps('$error'))")}"
+    elif [ -n "$posted_at" ]; then
+        body="{\"status\":\"$status\",\"posted_at\":\"$posted_at\"}"
+    else
+        body="{\"status\":\"$status\"}"
+    fi
+
+    curl -sk -X PUT \
+        -H "X-API-Key: $JIMBO_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "$body" \
+        "$API_URL/pipeline/runs/opus-status?session=$SESSION" >/dev/null 2>&1 || true
 }
 
 if [ ! -f "$PROMPT_DIR/${SESSION}.md" ]; then
@@ -75,6 +108,7 @@ print('ok' if age < 36000 else 'stale')
     if [ "$(date +%s)" -ge "$wait_deadline" ]; then
         echo "ERROR: Timed out waiting for fresh $SESSION briefing-input.json" >&2
         send_alert "Timed out waiting for fresh $SESSION briefing-input.json"
+        report_opus_status "timeout" "Timed out waiting for fresh briefing-input.json ($INPUT_STATE)"
         exit 1
     fi
 
@@ -87,6 +121,7 @@ PROMPT=$(cat "$PROMPT_DIR/${SESSION}.md")
 ANALYSIS=$(echo "$INPUT" | claude -p "$PROMPT" 2>/dev/null) || {
     echo "ERROR: claude -p failed" >&2
     send_alert "Opus analysis failed (claude -p error) for $SESSION"
+    report_opus_status "claude_error" "claude -p returned non-zero"
     exit 1
 }
 
@@ -94,6 +129,7 @@ ANALYSIS=$(echo "$INPUT" | claude -p "$PROMPT" 2>/dev/null) || {
 echo "$ANALYSIS" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'day_plan' in d" 2>/dev/null || {
     echo "ERROR: Opus output is not valid JSON or missing day_plan" >&2
     send_alert "Opus output validation failed for $SESSION"
+    report_opus_status "validation_error" "Output not valid JSON or missing day_plan"
     exit 1
 }
 
@@ -107,13 +143,17 @@ HTTP_CODE=$(echo "$ANALYSIS" | curl -sk -o /dev/null -w '%{http_code}' \
     "$API_URL/briefing/analysis") || {
     echo "ERROR: Failed to POST to jimbo-api" >&2
     send_alert "Failed to POST analysis to jimbo-api for $SESSION"
+    report_opus_status "failed" "curl failed to POST analysis"
     exit 1
 }
 
 if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
     echo "ERROR: jimbo-api returned $HTTP_CODE" >&2
     send_alert "jimbo-api returned HTTP $HTTP_CODE for $SESSION analysis POST"
+    report_opus_status "auth_error" "jimbo-api returned HTTP $HTTP_CODE"
     exit 1
 fi
 
+POSTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+report_opus_status "posted" "" "$POSTED_AT"
 echo "Opus analysis posted for $SESSION session (HTTP $HTTP_CODE)" >&2
