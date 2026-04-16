@@ -1,6 +1,6 @@
 ---
 name: daily-briefing
-description: Report what you know — present data, don't advise
+description: Morning/afternoon briefing — INVOKE THIS when user says good morning, asks for a briefing, or at scheduled briefing time
 user-invokable: true
 ---
 

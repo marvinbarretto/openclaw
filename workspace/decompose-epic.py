@@ -55,7 +55,7 @@ Break this epic into 3-7 concrete sub-tasks. For each sub-task:
 
 1. Write a clear, specific title (imperative verb)
 2. List required_skills (from the skills above)
-3. Write acceptance criteria that are specific, verifiable, and bounded
+3. Write acceptance criteria as a JSON array of strings — each string is one verifiable condition. If you end up with more than 5, the sub-task itself needs further breakdown.
 4. Suggest an executor (boris/ralph/marvin) based on complexity
 5. Note any dependencies between sub-tasks (blocked_by)
 
@@ -72,14 +72,14 @@ Return ONLY valid JSON, no markdown fences:
     {{
       "title": "Imperative verb + specific scope",
       "required_skills": ["researcher"],
-      "acceptance_criteria": "Concrete, verifiable AC. Multiple sentences OK.",
+      "acceptance_criteria": ["Concrete verifiable condition", "Second condition", "Edge case covered"],
       "suggested_executor": "boris",
       "blocked_by": null
     }},
     {{
       "title": "Second sub-task",
       "required_skills": ["coder"],
-      "acceptance_criteria": "Specific AC here.",
+      "acceptance_criteria": ["Specific verifiable condition", "Tests pass"],
       "suggested_executor": "boris",
       "blocked_by": "First sub-task title (if dependent)"
     }}

@@ -28,6 +28,8 @@ import os
 import re
 import sys
 import time
+
+from scoring_gate import pre_filter, parse_llm_rejection, GATE_PROMPT_SECTION
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -65,15 +67,18 @@ SCORING_SYSTEM_PROMPT = """You are a task prioritisation engine for Marvin's per
 You will receive a batch of tasks from his vault, plus his current PRIORITIES and GOALS.
 Score each task on how relevant and actionable it is RIGHT NOW.
 
-## Scoring rubric
+{gate_prompt}
 
-| Bucket | Meaning |
-|--------|---------|
-| 0 (P0) | Do today / blocking. Due this week AND blocks a current project. Requires immediate action. |
-| 1 (P1) | This week. Important, clearly actionable, connects to active priorities. |
-| 2 (P2) | This month. Useful but not urgent, worth doing. |
-| 3 (P3) | Backlog / someday. Nice to have, no time pressure, or unclear value. |
+## Scoring rubric (only for scoreable tasks)
 
+| Bucket | Meaning | Expected share |
+|--------|---------|---------------|
+| 0 (P0) | Do today / blocking. Due this week AND blocks a current project. Requires immediate action. | ≤2% — rare |
+| 1 (P1) | This week. Important, clearly actionable, connects to active priorities. | ≤10% |
+| 2 (P2) | This month. Useful but not urgent, worth doing. **This is the default bucket.** | ~60% |
+| 3 (P3) | Backlog / someday. Nice to have, no time pressure, or unclear value. | ~25-30% |
+
+P2 is the default. When in doubt, score P2. Only promote to P1 if Marvin should act THIS WEEK. Only P0 if it is literally blocking something today.
 Output the number only (0, 1, 2, or 3).
 
 ## Actionability
@@ -81,6 +86,7 @@ Output the number only (0, 1, 2, or 3).
 - `clear` — the task has a specific, concrete next step
 - `vague` — the intent is clear but the next step is unclear
 - `needs-breakdown` — too large, needs decomposing into subtasks
+- `needs-context` — insufficient information to assess; returned for rejections
 
 ### Epic Detection
 
@@ -104,7 +110,7 @@ Do NOT suggest skills or executor for epics — those apply to sub-tasks after d
 2. `source_list` is historical context only — "Immediate" means it was urgent when saved, not now.
 3. Only suggest `stale` status if ALL of: >18 months old AND no alignment with any priority/goal AND no inherent time-sensitivity.
 4. `suggested_status` is advisory — the script never auto-applies it.
-5. Be calibrated: most tasks should be P2 or P3. Reserve P0 for things that are blocking right now, P1 for things Marvin should do THIS WEEK.
+5. Be calibrated: **P2 is the default**. In a typical batch, ~60% should be P2 and ~25-30% P3. Only ~10% should be P1, and P0 is rare. If you find yourself scoring most items P1, you are miscalibrated — reassess.
 
 ## Dispatch suggestions
 
@@ -141,28 +147,38 @@ Inference rules:
 - `marvin` — requires human action
 
 ### acceptance_criteria
-For tasks where you suggest skills, draft concise acceptance criteria — concrete, verifiable conditions.
-Keep it to 1-3 short sentences. Focus on WHAT must be true when done, not HOW to do it.
+For tasks where you suggest skills, draft acceptance criteria as a JSON array of strings.
+Each string is one specific, verifiable condition. Focus on WHAT must be true when done, not HOW to do it.
+If you find yourself writing more than 5 ACs, the task likely needs decomposition — set `actionability` to `needs-breakdown` instead.
 If the task is too vague to write AC for, leave it null.
 
 ## Response format
 
-IMPORTANT: You will receive multiple tasks. Each task is identified by a short `#number` (its seq). You MUST return a score for EVERY task, using this number as the `id` field.
-Return ONLY valid JSON — a JSON array containing one object per task. Example for 3 tasks:
+IMPORTANT: You will receive multiple tasks. Each task is identified by a short `#number` (its seq). You MUST return a response for EVERY task, using this number as the `id` field.
+Return ONLY valid JSON — a JSON array containing one object per task.
+
+Each object MUST have `"scoreable": true` or `"scoreable": false`.
+
+### Scored task (scoreable: true):
 ```json
-[
-  {{"id": 42, "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": "Dark mode toggle in settings. CSS variables for theming. Persists to localStorage. Tests pass."}},
-  {{"id": 108, "priority": 3, "priority_reason": "No alignment with current priorities", "actionability": "vague", "suggested_status": null, "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}},
-  {{"id": 205, "priority": 3, "priority_reason": "Stale and irrelevant", "actionability": "vague", "suggested_status": "stale", "is_epic": false, "suggested_skills": null, "suggested_executor": null, "suggested_route": null, "suggested_ac": null}}
-]
+{{"id": 42, "scoreable": true, "priority": 1, "priority_reason": "Aligns with Build & Ship Products goal", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": ["Dark mode toggle visible in settings", "CSS variables switch between light/dark", "Preference persists to localStorage", "Tests pass"]}}
 ```
 
+### Rejected task (scoreable: false):
+```json
+{{"id": 108, "scoreable": false, "rejection_reasons": ["Title-only note — no body to assess scope or deliverable", "Cannot determine if this is a config change or a full migration"], "suggested_subtasks": ["Research: clarify what tables are affected", "Spike: prototype the migration path and estimate effort"]}}
+```
+
+`rejection_reasons` — array of specific strings explaining what is missing and why the task can't be scored. Be concrete, not generic.
+`suggested_subtasks` — array of research/spike tasks that would make this scoreable. Can be `null` if the note just needs the author to flesh it out.
+
+### Field reference (scored tasks only):
 `suggested_status` should be `"stale"` or `null`. Nothing else.
 `suggested_skills` should be a JSON array of strings (e.g. `["coder", "researcher"]`) or `null`.
 `suggested_executor` should be `"boris"`, `"ralph"`, `"marvin"`, or `null`.
 `suggested_agent_type` — deprecated, use `suggested_skills`. Still accepted for backwards compat.
 `suggested_route` should be `"jimbo"`, `"marvin"`, or `null`.
-`suggested_ac` should be a short string or `null`.
+`suggested_ac` should be a JSON array of strings (e.g. `["condition 1", "condition 2"]`) or `null`.
 `is_epic` should be `true` or `false`. Default `false`.
 The array MUST contain exactly one entry per task in the input. Do not skip any.
 """
@@ -563,7 +579,7 @@ def cmd_score(args):
     log(f"Context last changed: {ctx_cutoff or 'unknown'}")
 
     # Build system prompt with context baked in
-    system_prompt = SCORING_SYSTEM_PROMPT
+    system_prompt = SCORING_SYSTEM_PROMPT.replace("{gate_prompt}", GATE_PROMPT_SECTION)
 
     # Load tasks
     tasks = load_vault_tasks(VAULT_NOTES)
@@ -692,7 +708,7 @@ def cmd_score_api(args):
         log("ERROR: No context available")
         sys.exit(1)
 
-    system_prompt = SCORING_SYSTEM_PROMPT
+    system_prompt = SCORING_SYSTEM_PROMPT.replace("{gate_prompt}", GATE_PROMPT_SECTION)
 
     # Fetch tasks from API — active and inbox, excluding subtasks
     result = _api_request("GET", "/api/vault/notes?status=active,inbox&has_parent=false&limit=100&sort=updated_at&order=asc")
@@ -727,6 +743,27 @@ def cmd_score_api(args):
         _resurface_deferred()
         print(json.dumps({"status": "ok", "scored": 0, "skipped": len(all_tasks)}))
         return
+
+    # ── Pre-filter: reject obviously thin notes without burning an LLM call ──
+    thin_rejected = 0
+    scoreable_tasks = []
+    for t in to_score:
+        gate = pre_filter(t)
+        if not gate["pass"]:
+            if args.dry_run:
+                log(f"  {t['id']}: REJECTED (thin) — {gate['rationale'][:80]}")
+            else:
+                _api_request("PATCH", f"/api/vault/notes/{t['id']}", {
+                    "ai_priority": None,
+                    "ai_rationale": gate["rationale"],
+                    "actionability": "needs-context",
+                })
+            thin_rejected += 1
+        else:
+            scoreable_tasks.append(t)
+    if thin_rejected:
+        log(f"Pre-filter rejected {thin_rejected} thin notes")
+    to_score = scoreable_tasks
 
     # Build batches using task data from API
     scored = 0
@@ -788,6 +825,20 @@ def cmd_score_api(args):
                 errors += 1
                 continue
 
+            # ── Handle LLM rejections (scoreable: false) ──
+            rejection = parse_llm_rejection(score_result)
+            if rejection:
+                if args.dry_run:
+                    log(f"  {t['id']}: REJECTED by LLM — {rejection['rationale'][:100]}")
+                elif not args.emit_intake:
+                    _api_request("PATCH", f"/api/vault/notes/{t['id']}", {
+                        "ai_priority": None,
+                        "ai_rationale": rejection["rationale"],
+                        "actionability": rejection["actionability"],
+                    })
+                scored += 1
+                continue
+
             priority = score_result.get('priority', 2)
             actionability = score_result.get('actionability', 'vague')
             reason = score_result.get('priority_reason', '')[:200]
@@ -845,8 +896,14 @@ def cmd_score_api(args):
                 }
                 if is_epic:
                     patch["actionability"] = "needs-breakdown"
-                    patch["grooming_status"] = "analysis_pending"
-                    patch["grooming_started_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    task_body = (t.get('body') or '').strip()
+                    if len(task_body) >= 50:
+                        # Enough context to auto-decompose
+                        patch["grooming_status"] = "analysis_pending"
+                        patch["grooming_started_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        # Thin input — flag for human review, don't auto-trigger decomposition
+                        log(f"  EPIC but thin body ({len(task_body)} chars) — skipping auto-decomposition")
                     patch["suggested_route"] = "marvin"
                     # Don't set skills/executor for epics
                     s_skills = None
@@ -920,11 +977,12 @@ def cmd_score_api(args):
     if not args.dry_run:
         _resurface_deferred()
 
-    log(f"\nScored: {scored}, Errors: {errors}, Skipped: {len(all_tasks) - len(to_score)}")
+    log(f"\nScored: {scored}, Errors: {errors}, Thin-rejected: {thin_rejected}, Skipped: {len(all_tasks) - len(to_score)}")
     if args.dry_run:
         log("(Dry run — no API calls made)")
 
     print(json.dumps({"status": "ok", "scored": scored, "errors": errors,
+                       "thin_rejected": thin_rejected,
                        "skipped": len(all_tasks) - len(to_score),
                        "submitted_to_runtime_inbox": inbox_submission["count"]}))
 

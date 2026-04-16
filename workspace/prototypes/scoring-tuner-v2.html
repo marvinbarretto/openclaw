@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scoring Pipeline Tuner v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+    background: #0a0a0a;
+    color: #d4d4d4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top bar: global levers ── */
+  .top-bar {
+    background: #111;
+    border-bottom: 1px solid #222;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  .top-bar h1 { font-size: 14px; font-weight: 600; color: #e8e8e8; white-space: nowrap; }
+  .lever {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #888;
+  }
+  .lever label { white-space: nowrap; }
+  .lever input[type="range"] { width: 100px; accent-color: #3b82f6; }
+  .lever .val { font-family: monospace; color: #3b82f6; min-width: 28px; text-align: right; }
+  .lever select, .lever input[type="password"], .lever input[type="text"] {
+    background: #1a1a1a; color: #d4d4d4; border: 1px solid #333;
+    border-radius: 4px; padding: 3px 6px; font-size: 11px; font-family: inherit;
+  }
+  .lever input[type="password"] { width: 160px; }
+  .sep { width: 1px; height: 20px; background: #222; }
+
+  /* ── Pipeline: horizontal scroll area ── */
+  .pipeline-area {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+  }
+
+  .stage {
+    min-width: 320px;
+    max-width: 380px;
+    flex-shrink: 0;
+    border-right: 1px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .stage-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #0d0d0d;
+  }
+  .stage-header h2 {
+    font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .stage-config {
+    display: flex; align-items: center; gap: 6px; margin-left: auto;
+    font-size: 11px; color: #666;
+  }
+  .stage-config select {
+    background: #1a1a1a; color: #888; border: 1px solid #222;
+    border-radius: 3px; padding: 2px 4px; font-size: 10px; font-family: inherit;
+  }
+  .badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .b-wait { background: #1a1a1a; color: #555; }
+  .b-pass { background: #052e16; color: #4ade80; }
+  .b-reject { background: #2a0a0a; color: #f87171; }
+  .b-scored { background: #0c1a3d; color: #60a5fa; }
+  .b-run { background: #1a1500; color: #fbbf24; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  .stage-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+
+  /* ── Connector ── */
+  .conn {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; flex-shrink: 0; color: #222; font-size: 18px;
+  }
+  .conn.on { color: #3b82f6; }
+  .conn.stop { color: #f87171; }
+
+  /* ── Input fields ── */
+  .field + .field { margin-top: 10px; }
+  .field label {
+    display: block; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #555; margin-bottom: 4px;
+  }
+  .field textarea {
+    width: 100%; background: #111; color: #d4d4d4; border: 1px solid #222;
+    border-radius: 4px; padding: 8px; font-family: inherit; font-size: 12px;
+    resize: vertical; line-height: 1.5;
+  }
+  .field textarea:focus { outline: none; border-color: #3b82f6; }
+
+  .run-btn {
+    width: 100%; margin-top: 12px; padding: 8px;
+    background: #3b82f6; color: #fff; border: none; border-radius: 4px;
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .run-btn:hover { background: #2563eb; }
+  .run-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+  .samples { margin-top: 14px; border-top: 1px solid #1a1a1a; padding-top: 10px; }
+  .samples h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #444; margin-bottom: 6px; }
+  .sample-btn {
+    display: block; width: 100%; text-align: left; padding: 6px 8px;
+    background: #111; border: 1px solid #1a1a1a; border-radius: 3px;
+    color: #666; font-size: 11px; cursor: pointer; font-family: inherit; margin-bottom: 3px;
+  }
+  .sample-btn:hover { border-color: #333; color: #aaa; }
+
+  /* ── Cards ── */
+  .card {
+    background: #111; border: 1px solid #222; border-radius: 4px;
+    padding: 10px; margin-bottom: 8px;
+  }
+  .card h4 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #555; margin-bottom: 6px;
+  }
+  .card pre {
+    white-space: pre-wrap; word-break: break-word;
+    background: #0a0a0a; padding: 8px; border-radius: 3px;
+    max-height: 250px; overflow-y: auto; font-size: 11px; line-height: 1.5;
+  }
+  .m { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 600; margin-right: 4px; margin-bottom: 3px; }
+  .m-pass { background: #052e16; color: #4ade80; }
+  .m-fail { background: #2a0a0a; color: #f87171; }
+  .m-info { background: #0c1a3d; color: #60a5fa; }
+  .m-warn { background: #1a1500; color: #fbbf24; }
+
+  .reasons { list-style: none; padding: 0; margin-top: 8px; }
+  .reasons li { padding: 5px 0; border-bottom: 1px solid #1a1a1a; font-size: 12px; color: #f87171; }
+  .reasons li:last-child { border-bottom: none; }
+  .reasons li::before { content: "\2717 "; margin-right: 4px; }
+
+  /* ── Prompt editor (collapsible in LLM stage) ── */
+  .prompt-wrap {
+    border-top: 1px solid #1a1a1a; background: #0d0d0d;
+    flex-shrink: 0; max-height: 50%;
+    display: flex; flex-direction: column;
+  }
+  .prompt-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px; cursor: pointer;
+  }
+  .prompt-head h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #444; }
+  .prompt-head .tog { font-size: 10px; color: #444; }
+  .prompt-body { flex: 1; overflow: hidden; }
+  .prompt-body.shut { display: none; }
+  .prompt-body textarea {
+    width: 100%; height: 100%; min-height: 160px;
+    background: #0a0a0a; color: #777; border: none; padding: 10px 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; line-height: 1.6; resize: none;
+  }
+  .prompt-body textarea:focus { outline: none; color: #d4d4d4; }
+
+  /* ── History panel ── */
+  .history {
+    min-width: 340px; max-width: 400px; flex-shrink: 0;
+    background: #0d0d0d; display: flex; flex-direction: column;
+  }
+  .hist-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .hist-entry {
+    background: #111; border: 1px solid #1a1a1a; border-radius: 4px;
+    padding: 8px 10px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .hist-entry:hover { border-color: #333; }
+  .hist-meta { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #444; margin-bottom: 4px; }
+  .hist-meta .tag { background: #1a1a1a; padding: 1px 5px; border-radius: 2px; color: #666; }
+  .hist-title { font-size: 12px; color: #aaa; margin-bottom: 3px; }
+  .hist-verdict { font-size: 11px; }
+  .clear-btn { background: none; border: none; color: #444; font-size: 10px; cursor: pointer; padding: 2px 6px; }
+  .clear-btn:hover { color: #f87171; }
+
+  /* ── Bottom result bar ── */
+  .bottom-bar {
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    z-index: 100;
+  }
+  .bottom-bar .label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #555; margin-right: 4px;
+  }
+  .bottom-bar .slot {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bottom-bar .divider { width: 1px; height: 24px; background: #222; }
+  .bottom-summary {
+    font-size: 12px; color: #666;
+    flex: 1; text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <h1>Scoring Tuner v2</h1>
+  <div class="sep"></div>
+  <div class="lever">
+    <label>Body threshold:</label>
+    <input type="range" id="threshold" min="0" max="200" value="50">
+    <span class="val" id="threshold-val">50</span>
+  </div>
+  <div class="sep"></div>
+  <div class="lever">
+    <label>API Key:</label>
+    <input type="password" id="api-key" value="AIzaSyAy-2LOQYCinQHeTYhN2vm1pmDSt63iwP8">
+  </div>
+</div>
+
+<!-- Pipeline area -->
+<div class="pipeline-area">
+
+  <!-- Input -->
+  <div class="stage" style="min-width: 300px; max-width: 320px;">
+    <div class="stage-header"><h2>Input</h2></div>
+    <div class="stage-body">
+      <div class="field">
+        <label>Title</label>
+        <textarea id="in-title" rows="2" placeholder="Fix the auth bug in login.ts"></textarea>
+      </div>
+      <div class="field">
+        <label>Body</label>
+        <textarea id="in-body" rows="5" placeholder="The login endpoint returns 403 for admin users because..."></textarea>
+      </div>
+      <div class="field">
+        <label>Tags</label>
+        <textarea id="in-tags" rows="1" placeholder="auth, backend"></textarea>
+      </div>
+      <button class="run-btn" id="run-btn" onclick="run()">Run pipeline</button>
+      <div class="samples">
+        <h3>Samples</h3>
+        <button class="sample-btn" onclick="load('thin')">Title only: "Sort out the deployment stuff"</button>
+        <button class="sample-btn" onclick="load('short')">Short: "Look into auth" + 1 line</button>
+        <button class="sample-btn" onclick="load('vague')">Vague: topic clear, ask unclear</button>
+        <button class="sample-btn" onclick="load('clear')">Clear: specific bug with repro steps</button>
+        <button class="sample-btn" onclick="load('epic')">Epic: multi-system migration</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn" id="c01">&#8594;</div>
+
+  <!-- Pre-filter -->
+  <div class="stage">
+    <div class="stage-header">
+      <h2>Pre-filter</h2>
+      <span class="badge b-wait" id="pf-badge">waiting</span>
+      <div class="stage-config">
+        <span>instant / rules</span>
+      </div>
+    </div>
+    <div class="stage-body" id="pf-body"></div>
+  </div>
+
+  <div class="conn" id="c12">&#8594;</div>
+
+  <!-- LLM Gate -->
+  <div class="stage" style="min-width: 380px; max-width: 420px;">
+    <div class="stage-header">
+      <h2>LLM Gate</h2>
+      <span class="badge b-wait" id="llm-badge">waiting</span>
+      <div class="stage-config">
+        <select id="llm-model">
+          <option value="gemini-2.0-flash">2.0 Flash</option>
+          <option value="gemini-2.5-flash-preview-05-20" selected>2.5 Flash</option>
+          <option value="gemini-2.5-pro-preview-05-06">2.5 Pro</option>
+        </select>
+      </div>
+    </div>
+    <div class="stage-body" id="llm-body"></div>
+    <div class="prompt-wrap">
+      <div class="prompt-head" onclick="togglePrompt()">
+        <h3>Gate prompt (editable)</h3>
+        <span class="tog" id="ptog">&#9660; expand</span>
+      </div>
+      <div class="prompt-body shut" id="peditor">
+        <textarea id="gate-prompt"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn" id="c23">&#8594;</div>
+
+  <!-- Scoring -->
+  <div class="stage">
+    <div class="stage-header">
+      <h2>Scoring</h2>
+      <span class="badge b-wait" id="sc-badge">waiting</span>
+    </div>
+    <div class="stage-body" id="sc-body"></div>
+  </div>
+
+  <div class="conn" id="c34">&#8594;</div>
+
+  <!-- Dispatch readiness -->
+  <div class="stage">
+    <div class="stage-header">
+      <h2>Dispatch</h2>
+      <span class="badge b-wait" id="dp-badge">waiting</span>
+    </div>
+    <div class="stage-body" id="dp-body"></div>
+  </div>
+
+  <div class="conn" id="c45">&#8594;</div>
+
+  <!-- History -->
+  <div class="history">
+    <div class="stage-header">
+      <h2>History</h2>
+      <button class="clear-btn" onclick="clearHist()">clear</button>
+    </div>
+    <div class="hist-list" id="hist-list">
+      <div style="color:#333;font-size:11px;text-align:center;padding:40px 0">
+        Run notes to build history
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom result bar (always visible) -->
+<div class="bottom-bar" id="bottom-bar">
+  <div class="slot">
+    <span class="label">Pre-filter:</span>
+    <span class="badge b-wait" id="bb-pf">--</span>
+  </div>
+  <div class="divider"></div>
+  <div class="slot">
+    <span class="label">LLM:</span>
+    <span class="badge b-wait" id="bb-llm">--</span>
+  </div>
+  <div class="divider"></div>
+  <div class="slot">
+    <span class="label">Priority:</span>
+    <span class="badge b-wait" id="bb-pri">--</span>
+  </div>
+  <div class="divider"></div>
+  <div class="slot">
+    <span class="label">Actionability:</span>
+    <span class="badge b-wait" id="bb-act">--</span>
+  </div>
+  <div class="divider"></div>
+  <div class="slot">
+    <span class="label">Route:</span>
+    <span class="badge b-wait" id="bb-route">--</span>
+  </div>
+  <div class="divider"></div>
+  <div class="slot">
+    <span class="label">Dispatch:</span>
+    <span class="badge b-wait" id="bb-dispatch">--</span>
+  </div>
+  <div class="bottom-summary" id="bb-summary">No runs yet</div>
+</div>
+
+<script>
+// ── Samples ──────────────────────────────────────────────────────────────────
+const SAMPLES = {
+  thin: { title: "Sort out the deployment stuff", body: "", tags: "" },
+  short: { title: "Look into auth issues", body: "Users are complaining about login.", tags: "auth" },
+  vague: {
+    title: "Improve the email pipeline",
+    body: "The email pipeline feels like it could be better. There are some edge cases that aren't handled well and the whole thing needs attention. Maybe we should look at how other systems do it and figure out what makes sense for us.",
+    tags: "email, pipeline"
+  },
+  clear: {
+    title: "Fix 403 error for admin users on login endpoint",
+    body: "The /api/auth/login endpoint returns 403 for users with the admin role. Root cause: the middleware checks req.user.role === 'user' instead of checking for a valid role. Only affects admin accounts created after the March migration. Reproduce: POST /api/auth/login with admin credentials, observe 403 instead of 200 + JWT.",
+    tags: "auth, backend, bug"
+  },
+  epic: {
+    title: "Migrate all services from Heroku to Cloudflare Workers",
+    body: "We need to move everything off Heroku before the pricing change in Q3. This includes the main API (Express), the webhook handler, the cron jobs, and the static site. Each service has different requirements \u2014 the API needs D1 for database, webhooks need queue support, crons need scheduled workers. Also need to sort out secrets management, monitoring, and DNS cutover.",
+    tags: "infrastructure, migration, cloudflare"
+  }
+};
+
+function load(k) {
+  const s = SAMPLES[k];
+  $('in-title').value = s.title;
+  $('in-body').value = s.body;
+  $('in-tags').value = s.tags;
+  resetAll();
+  runPreFilter();
+}
+
+// ── Gate prompt ──────────────────────────────────────────────────────────────
+const GATE_PROMPT = `## Pre-scoring gate \u2014 MUST evaluate first
+
+Before scoring any task, assess whether you have enough signal to understand it.
+A task is **scoreable** only if you can confidently answer ALL of these:
+1. What specifically does this task ask for? (not just a topic \u2014 the actual deliverable)
+2. What would "done" look like? (you could write at least one acceptance criterion)
+3. Is the scope bounded enough to estimate effort?
+
+If ANY answer is "I can't tell from what's here", the task is NOT scoreable.
+Return a rejection instead of a score (see response format below).
+
+Common rejection triggers:
+- Title-only note with no body
+- Body is a single vague sentence with no concrete deliverable
+- Topic is clear but the ask is not ("Sort out X" with no detail on what "sorted out" means)
+- Cannot determine if this is one task or many without more context
+
+When rejecting, explain specifically what is missing \u2014 not generic "needs more detail" but
+"Cannot determine scope: is this a config change or a full migration? Body doesn't specify."
+If the note would benefit from research to become scoreable, suggest 1-3 concrete subtasks
+(e.g. "Research: identify which tables are affected by X").`;
+
+$('gate-prompt').value = GATE_PROMPT;
+
+// ── Full system prompt builder ───────────────────────────────────────────────
+function buildSystemPrompt(gate) {
+  return `You are a task prioritisation engine for Marvin's personal vault.
+
+You will receive a batch of tasks from his vault, plus his current PRIORITIES and GOALS.
+Score each task on how relevant and actionable it is RIGHT NOW.
+
+${gate}
+
+## Scoring rubric (only for scoreable tasks)
+
+| Bucket | Meaning | Expected share |
+|--------|---------|---------------|
+| 0 (P0) | Do today / blocking. Due this week AND blocks a current project. | \u22642% |
+| 1 (P1) | This week. Important, clearly actionable, connects to active priorities. | \u226410% |
+| 2 (P2) | This month. Useful but not urgent, worth doing. **Default bucket.** | ~60% |
+| 3 (P3) | Backlog / someday. Nice to have, no time pressure, or unclear value. | ~25-30% |
+
+P2 is the default. When in doubt, score P2.
+
+## Actionability
+- \`clear\` \u2014 specific, concrete next step
+- \`vague\` \u2014 intent clear but next step unclear
+- \`needs-breakdown\` \u2014 too large, needs decomposing
+- \`needs-context\` \u2014 insufficient information; returned for rejections
+
+### Epic Detection
+Flag as epic if: multiple PRs/deliverables, work across repos, broad verbs ("sort out", "overhaul", "migrate"), >1 week AC, contains multiple sub-tasks.
+Epics: is_epic=true, actionability="needs-breakdown", suggested_route="marvin".
+
+## Dispatch suggestions (clear actionability, priority \u2264 2 only)
+**required_skills**: coder, researcher, extractor, drafter
+**suggested_executor**: boris (complex), ralph (simple), marvin (human judgment)
+**suggested_route**: jimbo (automation) or marvin (human)
+**suggested_ac**: JSON array of verifiable conditions. >5 ACs = needs decomposition.
+
+## Response format
+Return ONLY valid JSON array. Each object MUST have "scoreable": true or false.
+
+Scored: {"id":1,"scoreable":true,"priority":2,"priority_reason":"...","actionability":"clear","suggested_status":null,"is_epic":false,"suggested_skills":["coder"],"suggested_executor":"boris","suggested_route":"jimbo","suggested_ac":["condition"]}
+
+Rejected: {"id":1,"scoreable":false,"rejection_reasons":["reason"],"suggested_subtasks":["Research: do X"]}`;
+}
+
+// ── Pre-filter (mirrors scoring_gate.py) ─────────────────────────────────────
+function preFilter(title, body, threshold) {
+  const t = body.trim();
+  if (t.length < threshold) {
+    const reasons = [];
+    if (!t) reasons.push("Title-only note \u2014 no body to assess intent, scope, or deliverable.");
+    else reasons.push(`Body is too thin (${t.length} chars) to determine scope or next steps.`);
+    reasons.push("Cannot write acceptance criteria without understanding what 'done' looks like.");
+    return { pass: false, reasons, len: t.length };
+  }
+  return { pass: true, len: t.length };
+}
+
+// ── Dispatch readiness check (mirrors vault-utils.ts computeReady) ───────────
+function checkDispatch(result) {
+  if (!result || result.scoreable === false) return { ready: false, reasons: ["Not scored"] };
+  const reasons = [];
+  if (result.actionability !== 'clear') reasons.push(`Actionability is "${result.actionability}", needs "clear"`);
+  if (result.priority > 2) reasons.push(`Priority P${result.priority} exceeds dispatch threshold (P0-P2)`);
+  if (!result.suggested_skills || !result.suggested_skills.length) reasons.push("No skills assigned");
+  if (!result.suggested_ac || !result.suggested_ac.length) reasons.push("No acceptance criteria");
+  if (!result.suggested_route) reasons.push("No route assigned");
+  return { ready: reasons.length === 0, reasons };
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setBadge(id, cls, txt) { const e = $(id); e.className = 'badge ' + cls; e.textContent = txt; }
+function setConn(id, cls) { $(id).className = 'conn ' + cls; }
+
+function resetAll() {
+  ['pf','llm','sc','dp'].forEach(s => setBadge(s+'-badge','b-wait','waiting'));
+  ['c01','c12','c23','c34'].forEach(c => setConn(c,''));
+  ['pf-body','llm-body','sc-body','dp-body'].forEach(id => $(id).innerHTML = '');
+  // Reset bottom bar
+  ['bb-pf','bb-llm','bb-pri','bb-act','bb-route','bb-dispatch'].forEach(id => setBadge(id,'b-wait','--'));
+  $('bb-summary').textContent = '';
+}
+
+function togglePrompt() {
+  const b = $('peditor'), t = $('ptog');
+  if (b.classList.contains('shut')) { b.classList.remove('shut'); t.innerHTML = '&#9650; collapse'; }
+  else { b.classList.add('shut'); t.innerHTML = '&#9660; expand'; }
+}
+
+// ── Threshold slider live ────────────────────────────────────────────────────
+const slider = $('threshold');
+const sliderVal = $('threshold-val');
+slider.addEventListener('input', () => {
+  sliderVal.textContent = slider.value;
+  if ($('in-title').value || $('in-body').value) {
+    resetAll();
+    runPreFilter();
+  }
+});
+
+// ── Pre-filter run ───────────────────────────────────────────────────────────
+function runPreFilter() {
+  const title = $('in-title').value;
+  const body = $('in-body').value;
+  const th = parseInt(slider.value);
+  const r = preFilter(title, body, th);
+
+  setConn('c01', 'on');
+
+  if (!r.pass) {
+    setBadge('pf-badge', 'b-reject', 'rejected');
+    setBadge('bb-pf', 'b-reject', 'rejected');
+    setConn('c12', 'stop');
+    setBadge('llm-badge', 'b-wait', 'blocked');
+    setBadge('bb-llm', 'b-wait', 'blocked');
+    $('bb-summary').textContent = `Stopped at pre-filter (${r.len}/${th} chars)`;
+    $('bb-summary').style.color = '#f87171';
+
+    $('pf-body').innerHTML = `
+      <div class="card">
+        <h4>Verdict</h4>
+        <span class="m m-fail">REJECTED</span>
+        <span class="m m-info">${r.len} chars</span>
+        <span class="m m-info">threshold: ${th}</span>
+        <ul class="reasons">${r.reasons.map(x => `<li>${x}</li>`).join('')}</ul>
+      </div>
+      <div class="card">
+        <h4>PATCH payload</h4>
+        <pre>${esc(JSON.stringify({ ai_priority: null, ai_rationale: r.reasons.join(' '), actionability: 'needs-context' }, null, 2))}</pre>
+      </div>`;
+  } else {
+    setBadge('pf-badge', 'b-pass', 'pass');
+    setBadge('bb-pf', 'b-pass', 'pass');
+    setConn('c12', 'on');
+    $('pf-body').innerHTML = `
+      <div class="card">
+        <h4>Verdict</h4>
+        <span class="m m-pass">PASSED</span>
+        <span class="m m-info">${r.len} chars</span>
+        <span class="m m-info">threshold: ${th}</span>
+        <p style="margin-top:6px;color:#4ade80;font-size:12px">Body exceeds threshold \u2014 forwarding to LLM gate.</p>
+      </div>`;
+  }
+  return r;
+}
+
+// ── LLM call ─────────────────────────────────────────────────────────────────
+async function callLLM(system, user, model, key) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ parts: [{ text: user }] }],
+      generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
+    })
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Empty response from model');
+  return JSON.parse(text);
+}
+
+// ── Main pipeline ────────────────────────────────────────────────────────────
+let hist = [];
+
+async function run() {
+  const title = $('in-title').value.trim();
+  const body = $('in-body').value.trim();
+  const tags = $('in-tags').value.trim();
+  const key = $('api-key').value.trim();
+  const model = $('llm-model').value;
+  const gate = $('gate-prompt').value;
+  const th = parseInt(slider.value);
+
+  if (!title) return;
+  resetAll();
+
+  // Stage 1: Pre-filter
+  const pf = runPreFilter();
+  if (!pf.pass) {
+    addHist({ title, body, tags, model, th, stage: 'pre-filter', verdict: 'rejected', reasons: pf.reasons });
+    return;
+  }
+
+  // Stage 2: LLM
+  if (!key) {
+    setBadge('llm-badge', 'b-reject', 'no key');
+    setBadge('bb-llm', 'b-reject', 'no key');
+    $('llm-body').innerHTML = '<div class="card"><h4>Error</h4><p style="color:#f87171">Enter API key in top bar.</p></div>';
+    return;
+  }
+
+  setBadge('llm-badge', 'b-run', 'calling...');
+  setBadge('bb-llm', 'b-run', '...');
+  $('run-btn').disabled = true;
+
+  const systemPrompt = buildSystemPrompt(gate);
+  const userPrompt = `## Marvin's current context\n\n(Tuner mode \u2014 no live context)\n\n## Tasks to score\n\n### #1\nTitle: ${title}\nCreated: ${new Date().toISOString().split('T')[0]}\n${tags ? `Tags: ${tags}\n` : ''}${body ? `Body: ${body.substring(0, 200)}\n` : ''}`;
+
+  // Show prompt being sent
+  $('llm-body').innerHTML = `
+    <div class="card"><h4>User prompt</h4><pre>${esc(userPrompt)}</pre></div>
+    <div class="card"><h4 style="color:#fbbf24">Calling ${model}...</h4></div>`;
+
+  try {
+    const t0 = performance.now();
+    const raw = await callLLM(systemPrompt, userPrompt, model, key);
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    const result = Array.isArray(raw) ? raw[0] : raw;
+
+    const rawCard = `<div class="card"><h4>Raw response <span class="m m-info">${elapsed}s</span> <span class="m m-info">${model.replace('gemini-','').replace('-preview-05-20','').replace('-preview-05-06','')}</span></h4><pre>${esc(JSON.stringify(result, null, 2))}</pre></div>`;
+
+    if (result.scoreable === false) {
+      // LLM rejected
+      setBadge('llm-badge', 'b-reject', 'rejected');
+      setBadge('bb-llm', 'b-reject', 'rejected');
+      setConn('c23', 'stop');
+      $('bb-summary').textContent = `LLM rejected (${elapsed}s, ${model.split('-').slice(1,3).join(' ')})`;
+      $('bb-summary').style.color = '#f87171';
+
+      const reasons = result.rejection_reasons || ['No reasons given'];
+      const subs = result.suggested_subtasks;
+      $('llm-body').innerHTML = `
+        <div class="card"><h4>User prompt</h4><pre>${esc(userPrompt)}</pre></div>
+        ${rawCard}
+        <div class="card">
+          <h4>LLM verdict</h4>
+          <span class="m m-fail">NOT SCOREABLE</span>
+          <ul class="reasons">${reasons.map(r => `<li>${r}</li>`).join('')}</ul>
+          ${subs ? `<div style="margin-top:8px"><h4 style="color:#fbbf24">Suggested research</h4><ul style="padding-left:14px;margin-top:4px">${subs.map(s => `<li style="color:#fbbf24;font-size:12px;margin-bottom:3px">${s}</li>`).join('')}</ul></div>` : ''}
+        </div>
+        <div class="card"><h4>PATCH payload</h4><pre>${esc(JSON.stringify({ ai_priority: null, ai_rationale: reasons.join(' '), actionability: 'needs-context' }, null, 2))}</pre></div>`;
+
+      addHist({ title, body, tags, model, th, stage: 'llm-gate', verdict: 'rejected', reasons, subs, elapsed });
+    } else {
+      // LLM scored
+      setBadge('llm-badge', 'b-pass', 'scoreable');
+      setBadge('bb-llm', 'b-pass', 'scored');
+      setConn('c23', 'on');
+
+      $('llm-body').innerHTML = `
+        <div class="card"><h4>User prompt</h4><pre>${esc(userPrompt)}</pre></div>
+        ${rawCard}`;
+
+      // Stage 3: Scoring result
+      renderScoring(result);
+
+      // Stage 4: Dispatch readiness
+      const dr = checkDispatch(result);
+      renderDispatch(result, dr);
+
+      // Bottom bar
+      const pClass = [,'m-fail','m-warn','m-info','m-info'][result.priority] || 'm-info';
+      setBadge('bb-pri', result.priority <= 1 ? 'b-reject' : 'b-scored', `P${result.priority}`);
+      setBadge('bb-act', result.actionability === 'clear' ? 'b-pass' : 'b-wait', result.actionability);
+      setBadge('bb-route', 'b-scored', result.suggested_route || 'none');
+      setBadge('bb-dispatch', dr.ready ? 'b-pass' : 'b-reject', dr.ready ? 'ready' : 'blocked');
+      $('bb-summary').textContent = `P${result.priority} / ${result.actionability} / ${result.suggested_route || 'no route'} (${elapsed}s, ${model.split('-').slice(1,3).join(' ')})`;
+      $('bb-summary').style.color = '#60a5fa';
+
+      addHist({ title, body, tags, model, th, stage: 'scored', verdict: 'scored', result, elapsed });
+    }
+  } catch (err) {
+    setBadge('llm-badge', 'b-reject', 'error');
+    setBadge('bb-llm', 'b-reject', 'error');
+    $('bb-summary').textContent = err.message.substring(0, 80);
+    $('bb-summary').style.color = '#f87171';
+    $('llm-body').innerHTML += `<div class="card"><h4 style="color:#f87171">Error</h4><pre style="color:#f87171">${esc(err.message)}</pre></div>`;
+    addHist({ title, body, tags, model, th, stage: 'error', verdict: 'error', error: err.message });
+  }
+
+  $('run-btn').disabled = false;
+}
+
+function renderScoring(r) {
+  setBadge('sc-badge', 'b-scored', `P${r.priority}`);
+  setConn('c34', 'on');
+
+  const patch = {
+    ai_priority: r.priority,
+    ai_rationale: r.priority_reason,
+    actionability: r.actionability,
+    ...(r.suggested_skills && { suggested_skills: JSON.stringify(r.suggested_skills) }),
+    ...(r.suggested_executor && { suggested_executor: r.suggested_executor }),
+    ...(r.suggested_route && { suggested_route: r.suggested_route }),
+    ...(r.suggested_ac && { suggested_ac: r.suggested_ac }),
+    ...(r.is_epic && { is_epic: true }),
+  };
+
+  $('sc-body').innerHTML = `
+    <div class="card">
+      <h4>Priority</h4>
+      <span class="m ${r.priority <= 1 ? 'm-warn' : 'm-info'}">P${r.priority}</span>
+      ${r.is_epic ? '<span class="m m-warn">EPIC</span>' : ''}
+      <p style="margin-top:4px;font-size:12px;color:#9ca3af">${r.priority_reason || ''}</p>
+    </div>
+    <div class="card">
+      <h4>Actionability</h4>
+      <span class="m ${r.actionability === 'clear' ? 'm-pass' : r.actionability === 'needs-breakdown' ? 'm-warn' : 'm-info'}">${r.actionability}</span>
+    </div>
+    ${r.suggested_skills ? `<div class="card"><h4>Skills / Executor / Route</h4>
+      <p style="font-size:12px"><strong>Skills:</strong> ${r.suggested_skills.join(', ')}</p>
+      ${r.suggested_executor ? `<p style="font-size:12px"><strong>Executor:</strong> ${r.suggested_executor}</p>` : ''}
+      ${r.suggested_route ? `<p style="font-size:12px"><strong>Route:</strong> ${r.suggested_route}</p>` : ''}
+    </div>` : ''}
+    ${r.suggested_ac ? `<div class="card"><h4>Acceptance criteria</h4>
+      <ul style="padding-left:14px">${r.suggested_ac.map(a => `<li style="font-size:12px;margin-bottom:3px;color:#4ade80">${a}</li>`).join('')}</ul>
+    </div>` : ''}
+    <div class="card"><h4>PATCH payload</h4><pre>${esc(JSON.stringify(patch, null, 2))}</pre></div>`;
+}
+
+function renderDispatch(r, dr) {
+  setConn('c45', dr.ready ? 'on' : 'stop');
+  setBadge('dp-badge', dr.ready ? 'b-pass' : 'b-reject', dr.ready ? 'ready' : 'blocked');
+
+  if (dr.ready) {
+    $('dp-body').innerHTML = `
+      <div class="card">
+        <h4>Dispatch readiness</h4>
+        <span class="m m-pass">DISPATCH READY</span>
+        <p style="margin-top:6px;font-size:12px;color:#4ade80">
+          This note would enter the dispatch queue.<br>
+          Executor: <strong>${r.suggested_executor}</strong> via <strong>${r.suggested_route}</strong>
+        </p>
+      </div>`;
+  } else {
+    $('dp-body').innerHTML = `
+      <div class="card">
+        <h4>Dispatch readiness</h4>
+        <span class="m m-fail">BLOCKED</span>
+        <ul class="reasons">${dr.reasons.map(x => `<li>${x}</li>`).join('')}</ul>
+      </div>`;
+  }
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+function addHist(e) {
+  e.ts = new Date().toLocaleTimeString();
+  hist.unshift(e);
+  renderHist();
+}
+function clearHist() { hist = []; renderHist(); }
+function renderHist() {
+  if (!hist.length) {
+    $('hist-list').innerHTML = '<div style="color:#333;font-size:11px;text-align:center;padding:40px 0">Run notes to build history</div>';
+    return;
+  }
+  $('hist-list').innerHTML = hist.map((h, i) => {
+    let detail = '';
+    if (h.verdict === 'rejected') detail = `<span class="m m-fail">REJECTED @ ${h.stage}</span>`;
+    else if (h.verdict === 'scored' && h.result) detail = `<span class="m m-info">P${h.result.priority}</span><span class="m m-info">${h.result.actionability}</span>`;
+    else if (h.verdict === 'error') detail = `<span class="m m-fail">ERROR</span>`;
+    return `<div class="hist-entry" onclick="reloadHist(${i})">
+      <div class="hist-meta"><span>${h.ts}</span><span class="tag">${h.model.replace('gemini-','').replace('-preview-05-20','').replace('-preview-05-06','')}</span><span>th:${h.th}</span>${h.elapsed?`<span>${h.elapsed}s</span>`:''}</div>
+      <div class="hist-title">${esc(h.title.substring(0,50))}</div>
+      <div class="hist-verdict">${detail}</div>
+    </div>`;
+  }).join('');
+}
+function reloadHist(i) {
+  const h = hist[i];
+  $('in-title').value = h.title || '';
+  $('in-body').value = h.body || '';
+  $('in-tags').value = h.tags || '';
+  slider.value = h.th; sliderVal.textContent = h.th;
+  resetAll(); runPreFilter();
+}
+</script>
+</body>
+</html>

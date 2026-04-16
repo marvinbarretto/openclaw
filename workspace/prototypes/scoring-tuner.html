@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scoring Pipeline Tuner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+    background: #0a0a0a;
+    color: #d4d4d4;
+    min-height: 100vh;
+    overflow-x: auto;
+  }
+
+  /* ── Top bar ── */
+  .top-bar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #111;
+    border-bottom: 1px solid #222;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .top-bar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8e8e8;
+    white-space: nowrap;
+  }
+  .lever {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #888;
+  }
+  .lever label { white-space: nowrap; }
+  .lever input[type="range"] {
+    width: 120px;
+    accent-color: #3b82f6;
+  }
+  .lever .value {
+    font-family: monospace;
+    color: #3b82f6;
+    min-width: 36px;
+    text-align: right;
+  }
+  .lever select {
+    background: #1a1a1a;
+    color: #d4d4d4;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .api-key-input {
+    background: #1a1a1a;
+    color: #d4d4d4;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: monospace;
+    width: 200px;
+  }
+  .api-key-input::placeholder { color: #555; }
+
+  /* ── Pipeline container ── */
+  .pipeline-wrap {
+    display: flex;
+    min-height: calc(100vh - 52px);
+  }
+
+  /* ── Stages ── */
+  .stage {
+    min-width: 340px;
+    max-width: 400px;
+    flex-shrink: 0;
+    border-right: 1px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
+  }
+  .stage-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .stage-header h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .stage-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-waiting { background: #1a1a1a; color: #555; }
+  .badge-pass { background: #052e16; color: #4ade80; }
+  .badge-rejected { background: #2a0a0a; color: #f87171; }
+  .badge-scored { background: #0c1a3d; color: #60a5fa; }
+  .badge-running { background: #1a1500; color: #fbbf24; animation: pulse 1.5s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .stage-body {
+    padding: 16px;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* ── Input stage ── */
+  .note-input textarea {
+    width: 100%;
+    background: #111;
+    color: #d4d4d4;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .note-input textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+  .note-input label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin-bottom: 6px;
+  }
+  .note-input .field + .field { margin-top: 12px; }
+
+  .run-btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 10px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .run-btn:hover { background: #2563eb; }
+  .run-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+  .sample-notes {
+    margin-top: 16px;
+    border-top: 1px solid #1a1a1a;
+    padding-top: 12px;
+  }
+  .sample-notes h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #555;
+    margin-bottom: 8px;
+  }
+  .sample-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 4px;
+    color: #888;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    margin-bottom: 4px;
+  }
+  .sample-btn:hover { border-color: #333; color: #d4d4d4; }
+
+  /* ── Result cards ── */
+  .result-card {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .result-card h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin-bottom: 6px;
+  }
+  .result-card p, .result-card pre {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .result-card pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #0a0a0a;
+    padding: 8px;
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+  .metric {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+    margin-bottom: 4px;
+  }
+  .metric-pass { background: #052e16; color: #4ade80; }
+  .metric-fail { background: #2a0a0a; color: #f87171; }
+  .metric-info { background: #0c1a3d; color: #60a5fa; }
+  .metric-warn { background: #1a1500; color: #fbbf24; }
+
+  .reason-list {
+    list-style: none;
+    padding: 0;
+  }
+  .reason-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid #1a1a1a;
+    font-size: 13px;
+    color: #f87171;
+  }
+  .reason-list li:last-child { border-bottom: none; }
+  .reason-list li::before {
+    content: "\2717 ";
+    color: #f87171;
+    margin-right: 4px;
+  }
+
+  /* ── Prompt editor ── */
+  .prompt-editor-wrap {
+    border-top: 1px solid #1a1a1a;
+    background: #0d0d0d;
+    max-height: 50vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .prompt-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid #1a1a1a;
+    cursor: pointer;
+  }
+  .prompt-editor-header h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #555;
+  }
+  .prompt-editor-header .toggle {
+    font-size: 11px;
+    color: #555;
+  }
+  .prompt-editor-body {
+    flex: 1;
+    overflow: hidden;
+  }
+  .prompt-editor-body.collapsed { display: none; }
+  .prompt-editor-body textarea {
+    width: 100%;
+    height: 100%;
+    min-height: 200px;
+    background: #0a0a0a;
+    color: #9ca3af;
+    border: none;
+    padding: 12px 16px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    resize: none;
+  }
+  .prompt-editor-body textarea:focus { outline: none; color: #d4d4d4; }
+
+  /* ── History panel ── */
+  .history-panel {
+    min-width: 360px;
+    max-width: 420px;
+    flex-shrink: 0;
+    background: #0d0d0d;
+    display: flex;
+    flex-direction: column;
+  }
+  .history-panel .stage-header {
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .history-entry {
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .history-entry:hover { border-color: #333; }
+  .history-entry.selected { border-color: #3b82f6; }
+  .history-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 6px;
+  }
+  .history-meta .model-tag {
+    background: #1a1a1a;
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: #888;
+  }
+  .history-title {
+    font-size: 13px;
+    color: #d4d4d4;
+    margin-bottom: 4px;
+  }
+  .history-verdict {
+    font-size: 12px;
+  }
+  .clear-history-btn {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .clear-history-btn:hover { color: #f87171; }
+
+  /* ── Connector arrows ── */
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    flex-shrink: 0;
+    color: #222;
+    font-size: 20px;
+  }
+  .connector.active { color: #3b82f6; }
+  .connector.rejected { color: #f87171; }
+</style>
+</head>
+<body>
+
+<!-- Top bar with levers -->
+<div class="top-bar">
+  <h1>Scoring Pipeline Tuner</h1>
+
+  <div class="lever">
+    <label>Body threshold:</label>
+    <input type="range" id="threshold" min="0" max="200" value="50">
+    <span class="value" id="threshold-value">50</span>
+  </div>
+
+  <div class="lever">
+    <label>Model:</label>
+    <select id="model-select">
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+      <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash</option>
+      <option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro</option>
+    </select>
+  </div>
+
+  <div class="lever">
+    <label>API Key:</label>
+    <input type="password" id="api-key" class="api-key-input" placeholder="GOOGLE_AI_API_KEY">
+  </div>
+</div>
+
+<!-- Pipeline -->
+<div class="pipeline-wrap">
+
+  <!-- Stage 0: Input -->
+  <div class="stage" id="stage-input">
+    <div class="stage-header">
+      <h2>Input</h2>
+    </div>
+    <div class="stage-body">
+      <div class="note-input">
+        <div class="field">
+          <label>Title</label>
+          <textarea id="note-title" rows="2" placeholder="Fix the auth bug in login.ts"></textarea>
+        </div>
+        <div class="field">
+          <label>Body</label>
+          <textarea id="note-body" rows="6" placeholder="The login endpoint returns 403 for admin users because..."></textarea>
+        </div>
+        <div class="field">
+          <label>Tags (optional)</label>
+          <textarea id="note-tags" rows="1" placeholder="auth, backend"></textarea>
+        </div>
+        <button class="run-btn" id="run-btn" onclick="runPipeline()">Run through pipeline</button>
+      </div>
+
+      <div class="sample-notes">
+        <h3>Sample notes</h3>
+        <button class="sample-btn" onclick="loadSample('thin')">Title only: "Sort out the deployment stuff"</button>
+        <button class="sample-btn" onclick="loadSample('short')">Short body: "Look into auth" + 1 sentence</button>
+        <button class="sample-btn" onclick="loadSample('vague')">Vague: topic clear, ask unclear</button>
+        <button class="sample-btn" onclick="loadSample('clear')">Clear: specific task with context</button>
+        <button class="sample-btn" onclick="loadSample('epic')">Epic: multi-system overhaul</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector" id="conn-0-1">&#8594;</div>
+
+  <!-- Stage 1: Pre-filter -->
+  <div class="stage" id="stage-prefilter">
+    <div class="stage-header">
+      <h2>Pre-filter</h2>
+      <span class="stage-badge badge-waiting" id="prefilter-badge">waiting</span>
+    </div>
+    <div class="stage-body" id="prefilter-body">
+      <div class="result-card" style="display:none" id="prefilter-result"></div>
+    </div>
+  </div>
+
+  <div class="connector" id="conn-1-2">&#8594;</div>
+
+  <!-- Stage 2: LLM Gate -->
+  <div class="stage" id="stage-llm">
+    <div class="stage-header">
+      <h2>LLM Gate</h2>
+      <span class="stage-badge badge-waiting" id="llm-badge">waiting</span>
+    </div>
+    <div class="stage-body" id="llm-body">
+      <div id="llm-result" style="display:none"></div>
+    </div>
+
+    <!-- Prompt editor sits at bottom of LLM stage -->
+    <div class="prompt-editor-wrap">
+      <div class="prompt-editor-header" onclick="togglePromptEditor()">
+        <h3>Prompt editor</h3>
+        <span class="toggle" id="prompt-toggle">&#9660; expand</span>
+      </div>
+      <div class="prompt-editor-body collapsed" id="prompt-editor">
+        <textarea id="gate-prompt"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector" id="conn-2-3">&#8594;</div>
+
+  <!-- Stage 3: Scoring result -->
+  <div class="stage" id="stage-scoring">
+    <div class="stage-header">
+      <h2>Result</h2>
+      <span class="stage-badge badge-waiting" id="scoring-badge">waiting</span>
+    </div>
+    <div class="stage-body" id="scoring-body">
+      <div id="scoring-result" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="connector" id="conn-3-4">&#8594;</div>
+
+  <!-- History -->
+  <div class="history-panel">
+    <div class="stage-header">
+      <h2>History</h2>
+      <button class="clear-history-btn" onclick="clearHistory()">clear</button>
+    </div>
+    <div class="history-list" id="history-list">
+      <div style="color: #444; font-size: 12px; text-align: center; padding: 40px 0;">
+        Run notes through the pipeline to build comparison history
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Sample notes ──────────────────────────────────────────────────────────────
+const SAMPLES = {
+  thin: {
+    title: "Sort out the deployment stuff",
+    body: "",
+    tags: ""
+  },
+  short: {
+    title: "Look into auth issues",
+    body: "Users are complaining about login.",
+    tags: "auth"
+  },
+  vague: {
+    title: "Improve the email pipeline",
+    body: "The email pipeline feels like it could be better. There are some edge cases that aren't handled well and the whole thing needs attention. Maybe we should look at how other systems do it and figure out what makes sense for us.",
+    tags: "email, pipeline"
+  },
+  clear: {
+    title: "Fix 403 error for admin users on login endpoint",
+    body: "The /api/auth/login endpoint returns 403 for users with the admin role. Root cause: the middleware checks req.user.role === 'user' instead of checking for a valid role. Only affects admin accounts created after the March migration. Reproduce: POST /api/auth/login with admin credentials, observe 403 instead of 200 + JWT.",
+    tags: "auth, backend, bug"
+  },
+  epic: {
+    title: "Migrate all services from Heroku to Cloudflare Workers",
+    body: "We need to move everything off Heroku before the pricing change in Q3. This includes the main API (Express), the webhook handler, the cron jobs, and the static site. Each service has different requirements — the API needs D1 for database, webhooks need queue support, crons need scheduled workers. Also need to sort out secrets management, monitoring, and DNS cutover.",
+    tags: "infrastructure, migration, cloudflare"
+  }
+};
+
+function loadSample(key) {
+  const s = SAMPLES[key];
+  document.getElementById('note-title').value = s.title;
+  document.getElementById('note-body').value = s.body;
+  document.getElementById('note-tags').value = s.tags;
+  resetStages();
+  // Auto-run pre-filter for instant feedback
+  runPreFilter();
+}
+
+// ── Gate prompt (editable) ───────────────────────────────────────────────────
+const DEFAULT_GATE_PROMPT = `## Pre-scoring gate \u2014 MUST evaluate first
+
+Before scoring any task, assess whether you have enough signal to understand it.
+A task is **scoreable** only if you can confidently answer ALL of these:
+1. What specifically does this task ask for? (not just a topic \u2014 the actual deliverable)
+2. What would "done" look like? (you could write at least one acceptance criterion)
+3. Is the scope bounded enough to estimate effort?
+
+If ANY answer is "I can't tell from what's here", the task is NOT scoreable.
+Return a rejection instead of a score (see response format below).
+
+Common rejection triggers:
+- Title-only note with no body
+- Body is a single vague sentence with no concrete deliverable
+- Topic is clear but the ask is not ("Sort out X" with no detail on what "sorted out" means)
+- Cannot determine if this is one task or many without more context
+
+When rejecting, explain specifically what is missing \u2014 not generic "needs more detail" but
+"Cannot determine scope: is this a config change or a full migration? Body doesn't specify."
+If the note would benefit from research to become scoreable, suggest 1-3 concrete subtasks
+(e.g. "Research: identify which tables are affected by X").`;
+
+document.getElementById('gate-prompt').value = DEFAULT_GATE_PROMPT;
+
+// ── Scoring system prompt (everything except the gate section) ───────────────
+function buildFullPrompt(gateSection) {
+  return `You are a task prioritisation engine for Marvin's personal vault.
+
+You will receive a batch of tasks from his vault, plus his current PRIORITIES and GOALS.
+Score each task on how relevant and actionable it is RIGHT NOW.
+
+${gateSection}
+
+## Scoring rubric (only for scoreable tasks)
+
+| Bucket | Meaning | Expected share |
+|--------|---------|---------------|
+| 0 (P0) | Do today / blocking. Due this week AND blocks a current project. Requires immediate action. | \u22642% \u2014 rare |
+| 1 (P1) | This week. Important, clearly actionable, connects to active priorities. | \u226410% |
+| 2 (P2) | This month. Useful but not urgent, worth doing. **This is the default bucket.** | ~60% |
+| 3 (P3) | Backlog / someday. Nice to have, no time pressure, or unclear value. | ~25-30% |
+
+P2 is the default. When in doubt, score P2. Only promote to P1 if Marvin should act THIS WEEK. Only P0 if it is literally blocking something today.
+Output the number only (0, 1, 2, or 3).
+
+## Actionability
+
+- \`clear\` \u2014 the task has a specific, concrete next step
+- \`vague\` \u2014 the intent is clear but the next step is unclear
+- \`needs-breakdown\` \u2014 too large, needs decomposing into subtasks
+- \`needs-context\` \u2014 insufficient information to assess; returned for rejections
+
+### Epic Detection
+
+Flag a task as an epic if ANY of these are true:
+- Would require multiple PRs or deliverables to complete
+- Involves work across multiple repos or systems
+- Title uses broad verbs: "sort out", "overhaul", "set up", "migrate", "build"
+- Acceptance criteria (if present) would take >1 week of focused work
+- Clearly contains multiple independent sub-tasks
+
+For epics, set:
+- "is_epic": true
+- "actionability": "needs-breakdown"
+- "suggested_route": "marvin" (epics need human review before decomposition)
+
+Do NOT suggest skills or executor for epics \u2014 those apply to sub-tasks after decomposition.
+
+## Response format
+
+Return ONLY valid JSON \u2014 a JSON array containing one object per task.
+Each object MUST have "scoreable": true or "scoreable": false.
+
+### Scored task (scoreable: true):
+\`\`\`json
+[{"id": 1, "scoreable": true, "priority": 2, "priority_reason": "reason", "actionability": "clear", "suggested_status": null, "is_epic": false, "suggested_skills": ["coder"], "suggested_executor": "boris", "suggested_route": "jimbo", "suggested_ac": ["condition 1", "condition 2"]}]
+\`\`\`
+
+### Rejected task (scoreable: false):
+\`\`\`json
+[{"id": 1, "scoreable": false, "rejection_reasons": ["reason 1", "reason 2"], "suggested_subtasks": ["Research: do X"]}]
+\`\`\`
+
+rejection_reasons \u2014 array of specific strings explaining what is missing.
+suggested_subtasks \u2014 array of research/spike tasks that would make this scoreable. Can be null.`;
+}
+
+// ── Pre-filter (mirrors scoring_gate.py) ─────────────────────────────────────
+function preFilter(title, body, threshold) {
+  const trimmed = body.trim();
+  if (trimmed.length < threshold) {
+    const reasons = [];
+    if (!trimmed) {
+      reasons.push("Title-only note \u2014 no body to assess intent, scope, or deliverable.");
+    } else {
+      reasons.push(`Body is too thin (${trimmed.length} chars) to determine scope or next steps.`);
+    }
+    reasons.push("Cannot write acceptance criteria without understanding what 'done' looks like.");
+    return { pass: false, reasons, bodyLength: trimmed.length };
+  }
+  return { pass: true, bodyLength: trimmed.length };
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function setBadge(id, cls, text) {
+  const el = document.getElementById(id);
+  el.className = 'stage-badge ' + cls;
+  el.textContent = text;
+}
+
+function setConnector(id, cls) {
+  document.getElementById(id).className = 'connector ' + cls;
+}
+
+function resetStages() {
+  setBadge('prefilter-badge', 'badge-waiting', 'waiting');
+  setBadge('llm-badge', 'badge-waiting', 'waiting');
+  setBadge('scoring-badge', 'badge-waiting', 'waiting');
+  setConnector('conn-0-1', '');
+  setConnector('conn-1-2', '');
+  setConnector('conn-2-3', '');
+  document.getElementById('prefilter-result').style.display = 'none';
+  document.getElementById('llm-result').style.display = 'none';
+  document.getElementById('scoring-result').style.display = 'none';
+}
+
+function togglePromptEditor() {
+  const body = document.getElementById('prompt-editor');
+  const toggle = document.getElementById('prompt-toggle');
+  if (body.classList.contains('collapsed')) {
+    body.classList.remove('collapsed');
+    toggle.innerHTML = '&#9650; collapse';
+  } else {
+    body.classList.add('collapsed');
+    toggle.innerHTML = '&#9660; expand';
+  }
+}
+
+// ── Threshold slider live update ─────────────────────────────────────────────
+const thresholdSlider = document.getElementById('threshold');
+const thresholdValue = document.getElementById('threshold-value');
+thresholdSlider.addEventListener('input', () => {
+  thresholdValue.textContent = thresholdSlider.value;
+  // Re-run pre-filter live if there's input
+  const title = document.getElementById('note-title').value;
+  const body = document.getElementById('note-body').value;
+  if (title || body) {
+    runPreFilter();
+  }
+});
+
+function runPreFilter() {
+  const title = document.getElementById('note-title').value;
+  const body = document.getElementById('note-body').value;
+  const threshold = parseInt(thresholdSlider.value);
+
+  const result = preFilter(title, body, threshold);
+
+  setConnector('conn-0-1', 'active');
+  const card = document.getElementById('prefilter-result');
+  card.style.display = 'block';
+
+  if (!result.pass) {
+    setBadge('prefilter-badge', 'badge-rejected', 'rejected');
+    setConnector('conn-1-2', 'rejected');
+    setBadge('llm-badge', 'badge-waiting', 'blocked');
+    setBadge('scoring-badge', 'badge-waiting', 'blocked');
+    document.getElementById('llm-result').style.display = 'none';
+    document.getElementById('scoring-result').style.display = 'none';
+
+    card.innerHTML = `
+      <h4>Pre-filter verdict</h4>
+      <span class="metric metric-fail">REJECTED</span>
+      <span class="metric metric-info">${result.bodyLength} chars</span>
+      <span class="metric metric-info">threshold: ${threshold}</span>
+      <ul class="reason-list" style="margin-top: 10px">
+        ${result.reasons.map(r => `<li>${r}</li>`).join('')}
+      </ul>
+      <div style="margin-top: 12px; padding: 10px; background: #0a0a0a; border-radius: 4px;">
+        <h4>PATCH that would be written</h4>
+        <pre>${JSON.stringify({
+          ai_priority: null,
+          ai_rationale: result.reasons.join(' '),
+          actionability: 'needs-context'
+        }, null, 2)}</pre>
+      </div>
+    `;
+  } else {
+    setBadge('prefilter-badge', 'badge-pass', 'pass');
+    setConnector('conn-1-2', 'active');
+    card.innerHTML = `
+      <h4>Pre-filter verdict</h4>
+      <span class="metric metric-pass">PASSED</span>
+      <span class="metric metric-info">${result.bodyLength} chars</span>
+      <span class="metric metric-info">threshold: ${threshold}</span>
+      <p style="margin-top: 8px; color: #4ade80; font-size: 13px">
+        Body exceeds threshold \u2014 forwarding to LLM gate.
+      </p>
+    `;
+  }
+
+  return result;
+}
+
+// ── LLM call via Gemini API ──────────────────────────────────────────────────
+async function callLLM(systemPrompt, userPrompt, model, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No response text from model');
+  return JSON.parse(text);
+}
+
+// ── Main pipeline run ────────────────────────────────────────────────────────
+let history = [];
+
+async function runPipeline() {
+  const title = document.getElementById('note-title').value.trim();
+  const body = document.getElementById('note-body').value.trim();
+  const tags = document.getElementById('note-tags').value.trim();
+  const apiKey = document.getElementById('api-key').value.trim();
+  const model = document.getElementById('model-select').value;
+  const gatePrompt = document.getElementById('gate-prompt').value;
+
+  if (!title) return;
+
+  resetStages();
+
+  // Stage 1: Pre-filter
+  const pfResult = runPreFilter();
+  if (!pfResult.pass) {
+    addHistory({ title, body, tags, model, threshold: thresholdSlider.value, stage: 'pre-filter', verdict: 'rejected', reasons: pfResult.reasons });
+    return;
+  }
+
+  // Stage 2: LLM gate
+  if (!apiKey) {
+    setBadge('llm-badge', 'badge-rejected', 'no key');
+    document.getElementById('llm-result').style.display = 'block';
+    document.getElementById('llm-result').innerHTML = `
+      <div class="result-card">
+        <h4>API key required</h4>
+        <p style="color: #f87171">Enter your Google AI API key in the top bar to run LLM evaluation.</p>
+      </div>`;
+    return;
+  }
+
+  setBadge('llm-badge', 'badge-running', 'running...');
+  document.getElementById('run-btn').disabled = true;
+
+  const fullPrompt = buildFullPrompt(gatePrompt);
+  const userPrompt = `## Marvin's current context
+
+(Tuner mode \u2014 no live context)
+
+## Tasks to score
+
+### #1
+Title: ${title}
+Created: ${new Date().toISOString().split('T')[0]}
+${tags ? `Tags: ${tags}` : ''}
+${body ? `Body: ${body.substring(0, 200)}` : ''}
+`;
+
+  // Show the prompts
+  document.getElementById('llm-result').style.display = 'block';
+  document.getElementById('llm-result').innerHTML = `
+    <div class="result-card">
+      <h4>User prompt sent</h4>
+      <pre>${escapeHtml(userPrompt)}</pre>
+    </div>
+    <div class="result-card">
+      <h4 style="color: #fbbf24">Waiting for ${model}...</h4>
+    </div>`;
+
+  try {
+    const startTime = performance.now();
+    const llmResult = await callLLM(fullPrompt, userPrompt, model, apiKey);
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+    const result = Array.isArray(llmResult) ? llmResult[0] : llmResult;
+
+    // Show raw response
+    const rawCard = `<div class="result-card">
+      <h4>Raw LLM response <span class="metric metric-info">${elapsed}s</span> <span class="metric metric-info">${model}</span></h4>
+      <pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+    </div>`;
+
+    if (result.scoreable === false) {
+      // LLM rejected
+      setBadge('llm-badge', 'badge-rejected', 'rejected');
+      setConnector('conn-2-3', 'rejected');
+      setBadge('scoring-badge', 'badge-waiting', 'blocked');
+
+      const reasons = result.rejection_reasons || ['No reasons given'];
+      const subtasks = result.suggested_subtasks;
+
+      document.getElementById('llm-result').innerHTML = `
+        <div class="result-card">
+          <h4>User prompt sent</h4>
+          <pre>${escapeHtml(userPrompt)}</pre>
+        </div>
+        ${rawCard}
+        <div class="result-card">
+          <h4>LLM verdict</h4>
+          <span class="metric metric-fail">NOT SCOREABLE</span>
+          <ul class="reason-list" style="margin-top: 10px">
+            ${reasons.map(r => `<li>${r}</li>`).join('')}
+          </ul>
+          ${subtasks ? `
+            <div style="margin-top: 10px">
+              <h4 style="color: #fbbf24">Suggested research</h4>
+              <ul style="padding-left: 16px; margin-top: 6px">
+                ${subtasks.map(s => `<li style="color: #fbbf24; font-size: 13px; margin-bottom: 4px">${s}</li>`).join('')}
+              </ul>
+            </div>` : ''}
+        </div>
+        <div class="result-card">
+          <h4>PATCH that would be written</h4>
+          <pre>${JSON.stringify({
+            ai_priority: null,
+            ai_rationale: reasons.join(' ') + (subtasks ? ' Suggested research: ' + subtasks.join('; ') : ''),
+            actionability: 'needs-context'
+          }, null, 2)}</pre>
+        </div>`;
+
+      addHistory({ title, body, tags, model, threshold: thresholdSlider.value, stage: 'llm-gate', verdict: 'rejected', reasons, subtasks, elapsed });
+    } else {
+      // LLM scored it
+      setBadge('llm-badge', 'badge-pass', 'scoreable');
+      setConnector('conn-2-3', 'active');
+
+      document.getElementById('llm-result').innerHTML = `
+        <div class="result-card">
+          <h4>User prompt sent</h4>
+          <pre>${escapeHtml(userPrompt)}</pre>
+        </div>
+        ${rawCard}`;
+
+      // Stage 3: Show scoring result
+      renderScoringResult(result, elapsed, model);
+      addHistory({ title, body, tags, model, threshold: thresholdSlider.value, stage: 'scored', verdict: 'scored', result, elapsed });
+    }
+  } catch (err) {
+    setBadge('llm-badge', 'badge-rejected', 'error');
+    document.getElementById('llm-result').innerHTML = `
+      <div class="result-card">
+        <h4>User prompt sent</h4>
+        <pre>${escapeHtml(userPrompt)}</pre>
+      </div>
+      <div class="result-card">
+        <h4 style="color: #f87171">Error</h4>
+        <pre style="color: #f87171">${escapeHtml(err.message)}</pre>
+      </div>`;
+    addHistory({ title, body, tags, model, threshold: thresholdSlider.value, stage: 'error', verdict: 'error', error: err.message });
+  }
+
+  document.getElementById('run-btn').disabled = false;
+}
+
+function renderScoringResult(result, elapsed, model) {
+  const el = document.getElementById('scoring-result');
+  el.style.display = 'block';
+
+  const priority = result.priority;
+  const pColors = { 0: 'metric-fail', 1: 'metric-warn', 2: 'metric-info', 3: 'badge-waiting' };
+  const pClass = pColors[priority] || 'metric-info';
+
+  setBadge('scoring-badge', 'badge-scored', `P${priority}`);
+
+  el.innerHTML = `
+    <div class="result-card">
+      <h4>Priority</h4>
+      <span class="metric ${pClass}">P${priority}</span>
+      <p style="margin-top: 6px; font-size: 13px; color: #9ca3af">${result.priority_reason || 'No reason given'}</p>
+    </div>
+    <div class="result-card">
+      <h4>Actionability</h4>
+      <span class="metric metric-info">${result.actionability || 'unknown'}</span>
+      ${result.is_epic ? '<span class="metric metric-warn">EPIC</span>' : ''}
+    </div>
+    ${result.suggested_skills ? `
+    <div class="result-card">
+      <h4>Dispatch suggestions</h4>
+      <p><strong>Skills:</strong> ${result.suggested_skills.join(', ')}</p>
+      ${result.suggested_executor ? `<p><strong>Executor:</strong> ${result.suggested_executor}</p>` : ''}
+      ${result.suggested_route ? `<p><strong>Route:</strong> ${result.suggested_route}</p>` : ''}
+    </div>` : ''}
+    ${result.suggested_ac ? `
+    <div class="result-card">
+      <h4>Acceptance criteria</h4>
+      <ul style="padding-left: 16px">
+        ${result.suggested_ac.map(ac => `<li style="font-size: 13px; margin-bottom: 4px; color: #4ade80">${ac}</li>`).join('')}
+      </ul>
+    </div>` : ''}
+    <div class="result-card">
+      <h4>PATCH that would be written</h4>
+      <pre>${JSON.stringify({
+        ai_priority: priority,
+        ai_rationale: result.priority_reason,
+        actionability: result.actionability,
+        ...(result.suggested_skills && { suggested_skills: JSON.stringify(result.suggested_skills) }),
+        ...(result.suggested_executor && { suggested_executor: result.suggested_executor }),
+        ...(result.suggested_route && { suggested_route: result.suggested_route }),
+        ...(result.suggested_ac && { suggested_ac: result.suggested_ac }),
+        ...(result.is_epic && { is_epic: true, grooming_status: 'analysis_pending' }),
+      }, null, 2)}</pre>
+    </div>`;
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+function addHistory(entry) {
+  entry.timestamp = new Date().toLocaleTimeString();
+  history.unshift(entry);
+  renderHistory();
+}
+
+function clearHistory() {
+  history = [];
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!history.length) {
+    el.innerHTML = '<div style="color: #444; font-size: 12px; text-align: center; padding: 40px 0;">Run notes through the pipeline to build comparison history</div>';
+    return;
+  }
+
+  el.innerHTML = history.map((h, i) => {
+    const verdictColors = {
+      rejected: 'metric-fail',
+      scored: 'metric-pass',
+      error: 'metric-fail'
+    };
+    const verdictClass = verdictColors[h.verdict] || 'metric-info';
+
+    let detail = '';
+    if (h.verdict === 'rejected') {
+      detail = `<span class="metric metric-fail">REJECTED at ${h.stage}</span>`;
+    } else if (h.verdict === 'scored' && h.result) {
+      detail = `<span class="metric metric-info">P${h.result.priority}</span><span class="metric metric-info">${h.result.actionability}</span>`;
+    } else if (h.verdict === 'error') {
+      detail = `<span class="metric metric-fail">ERROR</span>`;
+    }
+
+    return `
+      <div class="history-entry" onclick="reloadFromHistory(${i})">
+        <div class="history-meta">
+          <span>${h.timestamp}</span>
+          <span class="model-tag">${h.model}</span>
+          <span>threshold: ${h.threshold}</span>
+          ${h.elapsed ? `<span>${h.elapsed}s</span>` : ''}
+        </div>
+        <div class="history-title">${escapeHtml(h.title.substring(0, 60))}</div>
+        <div class="history-verdict">${detail}</div>
+      </div>`;
+  }).join('');
+}
+
+function reloadFromHistory(idx) {
+  const h = history[idx];
+  document.getElementById('note-title').value = h.title || '';
+  document.getElementById('note-body').value = h.body || '';
+  document.getElementById('note-tags').value = h.tags || '';
+  thresholdSlider.value = h.threshold;
+  thresholdValue.textContent = h.threshold;
+  runPreFilter();
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

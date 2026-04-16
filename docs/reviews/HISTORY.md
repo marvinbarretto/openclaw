@@ -230,7 +230,25 @@ Investigation found the agent has been completely dead since Apr 9 — 5 days of
 
 **Updated maturity ladder:** plumbing → ~~heartbeat~~ → **platform stability** (now — update OpenClaw, fix Telegram) → configuration maintenance → source data quality → accurate data presentation → dispatch flow → autonomous actions → sub-agents.
 
-## Current Architecture (as of 2026-04-14, updated from 2026-04-11)
+### Session 20 — 2026-04-16 (Three Root Causes)
+
+2-day gap. Agent alive again (Telegram fixed via update to 2026.4.12 between sessions). Zero useful output despite richest pipeline data yet — 16 calendar events, 5 gems, 5 vault tasks. Six Telegram messages, none containing real briefing content. Same fabricated tasks ("Plan Weekend Hike", "Organize Digital Photos", "Research New Coffee Maker") appeared from 4 different models. Marvin: "The output is extremely bad."
+
+Deep diagnostic session uncovered three compounding root causes:
+
+1. **Sandbox env var blocking (OpenClaw 2026.4.9 bug).** `sanitizeEnvVars()` strips all keys matching `/_?(API_KEY|TOKEN|PASSWORD|PRIVATE_KEY|SECRET)$/i` from Docker containers. `JIMBO_API_KEY` and all operational env vars silently blocked. GitHub Issue #25951 confirms — `customAllowedPatterns` exists but never wired to container creation. **Patched** two vendor files to add `allowedSensitiveKeys` rescue path. Destroyed old container (Docker injects env vars at creation time only).
+
+2. **Wrong skill invocation.** Agent picked `morning-summary` and `calendar-briefing` instead of `daily-briefing`. Even the cron job's explicit "Read and follow daily-briefing SKILL.md" was ignored. **Fixed** by updating skill description with trigger words and replacing SOUL.md's stale "Morning Briefing Minimum Bar" (still said "propose day plan" from pre-session-17) with explicit "Skill Routing (CRITICAL)" section.
+
+3. **Poisoned session context.** Session file from Apr 13 contained fabricated task data from a model that couldn't reach real data (root cause 1). All subsequent models inherited this via `heartbeat.target: "last"` and echoed identical fabrications. **Fixed** by archiving poisoned session.
+
+**Key insight:** "Let this be a proof that it's not about the model!" — 4 models producing identical wrong output is a systems problem. The three causes compounded: env vars blocked → tools failed → model fabricated → fabrication cached in session → all models echo cached fabrication. Stable failure state.
+
+**New concern:** Both vendor patches will be lost on next OpenClaw update. Need upstream fix or re-application strategy.
+
+**Updated maturity ladder:** plumbing → ~~heartbeat~~ → **platform stability** (patched, fragile) → configuration maintenance → source data quality → accurate data presentation → dispatch flow → autonomous actions → sub-agents.
+
+## Current Architecture (as of 2026-04-16, updated from 2026-04-14)
 
 ```
 VPS (always on):
@@ -243,22 +261,24 @@ VPS (always on):
     */30   email_decision.py (Flash, ~$0.003/run)
     20:00  accountability-check.py
 
-  OpenClaw (Gemma4 via OpenRouter, free model rotation):
+  OpenClaw 2026.4.9 (GPT-OSS-120B via OpenRouter, free model rotation):
+    - PATCHED: sanitize-env-vars + docker container creation (fragile, lost on update)
     - Heartbeat polling every 30 min
-    - Hourly email scans (7 today, flagging 2-3 items each)
     - Morning/afternoon briefings from briefing-input.json
+    - SOUL.md updated with explicit skill routing
+    - Poisoned session archived, clean slate
 
   jimbo-api:
     - Dashboard, health, context, settings, activity, costs
-    - Dispatch service: 17 awaiting, 1 PR for review, 3 needs grooming
+    - Dispatch service: queue populated but flow not wired
 
   Sandbox tools:
-    - health-helper.py (NEW) — self-awareness via /api/health
+    - health-helper.py — self-awareness via /api/health
     - context-helper.py, activity-helper.py, settings-helper.py
     - calendar-helper.py, gmail-helper.py, tasks-helper.py
 
 M2 Mac (always on):
-  - Dispatch worker (idle — queue populated but flow not wired)
+  - Dispatch worker (idle)
   - Opus briefing (stale since Mar 16, not a priority)
 
 Site dashboard:
@@ -391,13 +411,13 @@ Jimbo (OpenClaw on Telegram):
 | ~~Morning gem drought~~ | Resolved — transient. 28 gems from 16 shortlisted on Mar 21. Session 10→11. |
 | Duplicate messages | **NEW BUG.** Airbnb, HowTheLightGetsIn, petition all double-sent at same timestamp. Tool double-fire? Session 11. |
 | False success on rate limit | **NEW BUG.** Model hit rate limit, no briefing composed, but activity log recorded "briefing delivered: success." No alert. Session 12. |
-| SOUL.md contradicts briefing skill | **CONFIG.** SOUL.md still says "propose day plan" and "priority >= 7" — contradicts session 17's reporter rewrite. Session 18. |
+| ~~SOUL.md contradicts briefing skill~~ | **FIXED.** Replaced "Morning Briefing Minimum Bar" with "Skill Routing (CRITICAL)" section. Session 18→20. |
 | API key not propagated | **AUTH.** Key rotated but openclaw.env on VPS still has old key. Causes 401 on health, email_insights, dispatch. Session 18. |
 | Priority scale mismatch | **MIGRATION.** Vault uses P0-P3 but codebase uses 1-10 in ~8 files. Task scoring failed. Session 18. |
-| Skill routing confusion | **CONFIG.** Jimbo invoked `morning-summary` instead of `daily-briefing`. Cron config or model choice? Session 18. |
+| Skill routing confusion | **PARTIALLY FIXED.** Skill description updated with trigger words, SOUL.md routing added. Untested with clean session. Session 18→20. |
 | Surprise game fabrication | **BUG.** Skill ran without reading real data, model hallucinated vault tasks and email gems. Needs data-or-silence guard. Session 18. |
 | Reasoning leak (3 sessions) | **ONGOING.** Heartbeat dumps chain-of-thought to Telegram. Sessions 14, 17, 18. Rules exist, not followed. Session 18. |
-| Telegram long-polling broken | **BROKEN.** OpenClaw 2026.4.9 update killed the connection. `UND_ERR_SOCKET` errors. Agent dead since Apr 9. 2026.4.12 available. Session 19. |
+| ~~Telegram long-polling broken~~ | **FIXED.** Updated to 2026.4.12 between sessions 19-20. Agent alive again. Session 19→20. |
 | No agent-down watchdog | **DESIGN GAP.** 5 days of agent silence with no alert. Needs independent monitoring that doesn't depend on the agent itself. Session 19. |
 | email_insights parsing bug | **NEW BUG.** `'str' object has no attribute 'get'` — every pipeline run. Session 19. |
 | `[FAIL]` prefix misleading | **UX BUG.** briefing-prep.py labels all messages `[FAIL]` when Opus is absent, even when pipeline succeeded. Session 19. |
@@ -414,7 +434,9 @@ Jimbo (OpenClaw on Telegram):
 | ~~OpenRouter key limit exceeded~~ | **RESOLVED.** Switched to free model rotation (Gemma4 etc). Jimbo alive again. Session 16→17. |
 | Dispatch flow not wired | **IN PROGRESS.** Infrastructure built (queue, worker, dashboard, PR feedback). Flow split designed. No work flowing through yet. Session 16. |
 | Vault code tasks mixed with life tasks | **DESIGN GAP.** 1,491 active tasks, many code-related. Design says move code tasks to GitHub Issues, vault becomes quests + recon. Not yet started. Session 16. |
-| Briefing ignores pipeline data | **MODEL GAP.** Gemma4 said "no vault tasks" (pipeline had 5) and "no email highlights" (pipeline had 11 gems). Data present, model doesn't use it. Session 17. |
+| Briefing ignores pipeline data | **ROOT CAUSE FOUND.** Not a model gap — env vars blocked, tools couldn't reach data. Patched in session 20. Verify with clean session. Session 17→20. |
+| Sandbox env var sanitizer (vendor patch) | **FRAGILE FIX.** Two vendor files patched to allow config-defined keys through. Will be overwritten on next OpenClaw update. GitHub #25951. Session 20. |
+| Session poisoning | **NEW FAILURE MODE.** Fabricated data cached in session file, inherited by all subsequent models via `heartbeat.target: "last"`. No detection mechanism. Session 20. |
 | Calendar timezone bug | **BUG.** Mission 1 Standup shown as 2:30 PM, actual 3:30 PM BST. Model may be using UTC instead of BST. Session 17. |
 | Accountability skill path broken | **BUG.** Tries `/usr/lib/node_modules/openclaw/skills/accountability/SKILL.md`, gets sandboxing error. Should use `/workspace/skills/`. Session 17. |
 | Too many calendars in briefing | Calendar whitelist still includes unwhitelisted/options events mixed with confirmed. Needs tightening. Session 17. |
@@ -454,3 +476,6 @@ Jimbo (OpenClaw on Telegram):
 - **Self-awareness enables self-correction.** Without the ability to check his own health, activity log, or dispatch queue, Jimbo reasons from nothing during heartbeat polls — pages of chain-of-thought about whether to nudge, grounded in rules not data. Give the agent access to its own telemetry.
 - **Build the system, wake the agent later.** After 15 sessions optimising what Jimbo *says*, session 16 deprioritised Jimbo entirely in favour of what agents *do*. The dispatch system is the product; Jimbo becomes one interface to it. Infrastructure before personality.
 - **The maturity ladder isn't linear.** We jumped from "source data quality" to "dispatch infrastructure" while skipping heartbeat completion and briefing polish. The ladder is a dependency graph, not a sequence — you can leapfrog steps that turn out to be less important than originally thought.
+- **Failure states can be stable.** Env vars blocked → tools fail → model fabricates → fabrication cached in session → all models echo cache. Each layer reinforces the next. The system converges on being consistently wrong rather than noisily broken. Stable failure is harder to detect than intermittent failure.
+- **Session context is a hidden persistence layer.** We audited SOUL.md, memory files, skill files, env vars — but never the session JSONL. A poisoned session is invisible to standard configuration audits and affects every model that inherits it.
+- **Vendor patches are tech debt with a timer.** Patching `node_modules` works today, breaks on next update. The fix has a known expiry date. Either get it upstream or build a re-application mechanism.
